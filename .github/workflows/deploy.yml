@@ -32,6 +32,9 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Enable Flutter Web
+        run: flutter create --platforms web .
+
       - name: Build Flutter Web
         run: |
           flutter build web --release \
