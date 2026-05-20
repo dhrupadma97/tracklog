@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../core/app_export.dart';
@@ -32,13 +33,14 @@ void main() async {
     return SizedBox.shrink();
   };
 
-  // 🚨 CRITICAL: Device orientation lock - DO NOT REMOVE
-  Future.wait([
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]),
-  ]).then((value) {
-    GoRouter.optionURLReflectsImperativeAPIs = true;
-    runApp(MyApp());
-  });
+  GoRouter.optionURLReflectsImperativeAPIs = true;
+
+  // 🚨 CRITICAL: Device orientation lock — mobile only, not web
+  if (!kIsWeb) {
+    await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  }
+
+  runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {

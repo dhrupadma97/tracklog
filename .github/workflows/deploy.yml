@@ -25,12 +25,9 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.44.0'
+          flutter-version: '3.32.0'
           channel: 'stable'
           cache: true
-
-      - name: Enable Flutter Web
-        run: flutter config --enable-web
 
       - name: Install dependencies
         run: flutter pub get
@@ -44,6 +41,11 @@ jobs:
             --dart-define=GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }} \
             --dart-define=RESEND_API_KEY=${{ secrets.RESEND_API_KEY }} \
             --base-href "/${{ github.event.repository.name }}/"
+
+      - name: Inject Google Maps API key into index.html
+        run: |
+          MAPS_KEY="${{ secrets.GOOGLE_MAPS_API_KEY }}"
+          sed -i "s|<!-- GOOGLE_MAPS_SCRIPT_PLACEHOLDER -->|<script src=\"https://maps.googleapis.com/maps/api/js?key=${MAPS_KEY}\"></script>|g" build/web/index.html
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

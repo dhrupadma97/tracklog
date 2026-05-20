@@ -3,7 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:geolocator/geolocator.dart';
+
+import '../services/location_service.dart';
 
 /// NATRAX proving ground centre coordinates
 const LatLng kNatraxCenter = LatLng(22.5667, 75.6167);
@@ -11,7 +12,7 @@ const LatLng kNatraxCenter = LatLng(22.5667, 75.6167);
 /// A live Google Map showing:
 /// - NATRAX track area
 /// - All gates with their geofence radius circles
-/// - Real-time engineer GPS position
+/// - Real-time engineer GPS position (browser Geolocation on web, GPS on mobile)
 /// - Optional: a single highlighted gate (for geofence setup mode)
 class TrackMapWidget extends StatefulWidget {
   /// List of gate maps: each must have 'name', 'lat', 'lng', 'radiusMeters'
@@ -49,9 +50,11 @@ class TrackMapWidget extends StatefulWidget {
 class _TrackMapWidgetState extends State<TrackMapWidget> {
   GoogleMapController? _mapController;
   LatLng? _engineerPosition;
-  StreamSubscription<Position>? _positionStream;
+  StreamSubscription<({double lat, double lng})>? _positionStream;
   bool _locationPermissionGranted = false;
   bool _mapReady = false;
+
+  final _locationService = LocationService();
 
   // Dark map style JSON for non-satellite mode
   static const String _darkMapStyle = '''
@@ -84,51 +87,26 @@ class _TrackMapWidgetState extends State<TrackMapWidget> {
     if (!widget.showEngineerLocation) return;
 
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
+      final granted = await _locationService.requestPermission();
+      if (!granted) return;
 
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) return;
-      }
-      if (permission == LocationPermission.deniedForever) return;
-
-      setState(() => _locationPermissionGranted = true);
+      if (mounted) setState(() => _locationPermissionGranted = true);
 
       // Get initial position
-      try {
-        final pos = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high,
-            timeLimit: Duration(seconds: 10),
-          ),
-        );
-        if (mounted) {
-          setState(
-            () => _engineerPosition = LatLng(pos.latitude, pos.longitude),
-          );
-          _animateCameraToEngineer();
-        }
-      } catch (_) {
-        // Use NATRAX center as fallback
-        if (mounted) setState(() => _engineerPosition = kNatraxCenter);
+      final pos = await _locationService.getCurrentPosition();
+      if (mounted && pos != null) {
+        setState(() => _engineerPosition = LatLng(pos.lat, pos.lng));
+        _animateCameraToEngineer();
+      } else if (mounted) {
+        setState(() => _engineerPosition = kNatraxCenter);
       }
 
       // Stream position updates
-      _positionStream =
-          Geolocator.getPositionStream(
-            locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.high,
-              distanceFilter: 5,
-            ),
-          ).listen((pos) {
-            if (mounted) {
-              setState(
-                () => _engineerPosition = LatLng(pos.latitude, pos.longitude),
-              );
-            }
-          }, onError: (_) {});
+      _positionStream = _locationService.positionStream().listen((pos) {
+        if (mounted) {
+          setState(() => _engineerPosition = LatLng(pos.lat, pos.lng));
+        }
+      });
     } catch (_) {
       // Location not available — map still shows without engineer dot
     }
@@ -288,13 +266,14 @@ class _TrackMapWidgetState extends State<TrackMapWidget> {
               mapType: widget.mapType,
               markers: _buildMarkers(),
               circles: _buildCircles(),
+              // myLocationEnabled not supported on web — use custom marker instead
               myLocationEnabled: _locationPermissionGranted && !kIsWeb,
               myLocationButtonEnabled: false,
               zoomControlsEnabled: false,
               mapToolbarEnabled: false,
               compassEnabled: true,
               rotateGesturesEnabled: true,
-              tiltGesturesEnabled: true,
+              tiltGesturesEnabled: !kIsWeb, // tilt not supported on web
               scrollGesturesEnabled: true,
               zoomGesturesEnabled: true,
             ),
