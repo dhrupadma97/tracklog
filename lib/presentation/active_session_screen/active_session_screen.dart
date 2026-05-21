@@ -2,12 +2,15 @@ import 'dart:async';
 
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:intl/intl.dart';
 
 import '../../core/app_export.dart';
 import '../../services/engineer_auth_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/rental_service.dart';
 import '../../widgets/track_map_widget.dart';
 import './widgets/metric_chip_widget.dart';
+import './widgets/pending_returns_card_widget.dart';
 import './widgets/recent_gate_strip_widget.dart';
 import './widgets/session_control_widget.dart';
 import './widgets/session_cost_panel_widget.dart';
@@ -20,12 +23,14 @@ const _minBillingTracks = {'T1', 'T2', 'T3', 'T3D', 'T3W'};
 // Additional service rates (₹ per unit)
 const Map<String, double> _additionalServiceRates = {
   'Refreshment/Lunch': 125.0, // per nos
-  'Universal EV Charger': 25.0, // per unit
-  'Sand bags 20/50kg': 150.0, // per nos/day
+  'Universal EV Charger': 25.0, // per kWh
   'Unskilled Labour': 1100.0, // per day
   'Electricity Charges': 15.0, // per unit
   'Big Conference Hall': 11000.0, // per day
 };
+
+// Sand bag rate
+const double _sandBagDailyRate = 150.0; // per bag per day
 
 // Workshop is a continuous monthly cost (₹50,000/month for April billing)
 const double _workshopMonthlyRate = 50000.0;
@@ -60,15 +65,26 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
   Duration _dailyCumulativeDuration = Duration.zero;
   DateTime? _lastDayTracked;
 
-  // Additional services
+  // Additional services (standard qty-based)
   final Map<String, double> _additionalServicesQty = {
     'Refreshment/Lunch': 0,
-    'Universal EV Charger': 0,
-    'Sand bags 20/50kg': 0,
     'Unskilled Labour': 0,
     'Electricity Charges': 0,
     'Big Conference Hall': 0,
   };
+
+  // EV Charger — manual kWh input
+  final TextEditingController _evKwhController = TextEditingController();
+  double _evKwh = 0;
+
+  // Sand bags — manual qty + date-based rental
+  final TextEditingController _sandBagQtyController = TextEditingController();
+  int _sandBagQty = 0;
+  DateTime? _sandBagStartDate;
+  DateTime? _sandBagEndDate;
+
+  // Rental instruments
+  final List<Map<String, dynamic>> _rentalInstruments = [];
 
   // Anomaly thresholds
   static const Duration _longSessionThreshold = Duration(hours: 4);
@@ -88,6 +104,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
     super.initState();
     _notificationService.initialize();
     _loadEngineerProfile();
+    _schedulePendingReturnsNotification();
 
     _pulseController = AnimationController(
       vsync: this,
@@ -127,6 +144,32 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
         });
       }
     }
+  }
+
+  /// Fetches pending returns and schedules the daily 7 PM push notification
+  /// if there are any unreturned sand bags or rental instruments.
+  Future<void> _schedulePendingReturnsNotification() async {
+    try {
+      final pending = await RentalService.instance.getPendingReturns();
+      final sandBags = pending['sand_bags'] as List<SandBagRental>;
+      final instruments = pending['instruments'] as List<RentalInstrument>;
+      if (sandBags.isEmpty && instruments.isEmpty) return;
+
+      double totalCost = 0;
+      for (final s in sandBags) {
+        totalCost += s.liveCost;
+      }
+      for (final i in instruments) {
+        totalCost += i.liveCost;
+      }
+
+      // Schedule the daily evening reminder
+      await _notificationService.scheduleDailyPendingReturnsReminder(
+        sandBagCount: sandBags.length,
+        instrumentCount: instruments.length,
+        totalRunningCost: totalCost,
+      );
+    } catch (_) {}
   }
 
   void _startSession({bool autoTriggered = false}) {
@@ -269,6 +312,12 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
     _additionalServicesQty.forEach((service, qty) {
       total += qty * (_additionalServiceRates[service] ?? 0);
     });
+    // EV charger
+    total += _evKwh * (_additionalServiceRates['Universal EV Charger'] ?? 0);
+    // Sand bags rental
+    total += _sandBagRentalCost;
+    // Rental instruments
+    total += _rentalInstrumentsCost;
     return total;
   }
 
@@ -346,6 +395,8 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
     _sessionTimer?.cancel();
     _anomalyTimer?.cancel();
     _pulseController.dispose();
+    _evKwhController.dispose();
+    _sandBagQtyController.dispose();
     super.dispose();
   }
 
@@ -565,6 +616,9 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
             dailyCumulativeDuration: _dailyCumulativeDuration,
           ),
           const SizedBox(height: 20),
+          // ── Pending Returns ─────────────────────────────────────────────
+          const PendingReturnsCardWidget(),
+          const SizedBox(height: 16),
           // ── Additional Services ─────────────────────────────────────────
           _buildAdditionalServicesPanel(theme),
           const SizedBox(height: 20),
@@ -726,16 +780,14 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
               ],
             ),
             const SizedBox(height: 14),
+
+            // Standard qty-based services
             ..._additionalServicesQty.entries.map((entry) {
               final service = entry.key;
               final qty = entry.value;
               final rate = _additionalServiceRates[service] ?? 0;
               final unit = service == 'Refreshment/Lunch'
                   ? 'nos'
-                  : service == 'Universal EV Charger'
-                  ? 'unit'
-                  : service == 'Sand bags 20/50kg'
-                  ? 'nos/day'
                   : service == 'Unskilled Labour'
                   ? 'day'
                   : service == 'Electricity Charges'
@@ -818,7 +870,350 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                 ),
               );
             }),
+
+            // ── EV Charger — manual kWh input ──────────────────────────
+            _buildSectionDivider(theme, 'EV Charging'),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Universal EV Charger',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFFE8EAF0),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text('₹25 / kWh', style: theme.textTheme.labelSmall),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: 90,
+                  child: TextField(
+                    controller: _evKwhController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.manrope(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF6C63FF),
+                    ),
+                    decoration: InputDecoration(
+                      hintText: '0',
+                      hintStyle: GoogleFonts.manrope(
+                        fontSize: 13,
+                        color: const Color(0xFF3A4460),
+                      ),
+                      suffixText: 'kWh',
+                      suffixStyle: GoogleFonts.manrope(
+                        fontSize: 10,
+                        color: const Color(0xFF6B7490),
+                      ),
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 8,
+                      ),
+                      filled: true,
+                      fillColor: const Color(0xFF252E45),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                    onChanged: (v) {
+                      setState(() {
+                        _evKwh = double.tryParse(v) ?? 0;
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 70,
+                  child: Text(
+                    _evKwh > 0 ? '₹${(_evKwh * 25).toStringAsFixed(0)}' : '—',
+                    textAlign: TextAlign.right,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: _evKwh > 0
+                          ? const Color(0xFFE8EAF0)
+                          : const Color(0xFF3A4460),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            // ── Sand Bags — qty + date-based rental ────────────────────
+            const SizedBox(height: 14),
+            _buildSectionDivider(theme, 'Sand Bags Rental'),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Sand bags 20/50kg',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFFE8EAF0),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                        '₹150 / bag / day',
+                        style: theme.textTheme.labelSmall,
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: 80,
+                  child: TextField(
+                    controller: _sandBagQtyController,
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.manrope(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF6C63FF),
+                    ),
+                    decoration: InputDecoration(
+                      hintText: '0',
+                      hintStyle: GoogleFonts.manrope(
+                        fontSize: 13,
+                        color: const Color(0xFF3A4460),
+                      ),
+                      suffixText: 'bags',
+                      suffixStyle: GoogleFonts.manrope(
+                        fontSize: 10,
+                        color: const Color(0xFF6B7490),
+                      ),
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 8,
+                      ),
+                      filled: true,
+                      fillColor: const Color(0xFF252E45),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                    onChanged: (v) {
+                      setState(() {
+                        _sandBagQty = int.tryParse(v) ?? 0;
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+            if (_sandBagQty > 0) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildDatePickerField(
+                      theme: theme,
+                      label: 'Taken Date',
+                      date: _sandBagStartDate,
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: _sandBagStartDate ?? DateTime.now(),
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime.now().add(
+                            const Duration(days: 365),
+                          ),
+                          builder: (ctx, child) => Theme(
+                            data: Theme.of(ctx).copyWith(
+                              colorScheme: const ColorScheme.dark(
+                                primary: Color(0xFF6C63FF),
+                                surface: Color(0xFF1A2236),
+                              ),
+                            ),
+                            child: child!,
+                          ),
+                        );
+                        if (picked != null) {
+                          setState(() => _sandBagStartDate = picked);
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _buildDatePickerField(
+                      theme: theme,
+                      label: 'Return Date',
+                      date: _sandBagEndDate,
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: _sandBagEndDate ?? DateTime.now(),
+                          firstDate: _sandBagStartDate ?? DateTime(2020),
+                          lastDate: DateTime.now().add(
+                            const Duration(days: 365),
+                          ),
+                          builder: (ctx, child) => Theme(
+                            data: Theme.of(ctx).copyWith(
+                              colorScheme: const ColorScheme.dark(
+                                primary: Color(0xFF6C63FF),
+                                surface: Color(0xFF1A2236),
+                              ),
+                            ),
+                            child: child!,
+                          ),
+                        );
+                        if (picked != null) {
+                          setState(() => _sandBagEndDate = picked);
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              if (_sandBagStartDate != null) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6C63FF).withAlpha(20),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: const Color(0xFF6C63FF).withAlpha(60),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      () {
+                        final endDate = _sandBagEndDate ?? DateTime.now();
+                        final days = endDate
+                            .difference(_sandBagStartDate!)
+                            .inDays;
+                        return Text(
+                          '$_sandBagQty bags × ${days > 0 ? days : 0} days × ₹150',
+                          style: GoogleFonts.manrope(
+                            fontSize: 11,
+                            color: const Color(0xFFA8B0C8),
+                          ),
+                        );
+                      }(),
+                      Text(
+                        _sandBagRentalCost > 0
+                            ? '₹${_sandBagRentalCost.toStringAsFixed(0)}'
+                            : '—',
+                        style: GoogleFonts.manrope(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF6C63FF),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+
+            // ── Rental Instruments ─────────────────────────────────────
+            const SizedBox(height: 14),
+            _buildSectionDivider(theme, 'Rental Instruments'),
+            const SizedBox(height: 10),
+            ..._rentalInstruments.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final item = entry.value;
+              return _RentalInstrumentRow(
+                index: idx,
+                item: item,
+                theme: theme,
+                onChanged: (updated) {
+                  setState(() => _rentalInstruments[idx] = updated);
+                },
+                onRemove: () {
+                  setState(() => _rentalInstruments.removeAt(idx));
+                },
+              );
+            }),
+            const SizedBox(height: 8),
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  _rentalInstruments.add({
+                    'name': '',
+                    'perDay': 0.0,
+                    'days': 0,
+                  });
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF252E45),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: const Color(0xFF3A4460),
+                    style: BorderStyle.solid,
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.add_rounded,
+                      color: Color(0xFF6C63FF),
+                      size: 16,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Add Rental Instrument',
+                      style: GoogleFonts.manrope(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF6C63FF),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (_rentalInstrumentsCost > 0) ...[
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Rental Instruments Total',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: const Color(0xFFA8B0C8),
+                    ),
+                  ),
+                  Text(
+                    '₹${_rentalInstrumentsCost.toStringAsFixed(0)}',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: const Color(0xFF6C63FF),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+
             if (_additionalServicesCost > 0) ...[
+              const SizedBox(height: 10),
               Container(height: 1, color: const Color(0xFF252E45)),
               const SizedBox(height: 10),
               Row(
@@ -845,6 +1240,99 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
         ),
       ),
     );
+  }
+
+  Widget _buildSectionDivider(ThemeData theme, String label) {
+    return Row(
+      children: [
+        Container(height: 1, width: 20, color: const Color(0xFF252E45)),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: GoogleFonts.manrope(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF6B7490),
+            letterSpacing: 0.8,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: Container(height: 1, color: const Color(0xFF252E45))),
+      ],
+    );
+  }
+
+  Widget _buildDatePickerField({
+    required ThemeData theme,
+    required String label,
+    required DateTime? date,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        decoration: BoxDecoration(
+          color: const Color(0xFF252E45),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.calendar_today_rounded,
+              color: Color(0xFF6C63FF),
+              size: 14,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: GoogleFonts.manrope(
+                      fontSize: 9,
+                      color: const Color(0xFF6B7490),
+                    ),
+                  ),
+                  Text(
+                    date != null
+                        ? DateFormat('dd MMM yyyy').format(date)
+                        : 'Select',
+                    style: GoogleFonts.manrope(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: date != null
+                          ? const Color(0xFFE8EAF0)
+                          : const Color(0xFF3A4460),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  double get _sandBagRentalCost {
+    if (_sandBagQty <= 0) return 0;
+    if (_sandBagStartDate == null) return 0;
+    final endDate = _sandBagEndDate ?? DateTime.now();
+    final days = endDate.difference(_sandBagStartDate!).inDays;
+    if (days <= 0) return 0;
+    return _sandBagQty * days * _sandBagDailyRate;
+  }
+
+  double get _rentalInstrumentsCost {
+    double total = 0;
+    for (final item in _rentalInstruments) {
+      final perDay = (item['perDay'] as double?) ?? 0;
+      final days = (item['days'] as int?) ?? 0;
+      total += perDay * days;
+    }
+    return total;
   }
 
   /// Debug/demo strip to manually trigger anomaly notifications.
@@ -1404,6 +1892,243 @@ class _SummaryCard extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           Text(label, style: theme.textTheme.labelSmall),
+        ],
+      ),
+    );
+  }
+}
+
+class _RentalInstrumentRow extends StatefulWidget {
+  final int index;
+  final Map<String, dynamic> item;
+  final ThemeData theme;
+  final ValueChanged<Map<String, dynamic>> onChanged;
+  final VoidCallback onRemove;
+
+  const _RentalInstrumentRow({
+    required this.index,
+    required this.item,
+    required this.theme,
+    required this.onChanged,
+    required this.onRemove,
+  });
+
+  @override
+  State<_RentalInstrumentRow> createState() => _RentalInstrumentRowState();
+}
+
+class _RentalInstrumentRowState extends State<_RentalInstrumentRow> {
+  late TextEditingController _nameCtrl;
+  late TextEditingController _perDayCtrl;
+  late TextEditingController _daysCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl = TextEditingController(
+      text: widget.item['name'] as String? ?? '',
+    );
+    _perDayCtrl = TextEditingController(
+      text:
+          (widget.item['perDay'] as double?) != null &&
+              (widget.item['perDay'] as double) > 0
+          ? (widget.item['perDay'] as double).toStringAsFixed(0)
+          : '',
+    );
+    _daysCtrl = TextEditingController(
+      text:
+          (widget.item['days'] as int?) != null &&
+              (widget.item['days'] as int) > 0
+          ? (widget.item['days'] as int).toString()
+          : '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _perDayCtrl.dispose();
+    _daysCtrl.dispose();
+    super.dispose();
+  }
+
+  void _notify() {
+    widget.onChanged({
+      'name': _nameCtrl.text,
+      'perDay': double.tryParse(_perDayCtrl.text) ?? 0.0,
+      'days': int.tryParse(_daysCtrl.text) ?? 0,
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final perDay = double.tryParse(_perDayCtrl.text) ?? 0.0;
+    final days = int.tryParse(_daysCtrl.text) ?? 0;
+    final cost = perDay * days;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF252E45),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF3A4460).withAlpha(80)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _nameCtrl,
+                  style: GoogleFonts.manrope(
+                    fontSize: 12,
+                    color: const Color(0xFFE8EAF0),
+                    fontWeight: FontWeight.w600,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Instrument name',
+                    hintStyle: GoogleFonts.manrope(
+                      fontSize: 12,
+                      color: const Color(0xFF3A4460),
+                    ),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xFF1A2236),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  onChanged: (_) => _notify(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: widget.onRemove,
+                child: Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF4757).withAlpha(30),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    color: Color(0xFFFF4757),
+                    size: 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _perDayCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  style: GoogleFonts.manrope(
+                    fontSize: 12,
+                    color: const Color(0xFFE8EAF0),
+                  ),
+                  decoration: InputDecoration(
+                    hintText: '0',
+                    hintStyle: GoogleFonts.manrope(
+                      fontSize: 12,
+                      color: const Color(0xFF3A4460),
+                    ),
+                    prefixText: '₹ ',
+                    prefixStyle: GoogleFonts.manrope(
+                      fontSize: 12,
+                      color: const Color(0xFF6B7490),
+                    ),
+                    suffixText: '/day',
+                    suffixStyle: GoogleFonts.manrope(
+                      fontSize: 10,
+                      color: const Color(0xFF6B7490),
+                    ),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xFF1A2236),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  onChanged: (_) {
+                    setState(() {});
+                    _notify();
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _daysCtrl,
+                  keyboardType: TextInputType.number,
+                  style: GoogleFonts.manrope(
+                    fontSize: 12,
+                    color: const Color(0xFFE8EAF0),
+                  ),
+                  decoration: InputDecoration(
+                    hintText: '0',
+                    hintStyle: GoogleFonts.manrope(
+                      fontSize: 12,
+                      color: const Color(0xFF3A4460),
+                    ),
+                    suffixText: 'days',
+                    suffixStyle: GoogleFonts.manrope(
+                      fontSize: 10,
+                      color: const Color(0xFF6B7490),
+                    ),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xFF1A2236),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  onChanged: (_) {
+                    setState(() {});
+                    _notify();
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 64,
+                child: Text(
+                  cost > 0 ? '₹${cost.toStringAsFixed(0)}' : '—',
+                  textAlign: TextAlign.right,
+                  style: GoogleFonts.manrope(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: cost > 0
+                        ? const Color(0xFF6C63FF)
+                        : const Color(0xFF3A4460),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );

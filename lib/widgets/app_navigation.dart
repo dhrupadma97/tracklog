@@ -39,15 +39,15 @@ class _AppNavigationState extends State<AppNavigation>
       branchIndex: 2,
     ),
     _TabSpec(
-      icon: 'receipt_long',
-      selectedIcon: 'receipt_long',
-      label: 'PO',
-      branchIndex: 3,
-    ),
-    _TabSpec(
       icon: 'email',
       selectedIcon: 'email',
       label: 'Reports',
+      branchIndex: 3,
+    ),
+    _TabSpec(
+      icon: 'receipt_long',
+      selectedIcon: 'receipt_long',
+      label: 'Invoices',
       branchIndex: 4,
     ),
     _TabSpec(

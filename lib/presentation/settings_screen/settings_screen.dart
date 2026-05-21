@@ -3,11 +3,13 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../services/engineer_auth_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_icon_widget.dart';
+import '../../routes/app_routes.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -197,6 +199,13 @@ class _SettingsScreenState extends State<SettingsScreen>
                         icon: 'file_download',
                         title: 'Export Frequency',
                         child: _buildExportSection(),
+                      ),
+                    ),
+                    SliverToBoxAdapter(
+                      child: _buildSection(
+                        icon: 'receipt_long',
+                        title: 'PO Tracker',
+                        child: _buildPoTrackerSection(),
                       ),
                     ),
                     const SliverToBoxAdapter(child: SizedBox(height: 120)),
@@ -690,6 +699,45 @@ class _SettingsScreenState extends State<SettingsScreen>
                       fontWeight: FontWeight.w700,
                     ),
                   ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPoTrackerSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Manage and track Purchase Orders for your sessions.',
+          style: GoogleFonts.manrope(
+            fontSize: 12,
+            color: const Color(0xFFA8B0C8),
+          ),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () => context.push(AppRoutes.poTracker),
+            icon: const Icon(Icons.receipt_long_rounded, size: 18),
+            label: Text(
+              'Open PO Tracker',
+              style: GoogleFonts.manrope(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primary,
+              foregroundColor: const Color(0xFF001A10),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              elevation: 0,
+            ),
           ),
         ),
       ],

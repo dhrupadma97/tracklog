@@ -19,5 +19,16 @@ class NotificationServiceImpl {
     int id = 99,
   }) async {}
 
+  Future<void> showPendingReturnsNotification({
+    required String itemSummary,
+    required double totalCost,
+  }) async {}
+
+  Future<void> scheduleDailyPendingReturnsReminder({
+    required int sandBagCount,
+    required int instrumentCount,
+    required double totalRunningCost,
+  }) async {}
+
   Future<void> cancelAll() async {}
 }

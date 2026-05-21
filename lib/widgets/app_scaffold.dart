@@ -67,15 +67,15 @@ class _WideScaffold extends StatelessWidget {
       branch: 2,
     ),
     _NavItem(
-      icon: Icons.receipt_long_outlined,
-      activeIcon: Icons.receipt_long,
-      label: 'PO',
-      branch: 3,
-    ),
-    _NavItem(
       icon: Icons.email_outlined,
       activeIcon: Icons.email,
       label: 'Reports',
+      branch: 3,
+    ),
+    _NavItem(
+      icon: Icons.receipt_long_outlined,
+      activeIcon: Icons.receipt_long,
+      label: 'Invoices',
       branch: 4,
     ),
     _NavItem(

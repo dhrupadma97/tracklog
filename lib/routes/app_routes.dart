@@ -12,6 +12,7 @@ import '../presentation/settings_screen/settings_screen.dart';
 import '../presentation/splash_screen/splash_screen.dart';
 import '../services/engineer_auth_service.dart';
 import '../widgets/app_scaffold.dart';
+import '../presentation/monthly_invoices_screen/monthly_invoices_screen.dart';
 
 class AppRoutes {
   static const String initial = '/';
@@ -24,6 +25,7 @@ class AppRoutes {
   static const String emailReports = '/email-reports-screen';
   static const String privacyPolicy = '/privacy-policy';
   static const String settings = '/settings-screen';
+  static const String monthlyInvoices = '/monthly-invoices-screen';
 }
 
 final GoRouter appRouter = GoRouter(
@@ -84,6 +86,18 @@ final GoRouter appRouter = GoRouter(
         ),
       ),
     ),
+    GoRoute(
+      path: AppRoutes.poTracker,
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const PoTrackerScreen(),
+        transitionDuration: const Duration(milliseconds: 280),
+        transitionsBuilder: (context, animation, _, child) => FadeTransition(
+          opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+          child: child,
+        ),
+      ),
+    ),
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) =>
           AppScaffold(navigationShell: navigationShell),
@@ -115,16 +129,16 @@ final GoRouter appRouter = GoRouter(
         StatefulShellBranch(
           routes: [
             GoRoute(
-              path: AppRoutes.poTracker,
-              builder: (context, state) => const PoTrackerScreen(),
+              path: AppRoutes.emailReports,
+              builder: (context, state) => const EmailReportsScreen(),
             ),
           ],
         ),
         StatefulShellBranch(
           routes: [
             GoRoute(
-              path: AppRoutes.emailReports,
-              builder: (context, state) => const EmailReportsScreen(),
+              path: AppRoutes.monthlyInvoices,
+              builder: (context, state) => const MonthlyInvoicesScreen(),
             ),
           ],
         ),

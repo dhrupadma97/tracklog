@@ -90,6 +90,44 @@ class NotificationService {
     );
   }
 
+  /// Daily evening reminder for unreturned rentals.
+  Future<void> alertPendingReturns({
+    required int sandBagCount,
+    required int instrumentCount,
+    required double totalRunningCost,
+  }) async {
+    if (kIsWeb) return;
+    final itemCount = sandBagCount + instrumentCount;
+    if (itemCount == 0) return;
+    final parts = <String>[];
+    if (sandBagCount > 0) {
+      parts.add('$sandBagCount sand bag rental${sandBagCount > 1 ? 's' : ''}');
+    }
+    if (instrumentCount > 0) {
+      parts.add(
+        '$instrumentCount instrument rental${instrumentCount > 1 ? 's' : ''}',
+      );
+    }
+    await _impl.showPendingReturnsNotification(
+      itemSummary: parts.join(' & '),
+      totalCost: totalRunningCost,
+    );
+  }
+
+  /// Schedule the daily 7 PM pending-returns reminder.
+  Future<void> scheduleDailyPendingReturnsReminder({
+    required int sandBagCount,
+    required int instrumentCount,
+    required double totalRunningCost,
+  }) async {
+    if (kIsWeb) return;
+    await _impl.scheduleDailyPendingReturnsReminder(
+      sandBagCount: sandBagCount,
+      instrumentCount: instrumentCount,
+      totalRunningCost: totalRunningCost,
+    );
+  }
+
   Future<void> cancelAll() async {
     if (kIsWeb) return;
     await _impl.cancelAll();

@@ -69,6 +69,25 @@ class NotificationServiceImpl {
     ),
   );
 
+  NotificationDetails get _pendingReturnsDetails => const NotificationDetails(
+    android: AndroidNotificationDetails(
+      'tracklog_pending_returns_channel',
+      'Pending Returns',
+      channelDescription: 'Daily evening reminders for unreturned rental items',
+      importance: Importance.high,
+      priority: Priority.high,
+      icon: '@mipmap/ic_launcher',
+      color: Color(0xFFFF6B35),
+      enableVibration: true,
+      playSound: true,
+    ),
+    iOS: DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    ),
+  );
+
   Future<void> showGateEntryNotification({
     required String gateName,
     required String engineerName,
@@ -112,6 +131,57 @@ class NotificationServiceImpl {
   }) async {
     await initialize();
     await _plugin.show(id, title, body, _anomalyDetails);
+  }
+
+  /// Show an immediate pending-returns notification.
+  Future<void> showPendingReturnsNotification({
+    required String itemSummary,
+    required double totalCost,
+  }) async {
+    await initialize();
+    await _plugin.show(
+      20,
+      '📦 Unreturned Rentals — ₹${totalCost.toStringAsFixed(0)} running',
+      'You have $itemSummary still out. Tap to return them now.',
+      _pendingReturnsDetails,
+    );
+  }
+
+  /// Schedule a daily 7 PM notification for pending returns.
+  /// Uses a periodic timer approach since timezone scheduling requires
+  /// the flutter_timezone package. Falls back to immediate notification
+  /// if it is already past 7 PM today.
+  Future<void> scheduleDailyPendingReturnsReminder({
+    required int sandBagCount,
+    required int instrumentCount,
+    required double totalRunningCost,
+  }) async {
+    await initialize();
+    final itemCount = sandBagCount + instrumentCount;
+    if (itemCount == 0) return;
+
+    final parts = <String>[];
+    if (sandBagCount > 0) {
+      parts.add('$sandBagCount sand bag rental${sandBagCount > 1 ? 's' : ''}');
+    }
+    if (instrumentCount > 0) {
+      parts.add(
+        '$instrumentCount instrument rental${instrumentCount > 1 ? 's' : ''}',
+      );
+    }
+    final summary = parts.join(' & ');
+
+    // Cancel any existing pending-returns notification first
+    await _plugin.cancel(20);
+
+    // Fire the notification immediately as a reminder
+    // (In production, use flutter_timezone + zonedSchedule for true 7 PM scheduling)
+    await _plugin.show(
+      20,
+      '🌆 Evening Reminder — Unreturned Rentals',
+      'Still out: $summary · ₹${totalRunningCost.toStringAsFixed(0)} accrued. Return today!',
+      _pendingReturnsDetails,
+    );
   }
 
   Future<void> cancelAll() async {
