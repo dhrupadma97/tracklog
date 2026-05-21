@@ -50,6 +50,12 @@ class _AppNavigationState extends State<AppNavigation>
       label: 'Reports',
       branchIndex: 4,
     ),
+    _TabSpec(
+      icon: 'settings',
+      selectedIcon: 'settings',
+      label: 'Settings',
+      branchIndex: 5,
+    ),
   ];
 
   @override

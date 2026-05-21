@@ -8,6 +8,7 @@ import '../presentation/login_screen/login_screen.dart';
 import '../presentation/po_tracker_screen/po_tracker_screen.dart';
 import '../presentation/privacy_policy_screen/privacy_policy_screen.dart';
 import '../presentation/session_history_screen/session_history_screen.dart';
+import '../presentation/settings_screen/settings_screen.dart';
 import '../presentation/splash_screen/splash_screen.dart';
 import '../services/engineer_auth_service.dart';
 import '../widgets/app_scaffold.dart';
@@ -22,6 +23,7 @@ class AppRoutes {
   static const String poTracker = '/po-tracker-screen';
   static const String emailReports = '/email-reports-screen';
   static const String privacyPolicy = '/privacy-policy';
+  static const String settings = '/settings-screen';
 }
 
 final GoRouter appRouter = GoRouter(
@@ -123,6 +125,14 @@ final GoRouter appRouter = GoRouter(
             GoRoute(
               path: AppRoutes.emailReports,
               builder: (context, state) => const EmailReportsScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: AppRoutes.settings,
+              builder: (context, state) => const SettingsScreen(),
             ),
           ],
         ),

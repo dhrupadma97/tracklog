@@ -78,6 +78,12 @@ class _WideScaffold extends StatelessWidget {
       label: 'Reports',
       branch: 4,
     ),
+    _NavItem(
+      icon: Icons.settings_outlined,
+      activeIcon: Icons.settings,
+      label: 'Settings',
+      branch: 5,
+    ),
   ];
 
   @override
