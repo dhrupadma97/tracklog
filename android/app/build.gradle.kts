@@ -22,20 +22,30 @@ fun extractDartDefine(key: String, defaultValue: String = ""): String {
     }
 }
 
-// Helper function to read values from env.json at the project root
+// Helper function to read values from env.json — tries multiple path strategies
 fun readEnvJson(key: String, defaultValue: String = ""): String {
     return try {
-        val envFile = File(rootProject.projectDir.parent, "env.json")
-        if (envFile.exists()) {
+        // Try multiple candidate locations for env.json
+        val candidates = listOf(
+            File(rootProject.projectDir.parent, "env.json"),          // <project>/env.json
+            File(rootProject.projectDir, "env.json"),                  // <project>/android/env.json
+            File(project.projectDir.parent.parent, "env.json"),        // two levels up
+            File(System.getProperty("user.dir"), "env.json")           // working directory
+        )
+        val envFile = candidates.firstOrNull { it.exists() }
+        if (envFile != null) {
             val content = envFile.readText()
-            // Simple regex-based JSON parsing for string values
             val pattern = "\"$key\"\\s*:\\s*\"([^\"]*)\""
             val matchResult = Regex(pattern).find(content)
-            matchResult?.groupValues?.getOrNull(1)?.takeIf { it.isNotBlank() } ?: defaultValue
+            val value = matchResult?.groupValues?.getOrNull(1)?.takeIf { it.isNotBlank() }
+            println("TrackLog Build: Found env.json at ${envFile.absolutePath}, $key=${if (value != null) "***" else "NOT FOUND"}")
+            value ?: defaultValue
         } else {
+            println("TrackLog Build: env.json not found in any candidate path")
             defaultValue
         }
     } catch (e: Exception) {
+        println("TrackLog Build: Error reading env.json: ${e.message}")
         defaultValue
     }
 }
@@ -70,6 +80,11 @@ android {
         val supabaseAnonKey = extractDartDefine("SUPABASE_ANON_KEY")
             .ifBlank { readEnvJson("SUPABASE_ANON_KEY") }
 
+        // Use resValue instead of manifestPlaceholders — more reliable embedding
+        // The AndroidManifest.xml references @string/google_maps_key
+        resValue("string", "google_maps_key", googleMapsApiKey)
+
+        // Keep manifestPlaceholders as fallback
         manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = googleMapsApiKey
 
         // Inject as BuildConfig fields so Dart code can access them at runtime
