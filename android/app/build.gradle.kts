@@ -5,6 +5,20 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Helper function to extract dart-define values passed via --dart-define=KEY=VALUE
+fun extractDartDefine(key: String, defaultValue: String = ""): String {
+    val dartDefines = project.findProperty("dart-defines") as? String ?: return defaultValue
+    return try {
+        dartDefines.split(",")
+            .map { String(java.util.Base64.getDecoder().decode(it)) }
+            .firstOrNull { it.startsWith("$key=") }
+            ?.substringAfter("$key=")
+            ?: defaultValue
+    } catch (e: Exception) {
+        defaultValue
+    }
+}
+
 android {
     namespace = "com.example.tracklog"
     compileSdk = flutter.compileSdkVersion
@@ -30,7 +44,7 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        val googleMapsApiKey = project.findProperty("dart.env.GOOGLE_MAPS_API_KEY") ?: "YOUR_GOOGLE_MAPS_API_KEY_HERE"
+        val googleMapsApiKey = extractDartDefine("GOOGLE_MAPS_API_KEY", "")
         manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = googleMapsApiKey
     }
 
