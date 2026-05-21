@@ -29,9 +29,9 @@ fun readEnvJson(key: String, defaultValue: String = ""): String {
         val candidates = listOf(
             File(rootProject.projectDir.parent, "env.json"),          // <project>/env.json
             File(rootProject.projectDir, "env.json"),                  // <project>/android/env.json
-            File(project.projectDir.parent.parent, "env.json"),        // two levels up
+            File(project.projectDir.parentFile?.parentFile, "env.json"),        // two levels up
             File(System.getProperty("user.dir"), "env.json")           // working directory
-        )
+        ).filterNotNull()
         val envFile = candidates.firstOrNull { it.exists() }
         if (envFile != null) {
             val content = envFile.readText()
@@ -61,8 +61,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
 
     defaultConfig {
