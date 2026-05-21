@@ -1,3 +1,6 @@
+import org.json.JSONObject
+import java.io.File
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -19,6 +22,21 @@ fun extractDartDefine(key: String, defaultValue: String = ""): String {
     }
 }
 
+// Helper function to read values from env.json at the project root
+fun readEnvJson(key: String, defaultValue: String = ""): String {
+    return try {
+        val envFile = File(rootProject.projectDir.parent, "env.json")
+        if (envFile.exists()) {
+            val json = JSONObject(envFile.readText())
+            json.optString(key, defaultValue).takeIf { it.isNotBlank() } ?: defaultValue
+        } else {
+            defaultValue
+        }
+    } catch (e: Exception) {
+        defaultValue
+    }
+}
+
 android {
     namespace = "com.example.tracklog"
     compileSdk = flutter.compileSdkVersion
@@ -35,23 +53,34 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.tracklog"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        val googleMapsApiKey = extractDartDefine("GOOGLE_MAPS_API_KEY", "")
+        // Try dart-define first (CI/CD), then fall back to env.json (local/APK builds)
+        val googleMapsApiKey = extractDartDefine("GOOGLE_MAPS_API_KEY")
+            .ifBlank { readEnvJson("GOOGLE_MAPS_API_KEY") }
+        val supabaseUrl = extractDartDefine("SUPABASE_URL")
+            .ifBlank { readEnvJson("SUPABASE_URL") }
+        val supabaseAnonKey = extractDartDefine("SUPABASE_ANON_KEY")
+            .ifBlank { readEnvJson("SUPABASE_ANON_KEY") }
+
         manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = googleMapsApiKey
+
+        // Inject as BuildConfig fields so Dart code can access them at runtime
+        buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
+        buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
+        buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"$googleMapsApiKey\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
         }
     }
