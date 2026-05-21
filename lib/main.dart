@@ -1,10 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
-import '../core/app_export.dart';
-import '../widgets/custom_error_widget.dart';
+import './core/app_export.dart';
 import './routes/app_routes.dart';
 import './services/supabase_service.dart';
+import './widgets/custom_error_widget.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

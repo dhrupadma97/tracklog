@@ -261,7 +261,7 @@ class _TrackMapWidgetState extends State<TrackMapWidget> {
               initialCameraPosition: CameraPosition(
                 target: _computeInitialTarget(),
                 zoom: _computeInitialZoom(),
-                tilt: widget.highlightedGate != null ? 30 : 0,
+                tilt: (!kIsWeb && widget.highlightedGate != null) ? 30 : 0,
               ),
               mapType: widget.mapType,
               markers: _buildMarkers(),
