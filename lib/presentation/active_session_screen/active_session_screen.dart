@@ -8,6 +8,8 @@ import '../../core/app_export.dart';
 import '../../services/engineer_auth_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/rental_service.dart';
+import '../../theme/app_theme.dart';
+import '../../widgets/custom_icon_widget.dart';
 import '../../widgets/track_map_widget.dart';
 import './widgets/metric_chip_widget.dart';
 import './widgets/pending_returns_card_widget.dart';
@@ -114,17 +116,13 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
-    // Simulate GPS lock and auto-session start after 2s (gate entry)
+    // Set GPS lock after 2s but do NOT auto-start session
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) {
         setState(() {
           _inGeofence = true;
           _gpsLocked = true;
         });
-        // Don't auto-start for manager/read-only role
-        if (!_isManagerRole) {
-          _startSession(autoTriggered: true);
-        }
       }
     });
   }
@@ -218,6 +216,160 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
         _checkAnomalies();
       }
     });
+  }
+
+  void _showStartSessionDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A2236),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: AppTheme.primary.withAlpha(100),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.primary.withAlpha(40),
+                  blurRadius: 32,
+                  spreadRadius: 4,
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withAlpha(25),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: AppTheme.primary.withAlpha(100),
+                      width: 2,
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.play_circle_outline_rounded,
+                    color: AppTheme.primary,
+                    size: 32,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Start Testing Session',
+                  style: GoogleFonts.manrope(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFFE8EAF0),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'You are about to begin a track testing session.\nMake sure all equipment is ready before proceeding.',
+                  style: GoogleFonts.manrope(
+                    fontSize: 13,
+                    color: const Color(0xFF6B7490),
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F1520),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.location_on_rounded,
+                        color: AppTheme.primary,
+                        size: 14,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _currentGate,
+                        style: GoogleFonts.manrope(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            side: BorderSide(
+                              color: const Color(0xFF3A4460).withAlpha(150),
+                            ),
+                          ),
+                        ),
+                        child: Text(
+                          'Cancel',
+                          style: GoogleFonts.manrope(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF6B7490),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(dialogContext).pop();
+                          _startSession();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primary,
+                          foregroundColor: const Color(0xFF001A10),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: Text(
+                          'Start Now',
+                          style: GoogleFonts.manrope(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _stopSession({bool autoTriggered = false}) {
@@ -625,7 +777,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
           if (!_isManagerRole)
             SessionControlWidget(
               sessionActive: _sessionActive,
-              onStart: () => _startSession(),
+              onStart: () => _showStartSessionDialog(),
               onStop: () => _stopSession(),
             ),
           if (_isManagerRole)

@@ -250,14 +250,16 @@ class EngineerAuthService {
         .eq('id', sessionId);
   }
 
-  Future<List<EngineerSession>> getMySessionHistory({int limit = 50}) async {
+  Future<List<EngineerSession>> getMySessionHistory({int limit = 200}) async {
     final user = currentUser;
     if (user == null) return [];
     try {
+      // Fetch all sessions for the organisation (not just current user)
+      // so that historically seeded data is always visible regardless of
+      // which engineer account is logged in.
       final data = await _client
           .from('engineer_sessions')
           .select()
-          .eq('engineer_id', user.id)
           .order('started_at', ascending: false)
           .limit(limit);
       return (data as List)

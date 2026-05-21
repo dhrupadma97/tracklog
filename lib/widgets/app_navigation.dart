@@ -2,6 +2,8 @@ import 'dart:ui';
 
 import '../core/app_export.dart';
 import '../services/engineer_auth_service.dart';
+import '../theme/app_theme.dart';
+import './custom_icon_widget.dart';
 
 // V3 Liquid Glass — BackdropFilter blur + frosted surface + animated pill — LOCKED
 class AppNavigation extends StatefulWidget {
@@ -39,9 +41,9 @@ class _AppNavigationState extends State<AppNavigation>
       branchIndex: 2,
     ),
     _TabSpec(
-      icon: 'email',
-      selectedIcon: 'email',
-      label: 'Reports',
+      icon: 'edit_note',
+      selectedIcon: 'edit_note',
+      label: 'Manual',
       branchIndex: 3,
     ),
     _TabSpec(

@@ -5,6 +5,7 @@ import '../presentation/active_session_screen/active_session_screen.dart';
 import '../presentation/email_reports_screen/email_reports_screen.dart';
 import '../presentation/gate_management_screen/gate_management_screen.dart';
 import '../presentation/login_screen/login_screen.dart';
+import '../presentation/manual_entry_screen/manual_entry_screen.dart';
 import '../presentation/po_tracker_screen/po_tracker_screen.dart';
 import '../presentation/privacy_policy_screen/privacy_policy_screen.dart';
 import '../presentation/session_history_screen/session_history_screen.dart';
@@ -23,6 +24,7 @@ class AppRoutes {
   static const String gateManagement = '/gate-management-screen';
   static const String poTracker = '/po-tracker-screen';
   static const String emailReports = '/email-reports-screen';
+  static const String manualEntry = '/manual-entry-screen';
   static const String privacyPolicy = '/privacy-policy';
   static const String settings = '/settings-screen';
   static const String monthlyInvoices = '/monthly-invoices-screen';
@@ -98,6 +100,18 @@ final GoRouter appRouter = GoRouter(
         ),
       ),
     ),
+    GoRoute(
+      path: AppRoutes.emailReports,
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const EmailReportsScreen(),
+        transitionDuration: const Duration(milliseconds: 280),
+        transitionsBuilder: (context, animation, _, child) => FadeTransition(
+          opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+          child: child,
+        ),
+      ),
+    ),
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) =>
           AppScaffold(navigationShell: navigationShell),
@@ -129,8 +143,8 @@ final GoRouter appRouter = GoRouter(
         StatefulShellBranch(
           routes: [
             GoRoute(
-              path: AppRoutes.emailReports,
-              builder: (context, state) => const EmailReportsScreen(),
+              path: AppRoutes.manualEntry,
+              builder: (context, state) => const ManualEntryScreen(),
             ),
           ],
         ),

@@ -67,9 +67,9 @@ class _WideScaffold extends StatelessWidget {
       branch: 2,
     ),
     _NavItem(
-      icon: Icons.email_outlined,
-      activeIcon: Icons.email,
-      label: 'Reports',
+      icon: Icons.edit_note_outlined,
+      activeIcon: Icons.edit_note_rounded,
+      label: 'Manual',
       branch: 3,
     ),
     _NavItem(

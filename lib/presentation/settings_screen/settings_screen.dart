@@ -208,6 +208,13 @@ class _SettingsScreenState extends State<SettingsScreen>
                         child: _buildPoTrackerSection(),
                       ),
                     ),
+                    SliverToBoxAdapter(
+                      child: _buildSection(
+                        icon: 'email',
+                        title: 'Email Reports',
+                        child: _buildEmailReportsSection(),
+                      ),
+                    ),
                     const SliverToBoxAdapter(child: SizedBox(height: 120)),
                   ],
                 ),
@@ -744,6 +751,46 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
+  Widget _buildEmailReportsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Configure email report subscriptions and send session summaries.',
+          style: GoogleFonts.manrope(
+            fontSize: 12,
+            color: const Color(0xFFA8B0C8),
+          ),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () => context.push(AppRoutes.emailReports),
+            icon: const Icon(Icons.email_rounded, size: 18),
+            label: Text(
+              'Open Email Reports',
+              style: GoogleFonts.manrope(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1C2438),
+              foregroundColor: AppTheme.primary,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: BorderSide(color: AppTheme.primary.withAlpha(80)),
+              ),
+              elevation: 0,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildFrequencyChip({
     required String label,
     required String icon,
@@ -811,6 +858,51 @@ class _SettingsScreenState extends State<SettingsScreen>
               style: GoogleFonts.manrope(
                 fontSize: 11,
                 color: const Color(0xFF6B7490),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmailReportTypeChip({
+    required String label,
+    required String icon,
+    required String value,
+    required bool selected,
+  }) {
+    return GestureDetector(
+      onTap: () => setState(() => _exportFrequency = value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 14),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppTheme.primary.withAlpha(25)
+              : const Color(0xFF1C2438),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected
+                ? AppTheme.primary.withAlpha(150)
+                : const Color(0xFF3A4460).withAlpha(100),
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            CustomIconWidget(
+              iconName: icon,
+              color: selected ? AppTheme.primary : const Color(0xFF6B7490),
+              size: 18,
+            ),
+            const SizedBox(width: 10),
+            Text(
+              label,
+              style: GoogleFonts.manrope(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: selected ? AppTheme.primary : const Color(0xFFE8EAF0),
               ),
             ),
           ],
