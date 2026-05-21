@@ -6,7 +6,7 @@ class EmailReportSubscription {
   final String id;
   final String managerName;
   final String email;
-  final String reportType; // 'daily' | 'weekly' | 'both'
+  final String reportType; // 'monthly' | 'yearly' | 'both'
   final bool isActive;
   final DateTime createdAt;
   final DateTime? lastSentAt;

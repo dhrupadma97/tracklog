@@ -94,9 +94,9 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
     final List<Map<String, dynamic>> sessionList = [];
 
     final now = DateTime.now();
-    final cutoff = reportType == 'daily'
-        ? DateTime(now.year, now.month, now.day)
-        : now.subtract(const Duration(days: 7));
+    final cutoff = reportType == 'monthly'
+        ? DateTime(now.year, now.month, 1)
+        : DateTime(now.year, 1, 1);
 
     for (final s in sessionsData as List) {
       final cost = (s['total_cost'] as num?)?.toDouble() ?? 0;
@@ -383,19 +383,19 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                 children: [
                   Expanded(
                     child: _buildSendButton(
-                      label: 'Daily Report',
-                      icon: Icons.today_outlined,
+                      label: 'Monthly Report',
+                      icon: Icons.calendar_month_outlined,
                       color: AppTheme.primary,
-                      onTap: _sending ? null : () => _sendNow('daily'),
+                      onTap: _sending ? null : () => _sendNow('monthly'),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: _buildSendButton(
-                      label: 'Weekly Report',
-                      icon: Icons.date_range_outlined,
+                      label: 'Yearly Report',
+                      icon: Icons.calendar_today_outlined,
                       color: const Color(0xFF9C88FF),
-                      onTap: _sending ? null : () => _sendNow('weekly'),
+                      onTap: _sending ? null : () => _sendNow('yearly'),
                     ),
                   ),
                 ],
@@ -579,7 +579,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Add manager emails to receive daily/weekly reports',
+                        'Add manager emails to receive monthly/yearly reports',
                         style: GoogleFonts.manrope(
                           color: const Color(0xFF4A5470),
                           fontSize: 12,
@@ -623,17 +623,17 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
   }
 
   Widget _buildSubscriberRow(EmailReportSubscription sub, bool showDivider) {
-    final typeColor = sub.reportType == 'daily'
+    final typeColor = sub.reportType == 'monthly'
         ? AppTheme.primary
-        : sub.reportType == 'weekly'
+        : sub.reportType == 'yearly'
         ? const Color(0xFF9C88FF)
         : const Color(0xFF4CAF50);
 
-    final typeLabel = sub.reportType == 'daily'
-        ? 'Daily'
-        : sub.reportType == 'weekly'
-        ? 'Weekly'
-        : 'Daily + Weekly';
+    final typeLabel = sub.reportType == 'monthly'
+        ? 'Monthly'
+        : sub.reportType == 'yearly'
+        ? 'Yearly'
+        : 'Monthly + Yearly';
 
     return Column(
       children: [
@@ -845,7 +845,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
   Widget _buildLogRow(EmailSendLog log, bool showDivider) {
     final isSent = log.status == 'sent';
     final statusColor = isSent ? const Color(0xFF4CAF50) : Colors.redAccent;
-    final typeColor = log.reportType == 'daily'
+    final typeColor = log.reportType == 'monthly'
         ? AppTheme.primary
         : const Color(0xFF9C88FF);
 
@@ -970,7 +970,7 @@ class _AddSubscriberSheet extends StatefulWidget {
 class _AddSubscriberSheetState extends State<_AddSubscriberSheet> {
   final _nameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
-  String _reportType = 'both';
+  String _reportType = 'monthly';
   bool _saving = false;
   String? _error;
 
@@ -1089,9 +1089,9 @@ class _AddSubscriberSheetState extends State<_AddSubscriberSheet> {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    _buildTypeChip('daily', 'Daily', AppTheme.primary),
+                    _buildTypeChip('monthly', 'Monthly', AppTheme.primary),
                     const SizedBox(width: 8),
-                    _buildTypeChip('weekly', 'Weekly', const Color(0xFF9C88FF)),
+                    _buildTypeChip('yearly', 'Yearly', const Color(0xFF9C88FF)),
                     const SizedBox(width: 8),
                     _buildTypeChip('both', 'Both', const Color(0xFF4CAF50)),
                   ],
