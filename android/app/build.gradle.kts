@@ -1,5 +1,5 @@
-import org.json.JSONObject
 import java.io.File
+import java.util.Base64
 
 plugins {
     id("com.android.application")
@@ -13,7 +13,7 @@ fun extractDartDefine(key: String, defaultValue: String = ""): String {
     val dartDefines = project.findProperty("dart-defines") as? String ?: return defaultValue
     return try {
         dartDefines.split(",")
-            .map { String(java.util.Base64.getDecoder().decode(it)) }
+            .map { String(Base64.getDecoder().decode(it)) }
             .firstOrNull { it.startsWith("$key=") }
             ?.substringAfter("$key=")
             ?: defaultValue
@@ -27,8 +27,11 @@ fun readEnvJson(key: String, defaultValue: String = ""): String {
     return try {
         val envFile = File(rootProject.projectDir.parent, "env.json")
         if (envFile.exists()) {
-            val json = JSONObject(envFile.readText())
-            json.optString(key, defaultValue).takeIf { it.isNotBlank() } ?: defaultValue
+            val content = envFile.readText()
+            // Simple regex-based JSON parsing for string values
+            val pattern = "\"$key\"\\s*:\\s*\"([^\"]*)\""
+            val matchResult = Regex(pattern).find(content)
+            matchResult?.groupValues?.getOrNull(1)?.takeIf { it.isNotBlank() } ?: defaultValue
         } else {
             defaultValue
         }
