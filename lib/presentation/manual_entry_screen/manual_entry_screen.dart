@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:google_fonts/google_fonts.dart';
@@ -5,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/app_export.dart';
 import '../../services/engineer_auth_service.dart';
+import '../../services/offline_queue_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_icon_widget.dart';
@@ -38,6 +40,12 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
   );
   String _sessionStatus = 'completed';
   bool _isSaving = false;
+  bool _isSyncing = false;
+
+  // Offline queue state
+  bool _isOnline = true;
+  int _pendingCount = 0;
+  StreamSubscription<List<QueuedEntry>>? _queueSub;
 
   // Recent manual entries
   List<Map<String, dynamic>> _recentEntries = [];
@@ -65,11 +73,35 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
       curve: Curves.easeOutCubic,
     );
     _animController.forward();
+    _initOfflineQueue();
     _loadRecentEntries();
+  }
+
+  Future<void> _initOfflineQueue() async {
+    await OfflineQueueService.instance.initialize();
+    _isOnline = OfflineQueueService.instance.isOnline;
+    _pendingCount = await OfflineQueueService.instance.getPendingCount();
+    if (mounted) setState(() {});
+
+    _queueSub = OfflineQueueService.instance.queueStream.listen((
+      entries,
+    ) async {
+      if (mounted) {
+        setState(() {
+          _pendingCount = entries.length;
+          _isOnline = OfflineQueueService.instance.isOnline;
+        });
+        // When queue drains to 0 after a sync, reload entries from Supabase
+        if (entries.isEmpty) {
+          _loadRecentEntries();
+        }
+      }
+    });
   }
 
   @override
   void dispose() {
+    _queueSub?.cancel();
     _animController.dispose();
     _notesCtrl.dispose();
     _durationHrsCtrl.dispose();
@@ -198,7 +230,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
       );
       final endedAt = startedAt.add(Duration(minutes: totalMins));
 
-      await SupabaseService.instance.client.from('engineer_sessions').insert({
+      final payload = {
         'engineer_id': user.id,
         'track_code': _selectedTrackCode,
         'track_name': _selectedTrackName,
@@ -212,15 +244,57 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
         'total_cost': cost,
         'notes':
             'Manual entry${_notesCtrl.text.isNotEmpty ? ' — ${_notesCtrl.text}' : ''}',
-      });
+      };
 
-      _showSnack('Session entry saved successfully.');
+      // Check connectivity — queue if offline, insert directly if online
+      _isOnline = OfflineQueueService.instance.isOnline;
+      if (_isOnline) {
+        await SupabaseService.instance.client
+            .from('engineer_sessions')
+            .insert(payload);
+        _showSnack('Session entry saved successfully.');
+        _loadRecentEntries();
+      } else {
+        await OfflineQueueService.instance.enqueue(payload);
+        _pendingCount = await OfflineQueueService.instance.getPendingCount();
+        if (mounted) setState(() {});
+        _showSnack(
+          'You\'re offline. Entry queued — will sync automatically when connected.',
+          isError: false,
+          isWarning: true,
+        );
+      }
+
       _resetForm();
-      _loadRecentEntries();
     } catch (e) {
       _showSnack('Failed to save entry. Please try again.', isError: true);
     } finally {
       if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _manualSync() async {
+    if (_isSyncing || !_isOnline) return;
+    setState(() => _isSyncing = true);
+    try {
+      final result = await OfflineQueueService.instance.syncPendingEntries();
+      _pendingCount = await OfflineQueueService.instance.getPendingCount();
+      if (mounted) setState(() {});
+      if (result.synced > 0) {
+        _showSnack(
+          '${result.synced} queued entr${result.synced == 1 ? 'y' : 'ies'} synced successfully.',
+        );
+        _loadRecentEntries();
+      } else if (result.failed > 0) {
+        _showSnack(
+          'Sync failed for ${result.failed} entr${result.failed == 1 ? 'y' : 'ies'}. Will retry.',
+          isError: true,
+        );
+      } else {
+        _showSnack('No pending entries to sync.');
+      }
+    } finally {
+      if (mounted) setState(() => _isSyncing = false);
     }
   }
 
@@ -242,8 +316,15 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     });
   }
 
-  void _showSnack(String message, {bool isError = false}) {
+  void _showSnack(
+    String message, {
+    bool isError = false,
+    bool isWarning = false,
+  }) {
     if (!mounted) return;
+    Color bg = AppTheme.success;
+    if (isError) bg = AppTheme.error;
+    if (isWarning) bg = const Color(0xFFFF9500);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -254,11 +335,11 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
             color: Colors.white,
           ),
         ),
-        backgroundColor: isError ? AppTheme.error : AppTheme.success,
+        backgroundColor: bg,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
-        duration: const Duration(seconds: 3),
+        duration: const Duration(seconds: 4),
       ),
     );
   }
@@ -274,6 +355,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
             physics: const BouncingScrollPhysics(),
             slivers: [
               SliverToBoxAdapter(child: _buildHeader()),
+              SliverToBoxAdapter(child: _buildConnectivityBanner()),
               SliverToBoxAdapter(child: _buildInfoBanner()),
               SliverToBoxAdapter(child: _buildEntryForm()),
               SliverToBoxAdapter(child: _buildRecentEntriesSection()),
@@ -305,28 +387,147 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
             ),
           ),
           const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Manual Entry',
-                style: GoogleFonts.manrope(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                  color: const Color(0xFFE8EAF0),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Manual Entry',
+                  style: GoogleFonts.manrope(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFFE8EAF0),
+                  ),
                 ),
+                Text(
+                  'Correct or add track timing records',
+                  style: GoogleFonts.manrope(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: const Color(0xFF6B7490),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Connectivity indicator dot
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: _isOnline ? AppTheme.success : const Color(0xFFFF9500),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Shows offline warning or pending-sync banner
+  Widget _buildConnectivityBanner() {
+    if (_isOnline && _pendingCount == 0) return const SizedBox.shrink();
+
+    if (!_isOnline) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFF3B30).withAlpha(20),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFFF3B30).withAlpha(80)),
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.wifi_off_rounded,
+                color: Color(0xFFFF3B30),
+                size: 16,
               ),
-              Text(
-                'Correct or add track timing records',
-                style: GoogleFonts.manrope(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: const Color(0xFF6B7490),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _pendingCount > 0
+                      ? 'Offline — $_pendingCount entr${_pendingCount == 1 ? 'y' : 'ies'} queued. Will sync automatically when connected.'
+                      : 'You\'re offline. Entries will be queued and synced when connectivity returns.',
+                  style: GoogleFonts.manrope(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: const Color(0xFFFF3B30),
+                  ),
                 ),
               ),
             ],
           ),
-        ],
+        ),
+      );
+    }
+
+    // Online but has pending entries — show sync prompt
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFF9500).withAlpha(20),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFFF9500).withAlpha(80)),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.cloud_upload_outlined,
+              color: Color(0xFFFF9500),
+              size: 16,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '$_pendingCount queued entr${_pendingCount == 1 ? 'y' : 'ies'} ready to sync.',
+                style: GoogleFonts.manrope(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: const Color(0xFFFF9500),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: _isSyncing ? null : _manualSync,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF9500).withAlpha(40),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: const Color(0xFFFF9500).withAlpha(120),
+                  ),
+                ),
+                child: _isSyncing
+                    ? const SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.5,
+                          color: Color(0xFFFF9500),
+                        ),
+                      )
+                    : Text(
+                        'Sync Now',
+                        style: GoogleFonts.manrope(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFFFF9500),
+                        ),
+                      ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -669,6 +870,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
   }
 
   Widget _buildSaveButton() {
+    final isOffline = !_isOnline;
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
@@ -682,13 +884,22 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                   color: Color(0xFF001A10),
                 ),
               )
-            : const Icon(Icons.save_rounded, size: 18),
+            : Icon(
+                isOffline ? Icons.cloud_off_rounded : Icons.save_rounded,
+                size: 18,
+              ),
         label: Text(
-          _isSaving ? 'Saving...' : 'Save Entry',
+          _isSaving
+              ? 'Saving...'
+              : isOffline
+              ? 'Queue Entry (Offline)'
+              : 'Save Entry',
           style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700),
         ),
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFFFF9500),
+          backgroundColor: isOffline
+              ? const Color(0xFFFF9500)
+              : const Color(0xFFFF9500),
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 14),
           shape: RoundedRectangleBorder(
@@ -726,12 +937,22 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                         size: 18,
                       ),
                       const SizedBox(width: 10),
-                      Text(
-                        'Recent Manual Entries',
-                        style: GoogleFonts.manrope(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFFE8EAF0),
+                      Expanded(
+                        child: Text(
+                          'Recent Manual Entries',
+                          style: GoogleFonts.manrope(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFFE8EAF0),
+                          ),
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: _loadRecentEntries,
+                        child: const Icon(
+                          Icons.refresh_rounded,
+                          color: Color(0xFF6B7490),
+                          size: 18,
                         ),
                       ),
                     ],
