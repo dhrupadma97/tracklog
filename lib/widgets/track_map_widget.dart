@@ -2,12 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../services/location_service.dart';
 
 /// NATRAX proving ground centre coordinates
 const LatLng kNatraxCenter = LatLng(22.5667, 75.6167);
+
+// Platform channel to read BuildConfig values from native Android
+const _diagnosticsChannel = MethodChannel('com.example.tracklog/diagnostics');
 
 /// A live Google Map showing:
 /// - NATRAX track area
@@ -54,6 +58,11 @@ class _TrackMapWidgetState extends State<TrackMapWidget> {
   bool _locationPermissionGranted = false;
   bool _mapReady = false;
 
+  // Diagnostic state
+  String _keyDiagnostic = 'Checking...';
+  bool _keyValid = false;
+  bool _showDiagnostic = true; // Show for first 8 seconds then auto-hide
+
   final _locationService = LocationService();
 
   // Dark map style JSON for non-satellite mode
@@ -74,6 +83,15 @@ class _TrackMapWidgetState extends State<TrackMapWidget> {
   void initState() {
     super.initState();
     _initLocation();
+    if (!kIsWeb) {
+      _checkMapsKeyDiagnostic();
+    } else {
+      setState(() {
+        _keyDiagnostic = 'Web platform';
+        _keyValid = true;
+        _showDiagnostic = false;
+      });
+    }
   }
 
   @override
@@ -81,6 +99,57 @@ class _TrackMapWidgetState extends State<TrackMapWidget> {
     _positionStream?.cancel();
     _mapController?.dispose();
     super.dispose();
+  }
+
+  /// Query native Android for the actual BuildConfig key value and log it
+  Future<void> _checkMapsKeyDiagnostic() async {
+    try {
+      final result = await _diagnosticsChannel.invokeMapMethod<String, dynamic>(
+        'getMapsKeyStatus',
+      );
+      if (result != null) {
+        final keyLength = result['keyLength'] as int? ?? 0;
+        final isEmpty = result['isEmpty'] as bool? ?? true;
+        final prefix = result['prefix'] as String? ?? '';
+        final isValid = result['isValid'] as bool? ?? false;
+
+        debugPrint('=== MAPS KEY DIAGNOSTIC ===');
+        debugPrint('Key length: $keyLength');
+        debugPrint('Is empty: $isEmpty');
+        debugPrint('Prefix: $prefix...');
+        debugPrint('Is valid (>20 chars): $isValid');
+        debugPrint('===========================');
+
+        if (mounted) {
+          setState(() {
+            _keyValid = isValid;
+            if (isEmpty) {
+              _keyDiagnostic = 'KEY EMPTY — not injected at build time';
+            } else if (!isValid) {
+              _keyDiagnostic =
+                  'KEY TOO SHORT ($keyLength chars) — may be truncated';
+            } else {
+              _keyDiagnostic = 'Key OK ($keyLength chars, prefix: $prefix...)';
+            }
+          });
+        }
+
+        // Auto-hide diagnostic after 8 seconds if key is valid
+        if (isValid) {
+          Future.delayed(const Duration(seconds: 8), () {
+            if (mounted) setState(() => _showDiagnostic = false);
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Maps diagnostic channel error: $e');
+      if (mounted) {
+        setState(() {
+          _keyDiagnostic = 'Diagnostic unavailable: $e';
+          _keyValid = false;
+        });
+      }
+    }
   }
 
   Future<void> _initLocation() async {
@@ -359,6 +428,62 @@ class _TrackMapWidgetState extends State<TrackMapWidget> {
                 ),
               ),
             ),
+            // API Key diagnostic overlay — shows on Android for 8 seconds
+            if (!kIsWeb && _showDiagnostic)
+              Positioned(
+                left: 12,
+                bottom: 12,
+                right: 60,
+                child: GestureDetector(
+                  onTap: () => setState(() => _showDiagnostic = false),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _keyValid
+                          ? const Color(0xFF0F3020).withAlpha(230)
+                          : const Color(0xFF3A0A0A).withAlpha(230),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: _keyValid
+                            ? const Color(0xFF00C896).withAlpha(150)
+                            : const Color(0xFFFF4444).withAlpha(150),
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _keyValid
+                              ? Icons.check_circle_outline
+                              : Icons.error_outline,
+                          color: _keyValid
+                              ? const Color(0xFF00C896)
+                              : const Color(0xFFFF4444),
+                          size: 14,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Maps Key: $_keyDiagnostic',
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: _keyValid
+                                  ? const Color(0xFF00C896)
+                                  : const Color(0xFFFF6666),
+                              fontWeight: FontWeight.w600,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 2,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),

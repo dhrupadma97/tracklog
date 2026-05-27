@@ -82,6 +82,14 @@ android {
         val supabaseAnonKey = extractDartDefine("SUPABASE_ANON_KEY")
             .ifBlank { readEnvJson("SUPABASE_ANON_KEY") }
 
+        // Critical build-time validation
+        println("TrackLog Build: GOOGLE_MAPS_API_KEY resolved length = ${googleMapsApiKey.length}")
+        if (googleMapsApiKey.isBlank()) {
+            println("TrackLog Build: ⚠️  WARNING — GOOGLE_MAPS_API_KEY is EMPTY. Maps will show blank tiles.")
+        } else {
+            println("TrackLog Build: ✅ GOOGLE_MAPS_API_KEY is set (${googleMapsApiKey.length} chars, prefix: ${googleMapsApiKey.take(6)}...)")
+        }
+
         // Use resValue instead of manifestPlaceholders — more reliable embedding
         // The AndroidManifest.xml references @string/google_maps_key
         resValue("string", "google_maps_key", googleMapsApiKey)
