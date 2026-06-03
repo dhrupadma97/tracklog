@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:universal_html/html.dart' as html;
 
 import './core/app_export.dart';
 import './routes/app_routes.dart';
@@ -8,6 +9,21 @@ import './widgets/custom_error_widget.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Dynamically inject Google Maps JavaScript SDK script tag on Web
+  if (kIsWeb) {
+    const mapsKey = String.fromEnvironment('GOOGLE_MAPS_API_KEY');
+    if (mapsKey.isNotEmpty) {
+      final scriptId = 'google-maps-sdk';
+      if (html.document.getElementById(scriptId) == null) {
+        final script = html.ScriptElement()
+          ..id = scriptId
+          ..src = 'https://maps.googleapis.com/maps/api/js?key=$mapsKey'
+          ..defer = true;
+        html.document.head?.append(script);
+      }
+    }
+  }
 
   // Initialize Supabase
   try {

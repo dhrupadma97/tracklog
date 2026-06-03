@@ -200,7 +200,35 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     if (diff > 0) {
       _durationHrsCtrl.text = (diff ~/ 60).toString();
       _durationMinsCtrl.text = (diff % 60).toString();
+      _recalcCost();
     }
+  }
+
+  void _recalcCost() {
+    final hrs = int.tryParse(_durationHrsCtrl.text) ?? 0;
+    final mins = int.tryParse(_durationMinsCtrl.text) ?? 0;
+    final totalMins = hrs * 60 + mins;
+    if (totalMins <= 0) {
+      _costCtrl.text = '';
+      return;
+    }
+
+    const double hourlyRate = 25000.0;
+    final double hours = totalMins / 60.0;
+    final isMinBillingTrack = const {'T1', 'T2', 'T3D', 'T3W'}.contains(_selectedTrackCode);
+
+    double cost = 0.0;
+    if (isMinBillingTrack) {
+      if (hours < 2.0) {
+        cost = 2.0 * hourlyRate;
+      } else {
+        cost = hours * hourlyRate;
+      }
+    } else {
+      cost = hours * hourlyRate;
+    }
+
+    _costCtrl.text = cost.toStringAsFixed(0);
   }
 
   Future<void> _saveEntry() async {
@@ -661,6 +689,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
             setState(() {
               _selectedTrackCode = val;
               _selectedTrackName = track['name']!;
+              _recalcCost();
             });
           },
         ),
@@ -751,6 +780,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                 color: const Color(0xFF6B7490),
               ),
             ),
+            onChanged: (val) => _recalcCost(),
             validator: (v) {
               if (v == null || v.isEmpty) return null;
               if (int.tryParse(v) == null) return 'Invalid';
@@ -775,6 +805,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                 color: const Color(0xFF6B7490),
               ),
             ),
+            onChanged: (val) => _recalcCost(),
             validator: (v) {
               if (v == null || v.isEmpty) return null;
               final n = int.tryParse(v);

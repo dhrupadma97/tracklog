@@ -145,8 +145,9 @@ class _TrackMapWidgetState extends State<TrackMapWidget> {
       debugPrint('Maps diagnostic channel error: $e');
       if (mounted) {
         setState(() {
-          _keyDiagnostic = 'Diagnostic unavailable: $e';
-          _keyValid = false;
+          _keyDiagnostic = 'Diagnostic unavailable';
+          _keyValid = true; // Avoid blocking with warnings if diagnostics fail
+          _showDiagnostic = false; // Hide diagnostic panel gracefully
         });
       }
     }

@@ -33,7 +33,7 @@ pubspec.lock
 .pub-cache/
 .pub/
 /build/
-/web/
+
 
 # Symbolication related
 app.*.symbols
@@ -46,3 +46,7 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 android/app/.cxx
+
+# Build artifacts
+*.apk
+app-debug.apk
