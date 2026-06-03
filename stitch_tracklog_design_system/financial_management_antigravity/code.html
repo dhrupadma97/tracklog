@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-dim": "#0f131d",
+                    "surface-bright": "#353944",
+                    "surface": "#0f131d",
+                    "on-background": "#dfe2f0",
+                    "on-secondary-fixed-variant": "#5700c9",
+                    "on-surface": "#dfe2f0",
+                    "background": "#0f131d",
+                    "tertiary-fixed": "#dce1ff",
+                    "secondary-fixed-dim": "#d1bcff",
+                    "on-tertiary-container": "#5a5f78",
+                    "on-primary-container": "#006b71",
+                    "tertiary-container": "#d5daf8",
+                    "secondary-fixed": "#e9ddff",
+                    "inverse-primary": "#00696f",
+                    "surface-tint": "#00dce6",
+                    "surface-container-highest": "#31353f",
+                    "on-secondary-fixed": "#23005b",
+                    "on-primary-fixed": "#002022",
+                    "primary-fixed-dim": "#00dce6",
+                    "on-tertiary": "#2a2f46",
+                    "surface-container-low": "#181b25",
+                    "outline-variant": "#3a494b",
+                    "outline": "#849495",
+                    "primary": "#e3fdff",
+                    "primary-container": "#00f3ff",
+                    "surface-container": "#1c1f29",
+                    "tertiary-fixed-dim": "#c0c5e2",
+                    "on-surface-variant": "#b9cacb",
+                    "primary-fixed": "#6ff6ff",
+                    "tertiary": "#f9f7ff",
+                    "on-error": "#690005",
+                    "secondary-container": "#7000ff",
+                    "on-tertiary-fixed": "#151a30",
+                    "surface-variant": "#31353f",
+                    "on-primary": "#00373a",
+                    "error-container": "#93000a",
+                    "error": "#ffb4ab",
+                    "secondary": "#d1bcff",
+                    "surface-container-high": "#262a34",
+                    "inverse-surface": "#dfe2f0",
+                    "on-tertiary-fixed-variant": "#40465d",
+                    "surface-container-lowest": "#0a0e17",
+                    "on-error-container": "#ffdad6",
+                    "inverse-on-surface": "#2d303b",
+                    "on-secondary": "#3c0090",
+                    "on-secondary-container": "#ddcdff",
+                    "on-primary-fixed-variant": "#004f53"
+            },
+            "borderRadius": {
+                    "DEFAULT": "1rem",
+                    "lg": "2rem",
+                    "xl": "3rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "container-padding-desktop": "40px",
+                    "stack-md": "16px",
+                    "stack-lg": "32px",
+                    "gutter": "24px",
+                    "stack-sm": "8px",
+                    "container-padding-mobile": "20px"
+            },
+            "fontFamily": {
+                    "label-caps": ["Space Grotesk"],
+                    "headline-lg": ["Space Grotesk"],
+                    "body-lg": ["Space Grotesk"],
+                    "data-mono": ["Space Grotesk"],
+                    "display-md": ["Space Grotesk"],
+                    "headline-lg-mobile": ["Space Grotesk"],
+                    "title-md": ["Space Grotesk"],
+                    "body-sm": ["Space Grotesk"],
+                    "display-lg": ["Space Grotesk"]
+            },
+            "fontSize": {
+                    "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.1em", "fontWeight": "700"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "600"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "data-mono": ["18px", {"lineHeight": "24px", "letterSpacing": "0.02em", "fontWeight": "700"}],
+                    "display-md": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "title-md": ["20px", {"lineHeight": "28px", "fontWeight": "500"}],
+                    "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "display-lg": ["72px", {"lineHeight": "80px", "letterSpacing": "-0.04em", "fontWeight": "700"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            background-color: #050811;
+            color: #dfe2f0;
+            overflow-x: hidden;
+        }
+        .glass-panel {
+            background: rgba(10, 16, 37, 0.6);
+            backdrop-filter: blur(40px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .cyan-glow {
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.3);
+        }
+        .stellar-blur {
+            position: fixed;
+            width: 800px;
+            height: 800px;
+            background: radial-gradient(circle, rgba(87, 0, 201, 0.15) 0%, rgba(5, 8, 17, 0) 70%);
+            z-index: -1;
+            pointer-events: none;
+        }
+        .data-bar {
+            background: linear-gradient(to top, #5700c9, #00f3ff);
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="font-body-lg">
+<!-- Background Atmospheric Blurs -->
+<div class="stellar-blur top-[-200px] left-[-200px]"></div>
+<div class="stellar-blur bottom-[-200px] right-[-200px]"></div>
+<!-- Top Navigation -->
+<header class="fixed top-0 w-full z-50 backdrop-blur-xl border-b border-outline-variant bg-background/80 h-16 flex justify-between items-center px-container-padding-mobile md:px-container-padding-desktop">
+<div class="flex items-center gap-stack-md">
+<span class="material-symbols-outlined text-primary-container text-3xl">speed</span>
+<h1 class="font-display-md text-headline-lg-mobile md:text-headline-lg tracking-tighter text-primary">NATRAX TrackLog</h1>
+</div>
+<div class="flex items-center gap-6">
+<div class="hidden md:flex gap-8">
+<a class="font-label-caps text-primary border-b-2 border-primary-container pb-1" href="#">FINANCIALS</a>
+<a class="font-label-caps text-on-surface-variant hover:text-primary transition-colors" href="#">ANALYTICS</a>
+<a class="font-label-caps text-on-surface-variant hover:text-primary transition-colors" href="#">OPERATIONS</a>
+</div>
+<button class="material-symbols-outlined text-on-surface text-2xl hover:bg-surface-container-highest/50 p-2 rounded-full transition-all active:scale-95">account_circle</button>
+</div>
+</header>
+<main class="pt-24 pb-32 px-container-padding-mobile md:px-container-padding-desktop max-w-[1600px] mx-auto">
+<!-- Page Title & Header Actions -->
+<div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-stack-lg gap-stack-md">
+<div>
+<p class="font-label-caps text-primary-container mb-1">REVENUE DASHBOARD</p>
+<h2 class="font-display-md text-headline-lg-mobile md:text-display-md leading-none">Fiscal Telemetry</h2>
+</div>
+<button class="bg-primary-container text-on-primary font-bold px-8 py-3 rounded-DEFAULT cyan-glow hover:brightness-110 active:scale-95 transition-all flex items-center gap-2">
+<span class="material-symbols-outlined">download</span>
+                GENERATE FISCAL REPORT
+            </button>
+</div>
+<!-- Revenue Cards Bento Grid -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-gutter mb-stack-lg">
+<!-- High Speed Track Card -->
+<div class="glass-panel p-stack-lg rounded-lg relative overflow-hidden group">
+<div class="flex justify-between items-start mb-6">
+<div>
+<p class="font-label-caps text-on-surface-variant">HIGH SPEED TRACK</p>
+<p class="font-display-md text-primary mt-2">₹1.24M</p>
+</div>
+<span class="material-symbols-outlined text-primary-container text-3xl opacity-50">bolt</span>
+</div>
+<div class="h-16 w-full flex items-end gap-1">
+<div class="w-full h-[40%] bg-primary-container/20 rounded-t-sm"></div>
+<div class="w-full h-[60%] bg-primary-container/20 rounded-t-sm"></div>
+<div class="w-full h-[55%] bg-primary-container/20 rounded-t-sm"></div>
+<div class="w-full h-[85%] bg-primary-container rounded-t-sm"></div>
+<div class="w-full h-[70%] bg-primary-container/20 rounded-t-sm"></div>
+</div>
+<p class="text-body-sm text-primary-container mt-4 flex items-center gap-1">
+<span class="material-symbols-outlined text-sm">trending_up</span> +12.4% vs Last Month
+                </p>
+</div>
+<!-- Dynamic Platform Card -->
+<div class="glass-panel p-stack-lg rounded-lg relative overflow-hidden">
+<div class="flex justify-between items-start mb-6">
+<div>
+<p class="font-label-caps text-on-surface-variant">DYNAMIC PLATFORM</p>
+<p class="font-display-md text-primary mt-2">₹842K</p>
+</div>
+<span class="material-symbols-outlined text-primary-container text-3xl opacity-50">waves</span>
+</div>
+<div class="h-16 w-full flex items-end gap-1">
+<div class="w-full h-[70%] bg-primary-container/20 rounded-t-sm"></div>
+<div class="w-full h-[40%] bg-primary-container/20 rounded-t-sm"></div>
+<div class="w-full h-[90%] bg-primary-container rounded-t-sm"></div>
+<div class="w-full h-[65%] bg-primary-container/20 rounded-t-sm"></div>
+<div class="w-full h-[50%] bg-primary-container/20 rounded-t-sm"></div>
+</div>
+<p class="text-body-sm text-error mt-4 flex items-center gap-1">
+<span class="material-symbols-outlined text-sm">trending_down</span> -2.1% vs Last Month
+                </p>
+</div>
+<!-- Braking Track Card -->
+<div class="glass-panel p-stack-lg rounded-lg relative overflow-hidden">
+<div class="flex justify-between items-start mb-6">
+<div>
+<p class="font-label-caps text-on-surface-variant">BRAKING TRACK</p>
+<p class="font-display-md text-primary mt-2">₹430K</p>
+</div>
+<span class="material-symbols-outlined text-primary-container text-3xl opacity-50">pan_tool_alt</span>
+</div>
+<div class="h-16 w-full flex items-end gap-1">
+<div class="w-full h-[30%] bg-primary-container/20 rounded-t-sm"></div>
+<div class="w-full h-[45%] bg-primary-container/20 rounded-t-sm"></div>
+<div class="w-full h-[35%] bg-primary-container/20 rounded-t-sm"></div>
+<div class="w-full h-[55%] bg-primary-container/20 rounded-t-sm"></div>
+<div class="w-full h-[80%] bg-primary-container rounded-t-sm"></div>
+</div>
+<p class="text-body-sm text-primary-container mt-4 flex items-center gap-1">
+<span class="material-symbols-outlined text-sm">trending_up</span> +18.7% vs Last Month
+                </p>
+</div>
+</div>
+<!-- Main Content Area: Trends & Table -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-gutter">
+<!-- Revenue Trends Chart -->
+<div class="lg:col-span-8 glass-panel p-stack-lg rounded-lg">
+<div class="flex justify-between items-center mb-stack-lg">
+<h3 class="font-title-md text-primary">Revenue Trends (6 Months)</h3>
+<div class="flex gap-2">
+<span class="w-3 h-3 rounded-full bg-primary-container"></span>
+<span class="font-label-caps text-xs text-on-surface-variant">ACTUAL REVENUE</span>
+</div>
+</div>
+<div class="h-[300px] w-full flex items-end justify-between px-4 pb-8 border-b border-outline-variant relative">
+<!-- Vertical Grid Lines -->
+<div class="absolute bottom-8 left-0 w-full h-full flex flex-col justify-between pointer-events-none opacity-10">
+<div class="border-t border-white w-full"></div>
+<div class="border-t border-white w-full"></div>
+<div class="border-t border-white w-full"></div>
+<div class="border-t border-white w-full"></div>
+</div>
+<!-- Chart Bars -->
+<div class="flex flex-col items-center gap-4 w-12 group">
+<div class="w-8 bg-primary-container/30 rounded-t-sm h-[40%] group-hover:bg-primary-container transition-all cursor-pointer"></div>
+<span class="font-label-caps text-[10px] text-on-surface-variant">JAN</span>
+</div>
+<div class="flex flex-col items-center gap-4 w-12 group">
+<div class="w-8 bg-primary-container/30 rounded-t-sm h-[55%] group-hover:bg-primary-container transition-all cursor-pointer"></div>
+<span class="font-label-caps text-[10px] text-on-surface-variant">FEB</span>
+</div>
+<div class="flex flex-col items-center gap-4 w-12 group">
+<div class="w-8 bg-primary-container/30 rounded-t-sm h-[70%] group-hover:bg-primary-container transition-all cursor-pointer"></div>
+<span class="font-label-caps text-[10px] text-on-surface-variant">MAR</span>
+</div>
+<div class="flex flex-col items-center gap-4 w-12 group">
+<div class="w-8 bg-primary-container/30 rounded-t-sm h-[65%] group-hover:bg-primary-container transition-all cursor-pointer"></div>
+<span class="font-label-caps text-[10px] text-on-surface-variant">APR</span>
+</div>
+<div class="flex flex-col items-center gap-4 w-12 group">
+<div class="w-8 bg-primary-container/30 rounded-t-sm h-[85%] group-hover:bg-primary-container transition-all cursor-pointer"></div>
+<span class="font-label-caps text-[10px] text-on-surface-variant">MAY</span>
+</div>
+<div class="flex flex-col items-center gap-4 w-12 group">
+<div class="w-8 bg-primary-container rounded-t-sm h-[95%] shadow-[0_0_20px_rgba(0,243,255,0.4)]"></div>
+<span class="font-label-caps text-[10px] text-primary">JUN</span>
+</div>
+</div>
+</div>
+<!-- Predictive Billing Insights -->
+<div class="lg:col-span-4 glass-panel p-stack-lg rounded-lg border-l-4 border-primary-container">
+<div class="flex items-center gap-2 mb-6">
+<span class="material-symbols-outlined text-primary-container" style="font-variation-settings: 'FILL' 1;">psychology</span>
+<h3 class="font-title-md text-primary">Predictive Billing</h3>
+</div>
+<div class="space-y-6">
+<div class="p-4 bg-surface-container-low rounded-lg border border-outline-variant/30">
+<p class="font-label-caps text-xs text-on-surface-variant mb-2">PROJECTED REVENUE Q3</p>
+<div class="flex items-baseline gap-2">
+<span class="font-data-mono text-2xl text-primary">₹3.82M</span>
+<span class="text-primary-container text-xs font-bold">↑ 14%</span>
+</div>
+</div>
+<div class="space-y-4">
+<div class="flex items-start gap-3">
+<span class="material-symbols-outlined text-primary-container mt-1">info</span>
+<p class="text-body-sm text-on-surface-variant">Automotive testing demand is projected to spike in September due to EV manufacturer expansion.</p>
+</div>
+<div class="flex items-start gap-3">
+<span class="material-symbols-outlined text-secondary mt-1">warning</span>
+<p class="text-body-sm text-on-surface-variant">Braking track utilization is at 92%. Recommendation: adjust off-peak hour rates for maximum yield.</p>
+</div>
+</div>
+<button class="w-full py-3 border border-primary-container/30 rounded-DEFAULT font-label-caps text-primary-container hover:bg-primary-container/10 transition-all">
+                        VIEW FORECAST MODELS
+                    </button>
+</div>
+</div>
+<!-- Recent Invoices Table -->
+<div class="lg:col-span-12 glass-panel rounded-lg overflow-hidden">
+<div class="p-stack-lg border-b border-outline-variant flex justify-between items-center">
+<h3 class="font-title-md text-primary">Recent Invoices</h3>
+<div class="flex gap-4">
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+<input class="bg-surface-container-lowest border border-outline-variant rounded-full pl-10 pr-4 py-1 text-sm focus:border-primary-container outline-none transition-all" placeholder="Search Invoices..." type="text"/>
+</div>
+</div>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left">
+<thead class="bg-surface-container-high">
+<tr>
+<th class="p-4 font-label-caps text-xs text-on-surface-variant">INVOICE ID</th>
+<th class="p-4 font-label-caps text-xs text-on-surface-variant">CLIENT NAME</th>
+<th class="p-4 font-label-caps text-xs text-on-surface-variant">TRACK UNIT</th>
+<th class="p-4 font-label-caps text-xs text-on-surface-variant">AMOUNT</th>
+<th class="p-4 font-label-caps text-xs text-on-surface-variant">STATUS</th>
+<th class="p-4 font-label-caps text-xs text-on-surface-variant text-right">ACTION</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/20">
+<tr class="hover:bg-white/5 transition-colors">
+<td class="p-4 font-data-mono text-primary">#INV-98234</td>
+<td class="p-4 text-on-surface">Mahindra EV Tech</td>
+<td class="p-4 text-on-surface-variant">High Speed Track</td>
+<td class="p-4 font-bold text-primary">₹145,000</td>
+<td class="p-4">
+<span class="px-3 py-1 bg-primary-container/20 text-primary-container rounded-full text-[10px] font-bold border border-primary-container/30 uppercase tracking-widest">Paid</span>
+</td>
+<td class="p-4 text-right">
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary">visibility</button>
+</td>
+</tr>
+<tr class="hover:bg-white/5 transition-colors">
+<td class="p-4 font-data-mono text-primary">#INV-98235</td>
+<td class="p-4 text-on-surface">Tata Motors R&amp;D</td>
+<td class="p-4 text-on-surface-variant">Dynamic Platform</td>
+<td class="p-4 font-bold text-primary">₹88,400</td>
+<td class="p-4">
+<span class="px-3 py-1 bg-secondary-container/20 text-secondary rounded-full text-[10px] font-bold border border-secondary-container/30 uppercase tracking-widest">Pending</span>
+</td>
+<td class="p-4 text-right">
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary">visibility</button>
+</td>
+</tr>
+<tr class="hover:bg-white/5 transition-colors">
+<td class="p-4 font-data-mono text-primary">#INV-98236</td>
+<td class="p-4 text-on-surface">Skoda Global Testing</td>
+<td class="p-4 text-on-surface-variant">Braking Track</td>
+<td class="p-4 font-bold text-primary">₹212,000</td>
+<td class="p-4">
+<span class="px-3 py-1 bg-error-container/20 text-error rounded-full text-[10px] font-bold border border-error-container/30 uppercase tracking-widest">Overdue</span>
+</td>
+<td class="p-4 text-right">
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary">visibility</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</main>
+<!-- Navigation Drawer (Desktop Side - Simulated as Bottom Nav for Mobile) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full h-20 glass-panel border-t border-outline-variant flex justify-around items-center px-2 pb-safe z-50">
+<a class="flex flex-col items-center justify-center text-primary border-t-2 border-primary pt-1" href="#">
+<span class="material-symbols-outlined">timer</span>
+<span class="font-label-caps text-[10px] mt-1">Session</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant pt-1" href="#">
+<span class="material-symbols-outlined">history</span>
+<span class="font-label-caps text-[10px] mt-1">History</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant pt-1" href="#">
+<span class="material-symbols-outlined">receipt_long</span>
+<span class="font-label-caps text-[10px] mt-1">Invoices</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant pt-1" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-label-caps text-[10px] mt-1">Setup</span>
+</a>
+</nav>
+<script>
+        // Micro-interaction for cards
+        document.querySelectorAll('.glass-panel').forEach(card => {
+            card.addEventListener('mousemove', (e) => {
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                card.style.setProperty('--mouse-x', `${x}px`);
+                card.style.setProperty('--mouse-y', `${y}px`);
+                
+                // Subtle tilt effect
+                const centerX = rect.width / 2;
+                const centerY = rect.height / 2;
+                const rotateX = (y - centerY) / 50;
+                const rotateY = (centerX - x) / 50;
+                card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+            });
+
+            card.addEventListener('mouseleave', () => {
+                card.style.transform = 'perspective(1000px) rotateX(0) rotateY(0)';
+            });
+        });
+
+        // Atmospheric pulse animation
+        function animateGlows() {
+            const blurs = document.querySelectorAll('.stellar-blur');
+            blurs.forEach((blur, index) => {
+                const time = Date.now() * 0.001;
+                const offsetX = Math.sin(time + index) * 50;
+                const offsetY = Math.cos(time + index) * 50;
+                blur.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
+            });
+            requestAnimationFrame(animateGlows);
+        }
+        animateGlows();
+    </script>
+</body></html>

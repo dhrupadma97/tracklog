@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -47,7 +48,9 @@ final GoRouter appRouter = GoRouter(
     if (!isLoggedIn && !isLogin) return AppRoutes.login;
 
     // If logged in and on login, redirect to app
-    if (isLoggedIn && isLogin) return AppRoutes.activeSession;
+    if (isLoggedIn && isLogin) {
+      return kIsWeb ? AppRoutes.sessionHistory : AppRoutes.activeSession;
+    }
 
     return null;
   },

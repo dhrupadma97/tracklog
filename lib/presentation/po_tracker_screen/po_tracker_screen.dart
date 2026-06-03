@@ -18,12 +18,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
   String? _error;
 
   // PO data
-  String _poNumber = '';
-  String _vendorName = '';
-  String _description = '';
-  double _totalPoValue = 0;
-  double _taxAmount = 0;
-  DateTime? _deliveryDate;
+  List<Map<String, dynamic>> _poList = [];
 
   // Spend data
   double _trackSessionsSpend = 0;
@@ -66,19 +61,10 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
       final poData = await client
           .from('po_trackers')
           .select()
-          .eq('po_number', '8242348442')
-          .maybeSingle();
+          .order('created_at');
 
       if (poData != null) {
-        _poNumber = poData['po_number'] as String? ?? '';
-        _vendorName = poData['vendor_name'] as String? ?? '';
-        _description = poData['description'] as String? ?? '';
-        _totalPoValue = (poData['total_po_value'] as num?)?.toDouble() ?? 0;
-        _taxAmount = (poData['tax_amount'] as num?)?.toDouble() ?? 0;
-        final deliveryStr = poData['delivery_date'] as String?;
-        _deliveryDate = deliveryStr != null
-            ? DateTime.tryParse(deliveryStr)
-            : null;
+        _poList = List<Map<String, dynamic>>.from(poData);
       }
 
       // Load cumulative track session costs
@@ -124,7 +110,15 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
   double get _totalSpend =>
       _trackSessionsSpend + _additionalServicesSpend + _workshopSpend;
 
-  double get _totalPoWithTax => _totalPoValue + _taxAmount;
+  double get _totalPoWithTax {
+    double total = 0;
+    for (final po in _poList) {
+      final val = (po['total_po_value'] as num?)?.toDouble() ?? 0;
+      final tax = (po['tax_amount'] as num?)?.toDouble() ?? 0;
+      total += val + tax;
+    }
+    return total;
+  }
 
   double get _remainingBalance => _totalPoWithTax - _totalSpend;
 
@@ -132,10 +126,135 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
       ? (_totalSpend / _totalPoWithTax).clamp(0.0, 1.0)
       : 0.0;
 
+  Future<void> _showAddPoDialog() async {
+    final formKey = GlobalKey<FormState>();
+    String poNumber = '';
+    String vendorName = '';
+    String description = '';
+    double totalPoValue = 0;
+    double taxAmount = 0;
+    DateTime deliveryDate = DateTime.now().add(const Duration(days: 30));
+
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF0A1025),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: AppTheme.primary.withAlpha(50)),
+          ),
+          title: Text(
+            'Add New PO',
+            style: GoogleFonts.spaceGrotesk(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: SingleChildScrollView(
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      labelText: 'PO Number',
+                      labelStyle: TextStyle(color: Colors.white70),
+                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                    ),
+                    onSaved: (val) => poNumber = val ?? '',
+                    validator: (val) => val == null || val.isEmpty ? 'Required' : null,
+                  ),
+                  TextFormField(
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      labelText: 'Vendor Name',
+                      labelStyle: TextStyle(color: Colors.white70),
+                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                    ),
+                    onSaved: (val) => vendorName = val ?? '',
+                    validator: (val) => val == null || val.isEmpty ? 'Required' : null,
+                  ),
+                  TextFormField(
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      labelText: 'Description (e.g. Track Usage)',
+                      labelStyle: TextStyle(color: Colors.white70),
+                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                    ),
+                    onSaved: (val) => description = val ?? '',
+                  ),
+                  TextFormField(
+                    style: const TextStyle(color: Colors.white),
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Base Value (₹)',
+                      labelStyle: TextStyle(color: Colors.white70),
+                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                    ),
+                    onSaved: (val) => totalPoValue = double.tryParse(val ?? '0') ?? 0,
+                  ),
+                  TextFormField(
+                    style: const TextStyle(color: Colors.white),
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Tax Amount (₹)',
+                      labelStyle: TextStyle(color: Colors.white70),
+                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                    ),
+                    onSaved: (val) => taxAmount = double.tryParse(val ?? '0') ?? 0,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
+              onPressed: () async {
+                if (formKey.currentState?.validate() == true) {
+                  formKey.currentState?.save();
+                  try {
+                    await SupabaseService.instance.client.from('po_trackers').insert({
+                      'po_number': poNumber,
+                      'vendor_name': vendorName,
+                      'description': description,
+                      'total_po_value': totalPoValue,
+                      'tax_amount': taxAmount,
+                      'delivery_date': deliveryDate.toIso860String().split('T')[0],
+                    });
+                    if (mounted) {
+                      Navigator.of(ctx).pop();
+                      _loadData();
+                    }
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                  }
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showAddPoDialog,
+        backgroundColor: AppTheme.primary,
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
       body: SafeArea(
         child: _loading
             ? const Center(
@@ -160,8 +279,14 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                             children: [
                               _buildHeader(),
                               const SizedBox(height: 20),
-                              _buildPoInfoCard(),
-                              const SizedBox(height: 16),
+                              if (_poList.isEmpty)
+                                Center(
+                                  child: Text('No POs found', style: GoogleFonts.spaceGrotesk(color: Colors.white54)),
+                                ),
+                              ..._poList.map((po) => Padding(
+                                padding: const EdgeInsets.only(bottom: 16),
+                                child: _buildPoInfoCard(po),
+                              )),
                               _buildBalanceSummaryCard(),
                               const SizedBox(height: 16),
                               _buildProgressBar(),
@@ -270,7 +395,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
     );
   }
 
-  Widget _buildPoInfoCard() {
+  Widget _buildPoInfoCard(Map<String, dynamic> po) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: BackdropFilter(
@@ -300,7 +425,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                       ),
                     ),
                     child: Text(
-                      'PO # $_poNumber',
+                      'PO # ${po['po_number'] ?? ''}',
                       style: GoogleFonts.spaceGrotesk(
                         color: const Color(0xFF4D9FFF),
                         fontSize: 12,
@@ -310,7 +435,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                     ),
                   ),
                   const Spacer(),
-                  if (_deliveryDate != null)
+                  if (po['delivery_date'] != null)
                     Row(
                       children: [
                         const Icon(
@@ -320,7 +445,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          'Due ${_deliveryDate!.day.toString().padLeft(2, '0')}.${_deliveryDate!.month.toString().padLeft(2, '0')}.${_deliveryDate!.year}',
+                          'Due ${DateTime.tryParse(po['delivery_date']!)?.day.toString().padLeft(2, '0') ?? ''}.${DateTime.tryParse(po['delivery_date']!)?.month.toString().padLeft(2, '0') ?? ''}.${DateTime.tryParse(po['delivery_date']!)?.year ?? ''}',
                           style: GoogleFonts.spaceGrotesk(
                             color: const Color(0xFF6B7490),
                             fontSize: 11,
@@ -333,7 +458,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
               ),
               const SizedBox(height: 10),
               Text(
-                _vendorName,
+                po['vendor_name'] as String? ?? '',
                 style: GoogleFonts.spaceGrotesk(
                   color: Colors.white,
                   fontSize: 14,
@@ -344,7 +469,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
               ),
               const SizedBox(height: 4),
               Text(
-                _description,
+                po['description'] as String? ?? '',
                 style: GoogleFonts.spaceGrotesk(
                   color: const Color(0xFF8A94B0),
                   fontSize: 11,
@@ -362,7 +487,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                   Expanded(
                     child: _buildPoValueItem(
                       label: 'Base Value',
-                      amount: _totalPoValue,
+                      amount: (po['total_po_value'] as num?)?.toDouble() ?? 0,
                       color: Colors.white,
                     ),
                   ),
@@ -374,7 +499,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                   Expanded(
                     child: _buildPoValueItem(
                       label: 'Tax (GST)',
-                      amount: _taxAmount,
+                      amount: (po['tax_amount'] as num?)?.toDouble() ?? 0,
                       color: const Color(0xFFFFB74D),
                     ),
                   ),
@@ -386,7 +511,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                   Expanded(
                     child: _buildPoValueItem(
                       label: 'Total PO Value',
-                      amount: _totalPoWithTax,
+                      amount: ((po['total_po_value'] as num?)?.toDouble() ?? 0) + ((po['tax_amount'] as num?)?.toDouble() ?? 0),
                       color: AppTheme.primary,
                       bold: true,
                     ),

@@ -1,5 +1,7 @@
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
+
 import '../core/app_export.dart';
 import '../services/engineer_auth_service.dart';
 import '../theme/app_theme.dart';
@@ -22,25 +24,34 @@ class _AppNavigationState extends State<AppNavigation>
   bool _isManager = false;
 
   List<_TabSpec> get _tabs {
-    final list = [
-      const _TabSpec(
+    final list = <_TabSpec>[];
+    
+    if (!kIsWeb) {
+      list.add(const _TabSpec(
         icon: 'timer',
         selectedIcon: 'timer',
         label: 'Session',
         branchIndex: 0,
-      ),
-      const _TabSpec(
-        icon: 'history',
-        selectedIcon: 'history',
-        label: 'History',
-        branchIndex: 1,
-      ),
-      const _TabSpec(
+      ));
+    }
+
+    list.add(const _TabSpec(
+      icon: 'history',
+      selectedIcon: 'history',
+      label: 'History',
+      branchIndex: 1,
+    ));
+
+    if (!kIsWeb) {
+      list.add(const _TabSpec(
         icon: 'location_on',
         selectedIcon: 'location_on',
         label: 'Gates',
         branchIndex: 2,
-      ),
+      ));
+    }
+
+    list.addAll([
       const _TabSpec(
         icon: 'edit_note',
         selectedIcon: 'edit_note',
@@ -59,7 +70,7 @@ class _AppNavigationState extends State<AppNavigation>
         label: 'Settings',
         branchIndex: 5,
       ),
-    ];
+    ]);
 
     if (!_isManager) {
       list.add(const _TabSpec(

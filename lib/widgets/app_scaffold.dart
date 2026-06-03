@@ -1,11 +1,11 @@
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import './app_navigation.dart';
 import '../services/engineer_auth_service.dart';
-
 
 class AppScaffold extends StatelessWidget {
   final StatefulNavigationShell navigationShell;
@@ -74,25 +74,34 @@ class _WideScaffoldState extends State<_WideScaffold> {
   }
 
   List<_NavItem> _getItems() {
-    final items = [
-      const _NavItem(
+    final items = <_NavItem>[];
+    
+    if (!kIsWeb) {
+      items.add(const _NavItem(
         icon: Icons.timer_outlined,
         activeIcon: Icons.timer,
         label: 'Session',
         branch: 0,
-      ),
-      const _NavItem(
-        icon: Icons.history_outlined,
-        activeIcon: Icons.history,
-        label: 'History',
-        branch: 1,
-      ),
-      const _NavItem(
+      ));
+    }
+
+    items.add(const _NavItem(
+      icon: Icons.history_outlined,
+      activeIcon: Icons.history,
+      label: 'History',
+      branch: 1,
+    ));
+
+    if (!kIsWeb) {
+      items.add(const _NavItem(
         icon: Icons.location_on_outlined,
         activeIcon: Icons.location_on,
         label: 'Gates',
         branch: 2,
-      ),
+      ));
+    }
+
+    items.addAll([
       const _NavItem(
         icon: Icons.edit_note_outlined,
         activeIcon: Icons.edit_note_rounded,

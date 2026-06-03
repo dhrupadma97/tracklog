@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>NATRAX | Fleet &amp; Analytics Center</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@100..900&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            background-color: #050811;
+            color: #dfe2f0;
+            overflow-x: hidden;
+        }
+        .glass-panel {
+            background: rgba(10, 16, 37, 0.6);
+            backdrop-filter: blur(40px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+        .glass-panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(0, 243, 255, 0.2), transparent);
+        }
+        .ethereal-glow {
+            position: fixed;
+            width: 800px;
+            height: 800px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(221, 205, 255, 0.05) 0%, rgba(5, 8, 17, 0) 70%);
+            z-index: -1;
+            filter: blur(80px);
+        }
+        .antigravity-button {
+            background-color: #00f3ff;
+            color: #002022;
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.3);
+            transition: all 0.3s ease;
+        }
+        .antigravity-button:hover {
+            box-shadow: 0 0 25px rgba(0, 243, 255, 0.5);
+            transform: translateY(-2px);
+        }
+        .data-sparkline {
+            stroke-dasharray: 1000;
+            stroke-dashoffset: 1000;
+            animation: dash 3s linear forwards;
+        }
+        @keyframes dash {
+            to { stroke-dashoffset: 0; }
+        }
+    </style>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-dim": "#0f131d",
+                    "surface-bright": "#353944",
+                    "surface": "#0f131d",
+                    "on-background": "#dfe2f0",
+                    "on-secondary-fixed-variant": "#5700c9",
+                    "on-surface": "#dfe2f0",
+                    "background": "#0f131d",
+                    "tertiary-fixed": "#dce1ff",
+                    "secondary-fixed-dim": "#d1bcff",
+                    "on-tertiary-container": "#5a5f78",
+                    "on-primary-container": "#006b71",
+                    "tertiary-container": "#d5daf8",
+                    "secondary-fixed": "#e9ddff",
+                    "inverse-primary": "#00696f",
+                    "surface-tint": "#00dce6",
+                    "surface-container-highest": "#31353f",
+                    "on-secondary-fixed": "#23005b",
+                    "on-primary-fixed": "#002022",
+                    "primary-fixed-dim": "#00dce6",
+                    "on-tertiary": "#2a2f46",
+                    "surface-container-low": "#181b25",
+                    "outline-variant": "#3a494b",
+                    "outline": "#849495",
+                    "primary": "#e3fdff",
+                    "primary-container": "#00f3ff",
+                    "surface-container": "#1c1f29",
+                    "tertiary-fixed-dim": "#c0c5e2",
+                    "on-surface-variant": "#b9cacb",
+                    "primary-fixed": "#6ff6ff",
+                    "tertiary": "#f9f7ff",
+                    "on-error": "#690005",
+                    "secondary-container": "#7000ff",
+                    "on-tertiary-fixed": "#151a30",
+                    "surface-variant": "#31353f",
+                    "on-primary": "#00373a",
+                    "error-container": "#93000a",
+                    "error": "#ffb4ab",
+                    "secondary": "#d1bcff",
+                    "surface-container-high": "#262a34",
+                    "inverse-surface": "#dfe2f0",
+                    "on-tertiary-fixed-variant": "#40465d",
+                    "surface-container-lowest": "#0a0e17",
+                    "on-error-container": "#ffdad6",
+                    "inverse-on-surface": "#2d303b",
+                    "on-secondary": "#3c0090",
+                    "on-secondary-container": "#ddcdff",
+                    "on-primary-fixed-variant": "#004f53"
+            },
+            "borderRadius": {
+                    "DEFAULT": "1rem",
+                    "lg": "2rem",
+                    "xl": "3rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "container-padding-desktop": "40px",
+                    "stack-md": "16px",
+                    "stack-lg": "32px",
+                    "gutter": "24px",
+                    "stack-sm": "8px",
+                    "container-padding-mobile": "20px"
+            },
+            "fontFamily": {
+                    "label-caps": ["Space Grotesk"],
+                    "headline-lg": ["Space Grotesk"],
+                    "body-lg": ["Space Grotesk"],
+                    "data-mono": ["Space Grotesk"],
+                    "display-md": ["Space Grotesk"],
+                    "headline-lg-mobile": ["Space Grotesk"],
+                    "title-md": ["Space Grotesk"],
+                    "body-sm": ["Space Grotesk"],
+                    "display-lg": ["Space Grotesk"]
+            },
+            "fontSize": {
+                    "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.1em", "fontWeight": "700"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "600"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "data-mono": ["18px", {"lineHeight": "24px", "letterSpacing": "0.02em", "fontWeight": "700"}],
+                    "display-md": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "title-md": ["20px", {"lineHeight": "28px", "fontWeight": "500"}],
+                    "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "display-lg": ["72px", {"lineHeight": "80px", "letterSpacing": "-0.04em", "fontWeight": "700"}]
+            }
+          },
+        },
+      }
+    </script>
+</head>
+<body class="font-body-lg text-on-surface">
+<!-- Ambient Atmospherics -->
+<div class="ethereal-glow top-[-200px] left-[-200px]" style="background: radial-gradient(circle, rgba(0, 243, 255, 0.08) 0%, rgba(5, 8, 17, 0) 70%);"></div>
+<div class="ethereal-glow bottom-[-300px] right-[-200px]" style="background: radial-gradient(circle, rgba(112, 0, 255, 0.08) 0%, rgba(5, 8, 17, 0) 70%);"></div>
+<!-- Top Navigation -->
+<nav class="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-xl border-b border-outline-variant/30 flex justify-between items-center px-container-padding-mobile md:px-container-padding-desktop h-16">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary-container" style="font-variation-settings: 'FILL' 1;">speed</span>
+<span class="font-display-md text-headline-lg-mobile md:text-headline-lg tracking-tighter text-primary">NATRAX TrackLog</span>
+</div>
+<div class="hidden md:flex items-center gap-8">
+<a class="font-label-caps text-primary border-b-2 border-primary pt-1" href="#">Analytics</a>
+<a class="font-label-caps text-on-surface-variant hover:text-primary transition-colors" href="#">Fleet</a>
+<a class="font-label-caps text-on-surface-variant hover:text-primary transition-colors" href="#">Infrastructure</a>
+<div class="w-10 h-10 rounded-full border border-outline-variant/50 overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="A professional race engineer with a focused expression, wearing a high-tech headset in a dimly lit control room filled with glowing blue monitors. The lighting is dramatic, with cool cyan highlights reflecting off sleek surfaces, creating a futuristic automotive telemetry atmosphere. Deep blacks and vibrant tech-inspired blues dominate the color palette." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC-EuRf6T8LuY9VFfHiW6WSf0VW380xc_8mOnG-H5UqMnvoMG3YLvmPLDtCJmBvz5kohDIusGj9YuLZ3UKxeGXDIw4Lh24iNNCBeFLgwcHhx9Iaw91dLT7l--W4lPecPk-71z7bUiwiLpicuuZND-c9YPi_Col9n8DxDKYKhus-BiEE-dsdpDoxpGLVyq7Lfao08p_oB95n4j0PocG00kPdigckh3MEek4akzmpkvjx6Jvn0zQH3k000PWqxYtOLBbTnAanSCu898O7"/>
+</div>
+</div>
+<button class="md:hidden text-primary">
+<span class="material-symbols-outlined">menu</span>
+</button>
+</nav>
+<main class="pt-24 pb-32 px-container-padding-mobile md:px-container-padding-desktop max-w-[1440px] mx-auto">
+<!-- Header Section -->
+<header class="mb-stack-lg flex flex-col md:flex-row md:items-end justify-between gap-6">
+<div>
+<h1 class="font-display-md text-display-md text-primary-fixed mb-2">Fleet &amp; Analytics</h1>
+<p class="text-on-surface-variant max-w-xl">Real-time performance monitoring and utilization metrics across NATRAX global testing facilities.</p>
+</div>
+<div class="flex gap-4">
+<button class="px-6 py-3 rounded-lg border border-outline-variant hover:bg-surface-container-highest transition-all flex items-center gap-2 font-label-caps">
+<span class="material-symbols-outlined text-[18px]">calendar_today</span>
+                    Last 30 Days
+                </button>
+<button class="antigravity-button px-6 py-3 rounded-lg font-label-caps flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">download</span>
+                    Export Data
+                </button>
+</div>
+</header>
+<!-- Metrics Grid (Bento Style) -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-gutter mb-stack-lg">
+<!-- Metric Card 1 -->
+<div class="glass-panel p-stack-lg rounded-lg group">
+<div class="flex justify-between items-start mb-4">
+<span class="font-label-caps text-on-surface-variant">TOTAL TRACK HOURS</span>
+<span class="material-symbols-outlined text-primary-container">timer</span>
+</div>
+<div class="font-display-md text-primary mb-2">1,842</div>
+<div class="flex items-center gap-2 text-primary-container text-body-sm">
+<span class="material-symbols-outlined text-[16px]">trending_up</span>
+<span>+12.4% vs last month</span>
+</div>
+<div class="mt-6 h-1 w-full bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-primary-container w-[72%] shadow-[0_0_8px_rgba(0,243,255,0.5)]"></div>
+</div>
+</div>
+<!-- Metric Card 2 -->
+<div class="glass-panel p-stack-lg rounded-lg group">
+<div class="flex justify-between items-start mb-4">
+<span class="font-label-caps text-on-surface-variant">GROSS REVENUE</span>
+<span class="material-symbols-outlined text-primary-container">payments</span>
+</div>
+<div class="font-display-md text-primary mb-2">$428K</div>
+<div class="flex items-center gap-2 text-primary-container text-body-sm">
+<span class="material-symbols-outlined text-[16px]">trending_up</span>
+<span>+8.2% vs last month</span>
+</div>
+<div class="mt-6 h-1 w-full bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-primary-container w-[85%] shadow-[0_0_8px_rgba(0,243,255,0.5)]"></div>
+</div>
+</div>
+<!-- Metric Card 3 -->
+<div class="glass-panel p-stack-lg rounded-lg group">
+<div class="flex justify-between items-start mb-4">
+<span class="font-label-caps text-on-surface-variant">ACTIVE ACCOUNTS</span>
+<span class="material-symbols-outlined text-primary-container">account_balance</span>
+</div>
+<div class="font-display-md text-primary mb-2">24</div>
+<div class="flex items-center gap-2 text-on-surface-variant text-body-sm">
+<span class="material-symbols-outlined text-[16px]">horizontal_rule</span>
+<span>No change vs last month</span>
+</div>
+<div class="mt-6 h-1 w-full bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-primary-container w-[60%] shadow-[0_0_8px_rgba(0,243,255,0.5)]"></div>
+</div>
+</div>
+<!-- Metric Card 4 -->
+<div class="glass-panel p-stack-lg rounded-lg group">
+<div class="flex justify-between items-start mb-4">
+<span class="font-label-caps text-on-surface-variant">UTILIZATION RATE</span>
+<span class="material-symbols-outlined text-primary-container">data_exploration</span>
+</div>
+<div class="font-display-md text-primary mb-2">74%</div>
+<div class="flex items-center gap-2 text-error text-body-sm">
+<span class="material-symbols-outlined text-[16px]">trending_down</span>
+<span>-3.1% vs last month</span>
+</div>
+<div class="mt-6 h-1 w-full bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-secondary-container w-[74%] shadow-[0_0_8px_rgba(112,0,255,0.5)]"></div>
+</div>
+</div>
+</div>
+<!-- Charts & Distribution -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-gutter mb-stack-lg">
+<!-- Dual-Line Chart -->
+<div class="glass-panel p-stack-lg rounded-lg lg:col-span-2">
+<div class="flex justify-between items-center mb-8">
+<div>
+<h3 class="font-title-md text-primary">Track Hours vs. Revenue Trends</h3>
+<p class="text-body-sm text-on-surface-variant">Monthly correlation between track usage and billing</p>
+</div>
+<div class="flex gap-4">
+<div class="flex items-center gap-2">
+<div class="w-3 h-3 rounded-full bg-primary-container"></div>
+<span class="text-body-sm">Hours</span>
+</div>
+<div class="flex items-center gap-2">
+<div class="w-3 h-3 rounded-full bg-secondary-fixed-dim"></div>
+<span class="text-body-sm">Revenue</span>
+</div>
+</div>
+</div>
+<div class="h-[300px] w-full relative">
+<!-- SVG Chart Implementation -->
+<svg class="w-full h-full overflow-visible" preserveaspectratio="none" viewbox="0 0 800 300">
+<!-- Grid Lines -->
+<line stroke="rgba(255,255,255,0.05)" x1="0" x2="800" y1="0" y2="0"></line>
+<line stroke="rgba(255,255,255,0.05)" x1="0" x2="800" y1="75" y2="75"></line>
+<line stroke="rgba(255,255,255,0.05)" x1="0" x2="800" y1="150" y2="150"></line>
+<line stroke="rgba(255,255,255,0.05)" x1="0" x2="800" y1="225" y2="225"></line>
+<line stroke="rgba(255,255,255,0.1)" x1="0" x2="800" y1="300" y2="300"></line>
+<!-- Revenue Path (Purple) -->
+<path class="data-sparkline opacity-60" d="M0,250 Q100,220 200,240 T400,100 T600,150 T800,50" fill="none" stroke="#d1bcff" stroke-width="3"></path>
+<!-- Hours Path (Cyan) -->
+<path class="data-sparkline" d="M0,280 Q100,260 200,200 T400,180 T600,80 T800,120" fill="none" stroke="#00f3ff" stroke-width="3"></path>
+</svg>
+<!-- X-Axis Labels -->
+<div class="flex justify-between mt-4 font-label-caps text-on-surface-variant text-[10px]">
+<span>WK 01</span><span>WK 02</span><span>WK 03</span><span>WK 04</span><span>WK 05</span>
+</div>
+</div>
+</div>
+<!-- Track Distribution -->
+<div class="glass-panel p-stack-lg rounded-lg">
+<h3 class="font-title-md text-primary mb-6">Track Distribution</h3>
+<div class="space-y-6">
+<div class="space-y-2">
+<div class="flex justify-between text-body-sm">
+<span>High Speed Track (HST)</span>
+<span class="text-primary">82%</span>
+</div>
+<div class="h-2 w-full bg-surface-container-highest rounded-full">
+<div class="h-full bg-gradient-to-r from-secondary-container to-primary-container w-[82%] rounded-full"></div>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between text-body-sm">
+<span>Dynamic Platform</span>
+<span class="text-primary">64%</span>
+</div>
+<div class="h-2 w-full bg-surface-container-highest rounded-full">
+<div class="h-full bg-gradient-to-r from-secondary-container to-primary-container w-[64%] rounded-full"></div>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between text-body-sm">
+<span>Handling Track (PIV)</span>
+<span class="text-primary">48%</span>
+</div>
+<div class="h-2 w-full bg-surface-container-highest rounded-full">
+<div class="h-full bg-gradient-to-r from-secondary-container to-primary-container w-[48%] rounded-full"></div>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between text-body-sm">
+<span>Fatigue Track</span>
+<span class="text-primary">91%</span>
+</div>
+<div class="h-2 w-full bg-surface-container-highest rounded-full">
+<div class="h-full bg-gradient-to-r from-secondary-container to-primary-container w-[91%] rounded-full"></div>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between text-body-sm">
+<span>Emissions Lab</span>
+<span class="text-primary">35%</span>
+</div>
+<div class="h-2 w-full bg-surface-container-highest rounded-full">
+<div class="h-full bg-gradient-to-r from-secondary-container to-primary-container w-[35%] rounded-full"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Corporate Accounts Table -->
+<section class="glass-panel rounded-lg overflow-hidden">
+<div class="p-stack-lg border-b border-outline-variant/30 flex justify-between items-center">
+<h3 class="font-title-md text-primary">Active Corporate Accounts</h3>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">search</span>
+<input class="bg-surface-container-low border border-outline-variant/30 rounded-full py-2 pl-10 pr-4 text-body-sm focus:border-primary-container focus:ring-0 w-64 transition-all" placeholder="Search accounts..." type="text"/>
+</div>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left">
+<thead>
+<tr class="bg-surface-container-high/50 font-label-caps text-on-surface-variant text-[11px] uppercase tracking-widest">
+<th class="px-stack-lg py-4">Client Name</th>
+<th class="px-stack-lg py-4">Assigned Units</th>
+<th class="px-stack-lg py-4">Accruals (MTD)</th>
+<th class="px-stack-lg py-4">Utilization</th>
+<th class="px-stack-lg py-4 text-right">Actions</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/20">
+<tr class="hover:bg-surface-container-highest/30 transition-colors">
+<td class="px-stack-lg py-6">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded bg-primary-container/20 flex items-center justify-center text-primary-container font-bold">V</div>
+<span class="font-medium text-primary">Velocity Motors Corp</span>
+</div>
+</td>
+<td class="px-stack-lg py-6 font-data-mono">08 Units</td>
+<td class="px-stack-lg py-6 font-data-mono">$124,500.00</td>
+<td class="px-stack-lg py-6">
+<div class="flex items-center gap-3">
+<span class="text-primary-container font-data-mono">88%</span>
+<div class="w-16 h-1 bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-primary-container w-[88%]"></div>
+</div>
+</div>
+</td>
+<td class="px-stack-lg py-6 text-right">
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-highest/30 transition-colors">
+<td class="px-stack-lg py-6">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded bg-secondary-container/20 flex items-center justify-center text-secondary-fixed-dim font-bold">A</div>
+<span class="font-medium text-primary">Apex EV Solutions</span>
+</div>
+</td>
+<td class="px-stack-lg py-6 font-data-mono">04 Units</td>
+<td class="px-stack-lg py-6 font-data-mono">$92,300.00</td>
+<td class="px-stack-lg py-6">
+<div class="flex items-center gap-3">
+<span class="text-primary-container font-data-mono">72%</span>
+<div class="w-16 h-1 bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-primary-container w-[72%]"></div>
+</div>
+</div>
+</td>
+<td class="px-stack-lg py-6 text-right">
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-highest/30 transition-colors">
+<td class="px-stack-lg py-6">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded bg-primary-container/20 flex items-center justify-center text-primary-container font-bold">N</div>
+<span class="font-medium text-primary">Nexus Aero Group</span>
+</div>
+</td>
+<td class="px-stack-lg py-6 font-data-mono">02 Units</td>
+<td class="px-stack-lg py-6 font-data-mono">$48,000.00</td>
+<td class="px-stack-lg py-6">
+<div class="flex items-center gap-3">
+<span class="text-error font-data-mono">42%</span>
+<div class="w-16 h-1 bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-error w-[42%]"></div>
+</div>
+</div>
+</td>
+<td class="px-stack-lg py-6 text-right">
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-highest/30 transition-colors">
+<td class="px-stack-lg py-6">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded bg-primary-container/20 flex items-center justify-center text-primary-container font-bold">S</div>
+<span class="font-medium text-primary">Sovereign Logistics</span>
+</div>
+</td>
+<td class="px-stack-lg py-6 font-data-mono">10 Units</td>
+<td class="px-stack-lg py-6 font-data-mono">$163,200.00</td>
+<td class="px-stack-lg py-6">
+<div class="flex items-center gap-3">
+<span class="text-primary-container font-data-mono">94%</span>
+<div class="w-16 h-1 bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-primary-container w-[94%]"></div>
+</div>
+</div>
+</td>
+<td class="px-stack-lg py-6 text-right">
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="p-4 border-t border-outline-variant/30 flex justify-center">
+<button class="text-body-sm text-primary-container font-label-caps hover:underline">View All 24 Accounts</button>
+</div>
+</section>
+</main>
+<!-- Bottom Navigation Bar (Mobile only) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full h-20 bg-background/80 backdrop-blur-xl border-t border-outline-variant/30 flex justify-around items-center px-2 pb-safe z-50">
+<div class="flex flex-col items-center justify-center text-primary border-t-2 border-primary pt-1">
+<span class="material-symbols-outlined">timer</span>
+<span class="font-label-caps text-[10px]">Session</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant pt-1">
+<span class="material-symbols-outlined">history</span>
+<span class="font-label-caps text-[10px]">History</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant pt-1">
+<span class="material-symbols-outlined">gate</span>
+<span class="font-label-caps text-[10px]">Gates</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant pt-1">
+<span class="material-symbols-outlined">receipt_long</span>
+<span class="font-label-caps text-[10px]">Invoices</span>
+</div>
+</nav>
+<!-- Floating Action Button -->
+<button class="fixed right-6 bottom-24 md:bottom-12 antigravity-button w-14 h-14 rounded-full flex items-center justify-center z-50 shadow-2xl">
+<span class="material-symbols-outlined text-[32px]">add</span>
+</button>
+<script>
+        // Micro-interactions for glass panels
+        document.querySelectorAll('.glass-panel').forEach(panel => {
+            panel.addEventListener('mousemove', (e) => {
+                const rect = panel.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                panel.style.setProperty('--mouse-x', `${x}px`);
+                panel.style.setProperty('--mouse-y', `${y}px`);
+                
+                // Subtle tilt effect
+                const centerX = rect.width / 2;
+                const centerY = rect.height / 2;
+                const rotateX = (y - centerY) / 30;
+                const rotateY = (centerX - x) / 30;
+                
+                panel.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+            });
+            
+            panel.addEventListener('mouseleave', () => {
+                panel.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg)';
+                panel.style.transition = 'transform 0.5s ease';
+            });
+
+            panel.addEventListener('mouseenter', () => {
+                panel.style.transition = 'none';
+            });
+        });
+    </script>
+</body></html>
