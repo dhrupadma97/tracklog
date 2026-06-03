@@ -296,10 +296,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
             ),
           ],
         ),
-              ),
-            ),
-          ],
-        ),
+
         Row(
           children: [
             Container(
