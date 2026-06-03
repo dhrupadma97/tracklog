@@ -36,41 +36,11 @@ BEGIN
 END $$;
 
 -- 3. Create the Main Admin Account (Dhrupad Mullath Anilkumar)
--- Hashing password 'Dm@nikon12345' with crypt/blowfish
-INSERT INTO auth.users (
-    id, 
-    instance_id, 
-    aud, 
-    role, 
-    email, 
-    encrypted_password, 
-    email_confirmed_at,
-    created_at, 
-    updated_at, 
-    raw_user_meta_data, 
-    raw_app_meta_data,
-    is_sso_user, 
-    is_anonymous
-) VALUES (
-    'd4c2b9a7-1c3d-4e5f-a6b7-8c9d0e1f2a3b', -- Fixed Admin UUID
-    '00000000-0000-0000-0000-000000000000',
-    'authenticated',
-    'authenticated',
-    'dhrupad_ma@goodyear.com',
-    crypt('Dm@nikon12345', gen_salt('bf', 10)),
-    now(),
-    now(),
-    now(),
-    jsonb_build_object('engineer_name', 'Dhrupad Mullath Anilkumar', 'engineer_id', 'GY-ENG-000', 'department', 'Tyre Testing'),
-    jsonb_build_object('provider', 'email', 'providers', ARRAY['email']::TEXT[]),
-    false,
-    false
-);
-
--- 4. Set role to 'engineer' (gives editing/ownership rights in the app)
-UPDATE public.engineer_profiles
-SET user_role = 'engineer'
-WHERE id = 'd4c2b9a7-1c3d-4e5f-a6b7-8c9d0e1f2a3b';
+-- NOTE: We delegate the admin account creation to the `register_admin.js` script using the Supabase API.
+-- This guarantees that both `auth.users` and `auth.identities` tables are populated correctly
+-- for your Supabase instance, preventing login schema issues.
+--
+-- Running setup_db.sql will delete any existing corrupted users with this email to allow fresh registration.
 
 -- 5. Add unique constraint on track_code so ON CONFLICT works, and delete old rates to avoid duplicates
 ALTER TABLE public.track_rates DROP CONSTRAINT IF EXISTS track_rates_track_code_key;

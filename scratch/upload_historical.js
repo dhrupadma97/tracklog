@@ -5,7 +5,7 @@ const fs = require('fs');
 const env = JSON.parse(fs.readFileSync('env.json', 'utf8'));
 const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
 
-const ADMIN_UUID = 'd4c2b9a7-1c3d-4e5f-a6b7-8c9d0e1f2a3b'; // Matches setup_db.sql
+let ADMIN_UUID;
 
 // Helper to convert Excel date serial and time fraction to IST ISO string
 function formatToIST(serialDate, serialTime = 0) {
@@ -74,6 +74,8 @@ async function run() {
     return;
   }
   console.log('Successfully authenticated as:', authData.user.email);
+  ADMIN_UUID = authData.user.id;
+  console.log('Dynamic ADMIN_UUID is:', ADMIN_UUID);
 
   console.log('Reading workbook...');
   const workbook = XLSX.readFile('NATRAX_Comprehensive_Billing_Final_V15 (1).xlsm');
