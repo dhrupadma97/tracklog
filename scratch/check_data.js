@@ -5,6 +5,16 @@ const env = JSON.parse(fs.readFileSync('env.json', 'utf8'));
 const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
 
 async function run() {
+  console.log('Signing in as admin...');
+  const { error: authError } = await supabase.auth.signInWithPassword({
+    email: 'dhrupad_ma@goodyear.com',
+    password: 'Dm@nikon12345',
+  });
+  if (authError) {
+    console.error('Failed to sign in:', authError);
+    return;
+  }
+  
   console.log('Checking database content...');
   
   const { data: sessions, error: errorSessions } = await supabase.from('engineer_sessions').select('count', { count: 'exact' });
@@ -18,3 +28,4 @@ async function run() {
 }
 
 run();
+
