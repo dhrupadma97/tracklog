@@ -21,44 +21,57 @@ class _AppNavigationState extends State<AppNavigation>
   int _lastIndex = 0;
   bool _isManager = false;
 
-  static const List<_TabSpec> _allTabs = [
-    _TabSpec(
-      icon: 'timer',
-      selectedIcon: 'timer',
-      label: 'Session',
-      branchIndex: 0,
-    ),
-    _TabSpec(
-      icon: 'history',
-      selectedIcon: 'history',
-      label: 'History',
-      branchIndex: 1,
-    ),
-    _TabSpec(
-      icon: 'location_on',
-      selectedIcon: 'location_on',
-      label: 'Gates',
-      branchIndex: 2,
-    ),
-    _TabSpec(
-      icon: 'edit_note',
-      selectedIcon: 'edit_note',
-      label: 'Manual',
-      branchIndex: 3,
-    ),
-    _TabSpec(
-      icon: 'receipt_long',
-      selectedIcon: 'receipt_long',
-      label: 'Invoices',
-      branchIndex: 4,
-    ),
-    _TabSpec(
-      icon: 'settings',
-      selectedIcon: 'settings',
-      label: 'Settings',
-      branchIndex: 5,
-    ),
-  ];
+  List<_TabSpec> get _tabs {
+    final list = [
+      const _TabSpec(
+        icon: 'timer',
+        selectedIcon: 'timer',
+        label: 'Session',
+        branchIndex: 0,
+      ),
+      const _TabSpec(
+        icon: 'history',
+        selectedIcon: 'history',
+        label: 'History',
+        branchIndex: 1,
+      ),
+      const _TabSpec(
+        icon: 'location_on',
+        selectedIcon: 'location_on',
+        label: 'Gates',
+        branchIndex: 2,
+      ),
+      const _TabSpec(
+        icon: 'edit_note',
+        selectedIcon: 'edit_note',
+        label: 'Manual',
+        branchIndex: 3,
+      ),
+      const _TabSpec(
+        icon: 'receipt_long',
+        selectedIcon: 'receipt_long',
+        label: 'Invoices',
+        branchIndex: 4,
+      ),
+      const _TabSpec(
+        icon: 'settings',
+        selectedIcon: 'settings',
+        label: 'Settings',
+        branchIndex: 5,
+      ),
+    ];
+
+    if (!_isManager) {
+      list.add(const _TabSpec(
+        icon: 'admin_panel_settings',
+        selectedIcon: 'admin_panel_settings',
+        label: 'Admin',
+        branchIndex: 6,
+      ));
+    }
+
+    return list;
+  }
 
   @override
   void initState() {
@@ -90,7 +103,7 @@ class _AppNavigationState extends State<AppNavigation>
   }
 
   void _onTap(int visualIndex) {
-    final spec = _allTabs[visualIndex];
+    final spec = _tabs[visualIndex];
     if (spec.branchIndex == null) return;
     if (visualIndex != _lastIndex) {
       _lastIndex = visualIndex;
@@ -102,6 +115,7 @@ class _AppNavigationState extends State<AppNavigation>
       initialLocation: spec.branchIndex == widget.navigationShell.currentIndex,
     );
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -134,8 +148,9 @@ class _AppNavigationState extends State<AppNavigation>
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: List.generate(_allTabs.length, (i) {
-                  final spec = _allTabs[i];
+                children: List.generate(_tabs.length, (i) {
+                  final spec = _tabs[i];
+
                   final isActive =
                       spec.branchIndex != null &&
                       spec.branchIndex == currentBranch;

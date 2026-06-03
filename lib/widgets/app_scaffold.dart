@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import './app_navigation.dart';
+import '../services/engineer_auth_service.dart';
+
 
 class AppScaffold extends StatelessWidget {
   final StatefulNavigationShell navigationShell;
@@ -43,52 +45,88 @@ class AppScaffold extends StatelessWidget {
 }
 
 /// Wide-screen layout: persistent left rail navigation + content area.
-class _WideScaffold extends StatelessWidget {
+class _WideScaffold extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
   const _WideScaffold({required this.navigationShell});
 
-  static const List<_NavItem> _items = [
-    _NavItem(
-      icon: Icons.timer_outlined,
-      activeIcon: Icons.timer,
-      label: 'Session',
-      branch: 0,
-    ),
-    _NavItem(
-      icon: Icons.history_outlined,
-      activeIcon: Icons.history,
-      label: 'History',
-      branch: 1,
-    ),
-    _NavItem(
-      icon: Icons.location_on_outlined,
-      activeIcon: Icons.location_on,
-      label: 'Gates',
-      branch: 2,
-    ),
-    _NavItem(
-      icon: Icons.edit_note_outlined,
-      activeIcon: Icons.edit_note_rounded,
-      label: 'Manual',
-      branch: 3,
-    ),
-    _NavItem(
-      icon: Icons.receipt_long_outlined,
-      activeIcon: Icons.receipt_long,
-      label: 'Invoices',
-      branch: 4,
-    ),
-    _NavItem(
-      icon: Icons.settings_outlined,
-      activeIcon: Icons.settings,
-      label: 'Settings',
-      branch: 5,
-    ),
-  ];
+  @override
+  State<_WideScaffold> createState() => _WideScaffoldState();
+}
+
+class _WideScaffoldState extends State<_WideScaffold> {
+  bool _isManager = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRole();
+  }
+
+  Future<void> _loadRole() async {
+    final profile = await EngineerAuthService.instance.getCurrentProfile();
+    if (mounted) {
+      setState(() {
+        _isManager = profile?.userRole == 'manager';
+      });
+    }
+  }
+
+  List<_NavItem> _getItems() {
+    final items = [
+      const _NavItem(
+        icon: Icons.timer_outlined,
+        activeIcon: Icons.timer,
+        label: 'Session',
+        branch: 0,
+      ),
+      const _NavItem(
+        icon: Icons.history_outlined,
+        activeIcon: Icons.history,
+        label: 'History',
+        branch: 1,
+      ),
+      const _NavItem(
+        icon: Icons.location_on_outlined,
+        activeIcon: Icons.location_on,
+        label: 'Gates',
+        branch: 2,
+      ),
+      const _NavItem(
+        icon: Icons.edit_note_outlined,
+        activeIcon: Icons.edit_note_rounded,
+        label: 'Manual',
+        branch: 3,
+      ),
+      const _NavItem(
+        icon: Icons.receipt_long_outlined,
+        activeIcon: Icons.receipt_long,
+        label: 'Invoices',
+        branch: 4,
+      ),
+      const _NavItem(
+        icon: Icons.settings_outlined,
+        activeIcon: Icons.settings,
+        label: 'Settings',
+        branch: 5,
+      ),
+    ];
+
+    if (!_isManager) {
+      items.add(const _NavItem(
+        icon: Icons.admin_panel_settings_outlined,
+        activeIcon: Icons.admin_panel_settings_rounded,
+        label: 'Admin',
+        branch: 6,
+      ));
+    }
+
+    return items;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final current = navigationShell.currentIndex;
+    final current = widget.navigationShell.currentIndex;
+    final items = _getItems();
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0E1A),
@@ -165,13 +203,13 @@ class _WideScaffold extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 32),
-                          ...List.generate(_items.length, (i) {
-                            final item = _items[i];
+                          ...List.generate(items.length, (i) {
+                            final item = items[i];
                             final isActive = item.branch == current;
                             return _RailItem(
                               item: item,
                               isActive: isActive,
-                              onTap: () => navigationShell.goBranch(
+                              onTap: () => widget.navigationShell.goBranch(
                                 item.branch,
                                 initialLocation: item.branch == current,
                               ),
@@ -184,7 +222,7 @@ class _WideScaffold extends StatelessWidget {
                 ),
               ),
               // Content
-              Expanded(child: navigationShell),
+              Expanded(child: widget.navigationShell),
             ],
           ),
         ],
@@ -192,6 +230,7 @@ class _WideScaffold extends StatelessWidget {
     );
   }
 }
+
 
 class _RailItem extends StatelessWidget {
   final _NavItem item;

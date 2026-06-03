@@ -50,3 +50,12 @@ android/app/.cxx
 # Build artifacts
 *.apk
 app-debug.apk
+
+# Node dependencies
+node_modules/
+
+# Local spreadsheets and reports
+*.xlsm
+*.xlsx
+/natrax_usage_sheets/
+/reconciliation_reports/

@@ -14,6 +14,7 @@ import '../presentation/splash_screen/splash_screen.dart';
 import '../services/engineer_auth_service.dart';
 import '../widgets/app_scaffold.dart';
 import '../presentation/monthly_invoices_screen/monthly_invoices_screen.dart';
+import '../presentation/admin_screen/admin_screen.dart';
 
 class AppRoutes {
   static const String initial = '/';
@@ -28,7 +29,9 @@ class AppRoutes {
   static const String privacyPolicy = '/privacy-policy';
   static const String settings = '/settings-screen';
   static const String monthlyInvoices = '/monthly-invoices-screen';
+  static const String admin = '/admin-screen';
 }
+
 
 final GoRouter appRouter = GoRouter(
   initialLocation: AppRoutes.initial,
@@ -164,7 +167,16 @@ final GoRouter appRouter = GoRouter(
             ),
           ],
         ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: AppRoutes.admin,
+              builder: (context, state) => const AdminScreen(),
+            ),
+          ],
+        ),
       ],
     ),
+
   ],
 );
