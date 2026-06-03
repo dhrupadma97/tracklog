@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -93,7 +94,13 @@ class _LoginScreenState extends State<LoginScreen>
           password: _passwordController.text,
         );
       }
-      if (mounted) context.go('/active-session-screen');
+      if (mounted) {
+        if (kIsWeb) {
+          context.go('/session-history-screen');
+        } else {
+          context.go('/active-session-screen');
+        }
+      }
     } on AuthException catch (e) {
       setState(() => _errorMessage = e.message);
     } catch (e) {

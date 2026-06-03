@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../theme/app_theme.dart';
@@ -39,7 +40,11 @@ class _SplashScreenState extends State<SplashScreen>
     Timer(const Duration(milliseconds: 2400), () {
       if (mounted) {
         if (EngineerAuthService.instance.isSignedIn) {
-          context.go('/active-session-screen');
+          if (kIsWeb) {
+            context.go('/session-history-screen');
+          } else {
+            context.go('/active-session-screen');
+          }
         } else {
           context.go('/login');
         }
