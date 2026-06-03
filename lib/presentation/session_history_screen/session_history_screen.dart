@@ -1,13 +1,11 @@
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
-
 import '../../core/app_export.dart';
 import '../../services/engineer_auth_service.dart';
-import '../../theme/app_theme.dart';
-import '../../widgets/custom_icon_widget.dart';
+import './widgets/hero_metric_widget.dart';
+import './widgets/monthly_summary_card_widget.dart';
+import './widgets/session_chart_widget.dart';
+import './widgets/session_list_widget.dart';
 
+// TODO: Replace with Riverpod/Bloc for production
 class SessionHistoryScreen extends StatefulWidget {
   const SessionHistoryScreen({super.key});
 
@@ -16,6 +14,9 @@ class SessionHistoryScreen extends StatefulWidget {
 }
 
 class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
+  String _selectedFilter = 'All';
+  final List<String> _filters = ['All', 'Completed', 'This Week', 'High Cost'];
+
   List<Map<String, dynamic>> _sessionMaps = [];
   bool _isLoading = true;
 
@@ -56,291 +57,193 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
     }
   }
 
+  List<Map<String, dynamic>> get _filteredSessions {
+    switch (_selectedFilter) {
+      case 'Completed':
+        return _sessionMaps.where((s) => s['status'] == 'completed').toList();
+      case 'This Week':
+        final now = DateTime.now();
+        final weekStart = now.subtract(Duration(days: now.weekday - 1));
+        return _sessionMaps.where((s) {
+          final start = DateTime.parse(s['startTime'] as String);
+          return start.isAfter(weekStart);
+        }).toList();
+      case 'High Cost':
+        return _sessionMaps
+            .where((s) => (s['costINR'] as double) > 15000)
+            .toList();
+      default:
+        return _sessionMaps;
+    }
+  }
+
   double get _totalMonthlyCost =>
       _sessionMaps.fold(0.0, (sum, s) => sum + (s['costINR'] as double));
-  int get _sessionCount => _sessionMaps.length;
-  double get _avgEfficiency => 70.2; // Placeholder for now
-  int get _activeAlerts => 2; // Placeholder
-
-  final _currencyFmt = NumberFormat.compactCurrency(
-    locale: 'en_IN',
-    symbol: '₹',
-    decimalDigits: 1,
+  double get _totalHours => _sessionMaps.fold(
+    0.0,
+    (sum, s) => sum + (s['durationMinutes'] as int) / 60.0,
   );
+  int get _sessionCount => _sessionMaps.length;
 
   @override
   Widget build(BuildContext context) {
-    final isDesktop = MediaQuery.of(context).size.width >= 1024;
+    final theme = Theme.of(context);
+    final isTablet = MediaQuery.of(context).size.width >= 600;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF050811), // Deep Space
-      body: Stack(
-        children: [
-          // Background ambient glow
-          Positioned(
-            top: -200,
-            left: -200,
-            child: Container(
-              width: 600,
-              height: 600,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    const Color(0xFF7000FF).withAlpha(15), // Stellar purple
-                    Colors.transparent,
-                  ],
-                ),
+      backgroundColor: AppTheme.backgroundDark,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          // TODO: Implement export — share_plus or universal_html download
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Exporting $_sessionCount sessions...',
+                style: const TextStyle(fontFamily: 'Space Grotesk'),
+              ),
+              backgroundColor: const Color(0xFF0A1025),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
-          ),
-          SafeArea(
-            child: _isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(color: AppTheme.primary),
-                  )
-                : Padding(
-                    padding: const EdgeInsets.all(32.0),
-                    child: isDesktop ? _buildDesktopLayout() : _buildMobileLayout(),
-                  ),
-          ),
-        ],
+          );
+        },
+        icon: CustomIconWidget(
+          iconName: 'share',
+          color: const Color(0xFF001A10),
+          size: 18,
+        ),
+        label: const Text(
+          'Export Report',
+          style: TextStyle(fontFamily: 'Space Grotesk', fontWeight: FontWeight.w700),
+        ),
+        backgroundColor: AppTheme.primary,
+        foregroundColor: const Color(0xFF001A10),
       ),
-    );
-  }
-
-  Widget _buildDesktopLayout() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildHeader(),
-        const SizedBox(height: 32),
-        _buildMetricsRow(),
-        const SizedBox(height: 32),
-        Expanded(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                flex: 7,
-                child: _buildTrackMapPanel(),
-              ),
-              const SizedBox(width: 24),
-              Expanded(
-                flex: 3,
-                child: _buildRecentSessionsPanel(),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMobileLayout() {
-    return CustomScrollView(
-      slivers: [
-        SliverToBoxAdapter(child: _buildHeader()),
-        const SliverToBoxAdapter(child: SizedBox(height: 24)),
-        SliverToBoxAdapter(
-          child: Wrap(
-            spacing: 16,
-            runSpacing: 16,
-            children: [
-              SizedBox(width: double.infinity, child: _buildMetricCard('Total Revenue', _currencyFmt.format(_totalMonthlyCost))),
-              SizedBox(width: double.infinity, child: _buildMetricCard('Avg. Efficiency', '${_avgEfficiency}%')),
-              SizedBox(width: double.infinity, child: _buildMetricCard('Total Sessions', '$_sessionCount')),
-              SizedBox(width: double.infinity, child: _buildMetricCard('Active Alerts', '$_activeAlerts', isAlert: true)),
-            ],
-          ),
-        ),
-        const SliverToBoxAdapter(child: SizedBox(height: 24)),
-        SliverToBoxAdapter(
-          child: SizedBox(
-            height: 300,
-            child: _buildTrackMapPanel(),
-          ),
-        ),
-        const SliverToBoxAdapter(child: SizedBox(height: 24)),
-        SliverFillRemaining(
-          hasScrollBody: true,
-          child: _buildRecentSessionsPanel(),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildHeader() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      body: SafeArea(
+        bottom: false,
+        child: Stack(
           children: [
-            Text(
-              'NATRAX TrackLog',
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFFdfe2f0),
+            // Goodyear background image with dark overlay
+            Positioned.fill(
+              child: Image.asset(
+                'assets/images/GYRacing_DesktopTeamsWallpaper_5-1779284234231.png',
+                fit: BoxFit.cover,
+                semanticLabel: 'Goodyear racing team wallpaper',
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              'Proving Ground Telemetry & Operations',
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 14,
-                color: const Color(0xFFA8B0C8),
-              ),
+            Positioned.fill(
+              child: Container(color: const Color(0xFF050811).withAlpha(220)),
             ),
+            _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        AppTheme.primary,
+                      ),
+                    ),
+                  )
+                : (isTablet
+                      ? _buildTabletLayout(theme)
+                      : _buildPhoneLayout(theme)),
           ],
         ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            color: AppTheme.primary.withAlpha(20),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppTheme.primary.withAlpha(60)),
+      ),
+    );
+  }
+
+  Widget _buildPhoneLayout(ThemeData theme) {
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(child: _buildHeader(theme)),
+        SliverToBoxAdapter(
+          child: HeroMetricWidget(
+            totalHours: _totalHours,
+            totalCost: _totalMonthlyCost,
+            sessionCount: _sessionCount,
           ),
-          child: Row(
-            children: [
-              const CustomIconWidget(iconName: 'download', color: AppTheme.primary, size: 18),
-              const SizedBox(width: 8),
-              Text(
-                'EXPORT REPORT',
-                style: GoogleFonts.spaceGrotesk(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.primary,
-                  letterSpacing: 1.2,
+        ),
+        SliverToBoxAdapter(child: SessionChartWidget(sessions: _sessionMaps)),
+        SliverToBoxAdapter(
+          child: MonthlySummaryCardWidget(
+            totalCost: _totalMonthlyCost,
+            totalHours: _totalHours,
+            sessionCount: _sessionCount,
+            avgDurationMinutes: _sessionMaps.isEmpty
+                ? 0
+                : (_sessionMaps.fold<int>(
+                        0,
+                        (s, m) => s + (m['durationMinutes'] as int),
+                      ) ~/
+                      _sessionMaps.length),
+          ),
+        ),
+        SliverToBoxAdapter(child: _buildFilterRow(theme)),
+        SessionListWidget(sessions: _filteredSessions),
+        const SliverToBoxAdapter(child: SizedBox(height: 120)),
+      ],
+    );
+  }
+
+  Widget _buildTabletLayout(ThemeData theme) {
+    return Row(
+      children: [
+        Expanded(flex: 5, child: _buildPhoneLayout(theme)),
+        Container(width: 1, color: const Color(0xFF3a494b)),
+        Expanded(
+          flex: 4,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Monthly Breakdown', style: theme.textTheme.titleMedium),
+                const SizedBox(height: 16),
+                MonthlySummaryCardWidget(
+                  totalCost: _totalMonthlyCost,
+                  totalHours: _totalHours,
+                  sessionCount: _sessionCount,
+                  avgDurationMinutes: _sessionMaps.isEmpty
+                      ? 0
+                      : (_sessionMaps.fold<int>(
+                              0,
+                              (s, m) => s + (m['durationMinutes'] as int),
+                            ) ~/
+                            _sessionMaps.length),
+                  vertical: true,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildMetricsRow() {
-    return Row(
-      children: [
-        Expanded(child: _buildMetricCard('Total Revenue', _currencyFmt.format(_totalMonthlyCost))),
-        const SizedBox(width: 24),
-        Expanded(child: _buildMetricCard('Avg. Efficiency', '${_avgEfficiency}%')),
-        const SizedBox(width: 24),
-        Expanded(child: _buildMetricCard('Total Sessions', '$_sessionCount')),
-        const SizedBox(width: 24),
-        Expanded(child: _buildMetricCard('Active Alerts', '$_activeAlerts', isAlert: true)),
-      ],
-    );
-  }
-
-  Widget _buildMetricCard(String title, String value, {bool isAlert = false}) {
-    final color = isAlert ? const Color(0xFFFF4D6A) : AppTheme.primary;
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0A1025).withAlpha(150),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withAlpha(25)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildHeader(ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      child: Row(
         children: [
-          Text(
-            title.toUpperCase(),
-            style: GoogleFonts.spaceGrotesk(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Session History', style: theme.textTheme.headlineMedium),
+                Text(
+                  'NATRAX Proving Ground · May 2026',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: () {},
+            icon: CustomIconWidget(
+              iconName: 'tune',
               color: const Color(0xFFA8B0C8),
-              letterSpacing: 1.5,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            value,
-            style: GoogleFonts.spaceGrotesk(
-              fontSize: 36,
-              fontWeight: FontWeight.w800,
-              color: const Color(0xFFdfe2f0),
-            ),
-          ),
-          const SizedBox(height: 16),
-          // Micro sparkline simulation
-          Container(
-            height: 2,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  color.withAlpha(50),
-                  color,
-                  color.withAlpha(50),
-                ],
-              ),
-            ),
-          )
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTrackMapPanel() {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF0A1025).withAlpha(150),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withAlpha(25)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: Image.asset(
-              'assets/images/track_layout.png',
-              fit: BoxFit.cover,
-            ),
-          ),
-          // Glassmorphism header overlay
-          Positioned(
-            top: 24,
-            left: 24,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: const Color(0xFF050811).withAlpha(200),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white.withAlpha(20)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                      color: AppTheme.primary,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppTheme.primary,
-                          blurRadius: 8,
-                          spreadRadius: 2,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Live Track Status',
-                    style: GoogleFonts.spaceGrotesk(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFFdfe2f0),
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ],
-              ),
+              size: 22,
             ),
           ),
         ],
@@ -348,146 +251,82 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
     );
   }
 
-  Widget _buildRecentSessionsPanel() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0A1025).withAlpha(150),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withAlpha(25)),
-      ),
+  Widget _buildFilterRow(ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'ACTIVE SESSIONS',
-                style: GoogleFonts.spaceGrotesk(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFFA8B0C8),
-                  letterSpacing: 1.5,
+                'Sessions',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: const Color(0xFFdfe2f0),
                 ),
               ),
+              const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: AppTheme.primary.withAlpha(30),
-                  borderRadius: BorderRadius.circular(12),
+                  color: AppTheme.primary.withAlpha(38),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
-                  'LIVE',
-                  style: GoogleFonts.spaceGrotesk(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
+                  '${_filteredSessions.length}',
+                  style: theme.textTheme.labelMedium?.copyWith(
                     color: AppTheme.primary,
-                    letterSpacing: 1.0,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 24),
-          Expanded(
-            child: _sessionMaps.isEmpty
-                ? Center(
-                    child: Text(
-                      'No recent sessions',
-                      style: GoogleFonts.spaceGrotesk(
-                        color: const Color(0xFF6B7490),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: _filters.map((f) {
+                final isSelected = _selectedFilter == f;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: GestureDetector(
+                    onTap: () => setState(() => _selectedFilter = f),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? AppTheme.primary.withAlpha(38)
+                            : const Color(0xFF0A1025),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: isSelected
+                              ? AppTheme.primary.withAlpha(128)
+                              : const Color(0xFF849495),
+                          width: 1,
+                        ),
+                      ),
+                      child: Text(
+                        f,
+                        style: TextStyle(
+                          fontFamily: 'Space Grotesk',
+                          fontSize: 12,
+                          fontWeight: isSelected
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: isSelected
+                              ? AppTheme.primary
+                              : const Color(0xFFA8B0C8),
+                        ),
                       ),
                     ),
-                  )
-                : ListView.separated(
-                    itemCount: _sessionMaps.take(6).length,
-                    separatorBuilder: (_, __) => const Divider(
-                      height: 32,
-                      color: Color(0xFF3a494b),
-                    ),
-                    itemBuilder: (context, index) {
-                      final session = _sessionMaps[index];
-                      final isOngoing = session['status'] == 'in_progress' || session['status'] == 'started';
-                      
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: isOngoing 
-                                ? AppTheme.primary.withAlpha(20)
-                                : const Color(0xFF181B25),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: isOngoing 
-                                  ? AppTheme.primary.withAlpha(60)
-                                  : const Color(0xFF3a494b),
-                              ),
-                            ),
-                            child: Center(
-                              child: CustomIconWidget(
-                                iconName: 'directions_car',
-                                color: isOngoing ? AppTheme.primary : const Color(0xFFA8B0C8),
-                                size: 18,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  session['gate'] ?? 'Unknown Track',
-                                  style: GoogleFonts.spaceGrotesk(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                    color: const Color(0xFFdfe2f0),
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  DateFormat('dd MMM, HH:mm').format(DateTime.parse(session['startTime'])),
-                                  style: GoogleFonts.spaceGrotesk(
-                                    fontSize: 12,
-                                    color: const Color(0xFF6B7490),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: isOngoing 
-                                ? AppTheme.primary.withAlpha(15) 
-                                : const Color(0xFF3a494b).withAlpha(100),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: isOngoing 
-                                  ? AppTheme.primary.withAlpha(50) 
-                                  : Colors.transparent,
-                              ),
-                            ),
-                            child: Text(
-                              isOngoing ? 'Active' : 'Ended',
-                              style: GoogleFonts.spaceGrotesk(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: isOngoing ? AppTheme.primary : const Color(0xFFA8B0C8),
-                              ),
-                            ),
-                          ),
-                        ],
-                      );
-                    },
                   ),
+                );
+              }).toList(),
+            ),
           ),
         ],
       ),
