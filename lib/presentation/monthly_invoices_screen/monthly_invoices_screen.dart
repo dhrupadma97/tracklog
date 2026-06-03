@@ -21,6 +21,9 @@ class MonthlyInvoicesScreen extends StatefulWidget {
 class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
   bool _isLoading = true;
   List<_InvoiceMonth> _invoiceMonths = [];
+  List<_InvoiceLineItem> _allItems = [];
+  List<String> _availableProjects = ['All Projects'];
+  String _selectedProject = 'All Projects';
   int _selectedMonthIndex = 0;
   final _currencyFmt = NumberFormat.compactCurrency(
     locale: 'en_IN',
@@ -43,7 +46,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
       final client = Supabase.instance.client;
       final sessionsRaw = await client
           .from('engineer_sessions')
-          .select('id, track_name, track_code, started_at, ended_at, duration_minutes, total_cost, session_status')
+          .select('id, track_name, track_code, started_at, ended_at, duration_minutes, total_cost, session_status, project_name')
           .eq('engineer_id', uid)
           .eq('session_status', 'completed')
           .order('started_at', ascending: false);
@@ -64,17 +67,23 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
       }
 
       final List<_InvoiceLineItem> allItems = [];
+      final Set<String> projects = {'All Projects'};
+
       for (final s in sessionsRaw) {
         final sessionId = s['id'] as String;
         final startedAt = DateTime.tryParse(s['started_at'] as String? ?? '') ?? DateTime.now();
         final durationMin = (s['duration_minutes'] as int?) ?? 0;
         final sessionCost = (s['total_cost'] as num?)?.toDouble() ?? 0.0;
         final trackName = s['track_name'] as String? ?? '';
+        final projectName = s['project_name'] as String? ?? 'General';
+
+        projects.add(projectName);
 
         allItems.add(_InvoiceLineItem(
           date: startedAt,
           category: 'Session',
           description: trackName,
+          projectName: projectName,
           quantity: durationMin / 60.0,
           unit: 'hrs',
           rate: sessionCost > 0 && durationMin > 0 ? sessionCost / (durationMin / 60.0) : 0,
@@ -101,6 +110,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
             date: startedAt,
             category: category,
             description: svcName,
+            projectName: projectName,
             quantity: qty,
             unit: 'unit',
             rate: rate,
@@ -109,33 +119,47 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
         }
       }
 
-      final Map<String, List<_InvoiceLineItem>> byMonth = {};
-      for (final item in allItems) {
-        final key = DateFormat('MMMM yyyy').format(item.date);
-        byMonth.putIfAbsent(key, () => []).add(item);
-      }
-
-      final months = byMonth.entries.map((e) {
-        final items = e.value;
-        items.sort((a, b) => b.date.compareTo(a.date));
-        return _InvoiceMonth(label: e.key, items: items);
-      }).toList();
-
-      months.sort((a, b) {
-        final da = DateFormat('MMMM yyyy').parse(a.label);
-        final db = DateFormat('MMMM yyyy').parse(b.label);
-        return db.compareTo(da);
-      });
-
       if (mounted) {
         setState(() {
-          _invoiceMonths = months;
-          _selectedMonthIndex = 0;
+          _allItems = allItems;
+          _availableProjects = projects.toList()..sort();
+          if (!_availableProjects.contains(_selectedProject)) {
+            _selectedProject = 'All Projects';
+          }
+          _updateMonths();
           _isLoading = false;
         });
       }
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _updateMonths() {
+    final Map<String, List<_InvoiceLineItem>> byMonth = {};
+    for (final item in _allItems) {
+      if (_selectedProject != 'All Projects' && item.projectName != _selectedProject) {
+        continue;
+      }
+      final key = DateFormat('MMMM yyyy').format(item.date);
+      byMonth.putIfAbsent(key, () => []).add(item);
+    }
+
+    final months = byMonth.entries.map((e) {
+      final items = e.value;
+      items.sort((a, b) => b.date.compareTo(a.date));
+      return _InvoiceMonth(label: e.key, items: items);
+    }).toList();
+
+    months.sort((a, b) {
+      final da = DateFormat('MMMM yyyy').parse(a.label);
+      final db = DateFormat('MMMM yyyy').parse(b.label);
+      return db.compareTo(da);
+    });
+
+    _invoiceMonths = months;
+    if (_selectedMonthIndex >= _invoiceMonths.length) {
+      _selectedMonthIndex = 0;
     }
   }
 
@@ -272,33 +296,76 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
             ),
           ],
         ),
-        if (_invoiceMonths.isNotEmpty)
-          GestureDetector(
-            onTap: _exportCSV,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: AppTheme.primary.withAlpha(20),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppTheme.primary.withAlpha(60)),
-              ),
-              child: Row(
-                children: [
-                  const CustomIconWidget(iconName: 'download', color: AppTheme.primary, size: 18),
-                  const SizedBox(width: 8),
-                  Text(
-                    'EXPORT CSV',
-                    style: GoogleFonts.spaceGrotesk(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.primary,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                ],
               ),
             ),
-          ),
+          ],
+        ),
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0A1025).withAlpha(150),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withAlpha(25)),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _selectedProject,
+                  dropdownColor: const Color(0xFF0A1025),
+                  icon: const Icon(Icons.keyboard_arrow_down, color: AppTheme.primary),
+                  style: GoogleFonts.spaceGrotesk(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFFdfe2f0),
+                  ),
+                  onChanged: (String? newValue) {
+                    if (newValue != null) {
+                      setState(() {
+                        _selectedProject = newValue;
+                        _updateMonths();
+                      });
+                    }
+                  },
+                  items: _availableProjects.map<DropdownMenuItem<String>>((String value) {
+                    return DropdownMenuItem<String>(
+                      value: value,
+                      child: Text(value),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            if (_invoiceMonths.isNotEmpty)
+              GestureDetector(
+                onTap: _exportCSV,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withAlpha(20),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.primary.withAlpha(60)),
+                  ),
+                  child: Row(
+                    children: [
+                      const CustomIconWidget(iconName: 'download', color: AppTheme.primary, size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        'EXPORT CSV',
+                        style: GoogleFonts.spaceGrotesk(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.primary,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
       ],
     );
   }
@@ -651,6 +718,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
                   dividerThickness: 1,
                   columns: const [
                     DataColumn(label: Text('DATE')),
+                    DataColumn(label: Text('PROJECT')),
                     DataColumn(label: Text('CATEGORY')),
                     DataColumn(label: Text('DESCRIPTION')),
                     DataColumn(label: Text('QTY'), numeric: true),
@@ -661,6 +729,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
                     return DataRow(
                       cells: [
                         DataCell(Text(DateFormat('dd MMM yyyy').format(item.date))),
+                        DataCell(Text(item.projectName, style: const TextStyle(color: Color(0xFF849495)))),
                         DataCell(
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -741,6 +810,7 @@ class _InvoiceLineItem {
   final DateTime date;
   final String category;
   final String description;
+  final String projectName;
   final double quantity;
   final String unit;
   final double rate;
@@ -750,6 +820,7 @@ class _InvoiceLineItem {
     required this.date,
     required this.category,
     required this.description,
+    required this.projectName,
     required this.quantity,
     required this.unit,
     required this.rate,

@@ -63,6 +63,8 @@ class EngineerSession {
   final double hourlyRate;
   final double? totalCost;
   final String? notes;
+  final String projectName;
+  final String vehicleName;
 
   EngineerSession({
     required this.id,
@@ -78,6 +80,8 @@ class EngineerSession {
     required this.hourlyRate,
     this.totalCost,
     this.notes,
+    required this.projectName,
+    required this.vehicleName,
   });
 
   factory EngineerSession.fromJson(Map<String, dynamic> json) {
@@ -99,6 +103,8 @@ class EngineerSession {
       hourlyRate: (json['hourly_rate'] as num?)?.toDouble() ?? 0.0,
       totalCost: (json['total_cost'] as num?)?.toDouble(),
       notes: json['notes'] as String?,
+      projectName: json['project_name'] as String? ?? 'General',
+      vehicleName: json['vehicle_name'] as String? ?? 'Standard Vehicle',
     );
   }
 }
@@ -209,6 +215,8 @@ class EngineerAuthService {
     required double hourlyRate,
     String vehicleCategory = 'below_3_5t',
     String bookingType = 'standard',
+    String projectName = 'General',
+    String vehicleName = 'Standard Vehicle',
   }) async {
     final user = currentUser;
     if (user == null) throw Exception('Not signed in');
@@ -224,6 +232,8 @@ class EngineerAuthService {
           'session_status': 'active',
           'started_at': DateTime.now().toIso8601String(),
           'hourly_rate': hourlyRate,
+          'project_name': projectName,
+          'vehicle_name': vehicleName,
         })
         .select('id')
         .single();

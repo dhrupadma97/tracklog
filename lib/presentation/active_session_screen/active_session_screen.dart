@@ -81,6 +81,8 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
 
   // Sand bags — manual qty + date-based rental
   final TextEditingController _sandBagQtyController = TextEditingController();
+  final TextEditingController _projectController = TextEditingController();
+  final TextEditingController _vehicleController = TextEditingController();
   int _sandBagQty = 0;
   DateTime? _sandBagStartDate;
   DateTime? _sandBagEndDate;
@@ -202,6 +204,8 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
           trackCode: _currentTrackType,
           trackName: _currentGate,
           hourlyRate: _hourlyRate,
+          projectName: _projectController.text.trim().isEmpty ? 'General' : _projectController.text.trim(),
+          vehicleName: _vehicleController.text.trim().isEmpty ? 'Standard Vehicle' : _vehicleController.text.trim(),
         )
         .then((sessionId) {
           if (mounted) setState(() => _activeSessionId = sessionId);
@@ -312,6 +316,10 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                     ],
                   ),
                 ),
+                const SizedBox(height: 16),
+                _buildTextField('Project Name (e.g. Mahindra EV PoC)', _projectController),
+                const SizedBox(height: 12),
+                _buildTextField('Vehicle Name (e.g. Mahindra XEV)', _vehicleController),
                 const SizedBox(height: 24),
                 Row(
                   children: [
@@ -549,7 +557,31 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
     _pulseController.dispose();
     _evKwhController.dispose();
     _sandBagQtyController.dispose();
+    _projectController.dispose();
+    _vehicleController.dispose();
     super.dispose();
+  }
+
+  Widget _buildTextField(String hint, TextEditingController controller) {
+    return TextField(
+      controller: controller,
+      style: GoogleFonts.spaceGrotesk(color: const Color(0xFFdfe2f0), fontSize: 14),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: GoogleFonts.spaceGrotesk(color: const Color(0xFF6B7490), fontSize: 14),
+        filled: true,
+        fillColor: const Color(0xFF0A1025),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: const Color(0xFF849495).withAlpha(100)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppTheme.primary),
+        ),
+      ),
+    );
   }
 
   @override
