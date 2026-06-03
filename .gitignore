@@ -59,3 +59,4 @@ node_modules/
 *.xlsx
 /natrax_usage_sheets/
 /reconciliation_reports/
+scratch/  

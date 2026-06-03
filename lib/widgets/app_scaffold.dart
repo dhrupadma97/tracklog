@@ -120,7 +120,7 @@ class _WideScaffoldState extends State<_WideScaffold> {
         label: 'Settings',
         branch: 5,
       ),
-    ];
+    ]);
 
     if (!_isManager) {
       items.add(const _NavItem(

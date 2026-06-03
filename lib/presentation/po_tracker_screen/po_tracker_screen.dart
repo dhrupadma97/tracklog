@@ -227,7 +227,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                       'description': description,
                       'total_po_value': totalPoValue,
                       'tax_amount': taxAmount,
-                      'delivery_date': deliveryDate.toIso860String().split('T')[0],
+                      'delivery_date': deliveryDate.toIso8601String().split('T')[0],
                     });
                     if (mounted) {
                       Navigator.of(ctx).pop();
