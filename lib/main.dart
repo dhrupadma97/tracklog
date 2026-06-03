@@ -12,7 +12,10 @@ void main() async {
 
   // Dynamically inject Google Maps JavaScript SDK script tag on Web
   if (kIsWeb) {
-    const mapsKey = String.fromEnvironment('GOOGLE_MAPS_API_KEY');
+    const mapsKey = String.fromEnvironment(
+      'GOOGLE_MAPS_API_KEY',
+      defaultValue: 'AIzaSyBLnl14i2YIRDYUqxxdTGHhYU9w4W56yqk',
+    );
     if (mapsKey.isNotEmpty) {
       final scriptId = 'google-maps-sdk';
       if (html.document.getElementById(scriptId) == null) {
