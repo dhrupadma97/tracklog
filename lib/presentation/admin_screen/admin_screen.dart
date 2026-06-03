@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/app_export.dart';
 import '../../services/supabase_service.dart';
+import '../../services/engineer_auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_icon_widget.dart';
 
