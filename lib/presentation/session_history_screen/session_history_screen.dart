@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/app_export.dart';
 import '../../services/engineer_auth_service.dart';
@@ -17,6 +18,13 @@ class SessionHistoryScreen extends StatefulWidget {
 
 class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
   List<Map<String, dynamic>> _sessionMaps = [];
+  double _totalExpenseBeforeGst = 0.0;
+  double _totalExpenseInclGst = 0.0;
+  double _usdExpense = 0.0;
+  String _topTrackName = 'N/A';
+  int _topTrackHours = 0;
+  int _activeTestingDays = 0;
+  int _sessionCount = 0;
   bool _isLoading = true;
 
   @override
@@ -28,26 +36,84 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
   Future<void> _loadSessions() async {
     setState(() => _isLoading = true);
     try {
-      final sessions = await EngineerAuthService.instance.getMySessionHistory();
-      final mapped = sessions
-          .map(
-            (s) => {
-              'id': s.id,
-              'gate': s.trackName,
-              'trackType': s.trackCode,
-              'engineer': '',
-              'startTime': s.startedAt.toIso8601String(),
-              'durationMinutes': s.durationMinutes ?? 0,
-              'costINR': s.totalCost ?? 0.0,
-              'hourlyRate': s.hourlyRate,
-              'status': s.sessionStatus,
-              'notes': s.notes ?? '',
-            },
-          )
-          .toList();
+      final uid = EngineerAuthService.instance.currentUser?.id;
+      if (uid == null) return;
+
+      final client = Supabase.instance.client;
+      final sessionsRaw = await client
+          .from('engineer_sessions')
+          .select('id, track_name, track_code, started_at, ended_at, duration_minutes, total_cost, session_status')
+          .eq('engineer_id', uid)
+          .eq('session_status', 'completed');
+
+      final sessionIds = (sessionsRaw as List).map((s) => s['id'] as String).toList();
+      List<dynamic> servicesRaw = [];
+      if (sessionIds.isNotEmpty) {
+        servicesRaw = await client
+            .from('session_additional_services')
+            .select('session_id, total_cost')
+            .inFilter('session_id', sessionIds);
+      }
+
+      final Map<String, double> trackHours = {};
+      final Set<String> uniqueDays = {};
+      double totalExpense = 0.0;
+
+      final mapped = (sessionsRaw).map((s) {
+        final id = s['id'] as String;
+        final trackName = s['track_name'] as String? ?? 'Unknown';
+        final trackCode = s['track_code'] as String? ?? '';
+        final startedAtStr = s['started_at'] as String? ?? '';
+        final durationMin = (s['duration_minutes'] as int?) ?? 0;
+        final costINR = (s['total_cost'] as num?)?.toDouble() ?? 0.0;
+
+        if (startedAtStr.isNotEmpty) {
+          final dt = DateTime.tryParse(startedAtStr);
+          if (dt != null) {
+            uniqueDays.add(DateFormat('yyyy-MM-dd').format(dt));
+          }
+        }
+
+        double durationHrs = durationMin / 60.0;
+        trackHours[trackName] = (trackHours[trackName] ?? 0.0) + durationHrs;
+        totalExpense += costINR;
+
+        return {
+          'id': id,
+          'gate': trackName,
+          'trackType': trackCode,
+          'engineer': '',
+          'startTime': startedAtStr,
+          'durationMinutes': durationMin,
+          'costINR': costINR,
+          'status': s['session_status'],
+        };
+      }).toList();
+
+      for (final svc in servicesRaw) {
+        final cost = (svc['total_cost'] as num?)?.toDouble() ?? 0.0;
+        totalExpense += cost;
+      }
+
+      String bestTrack = 'N/A';
+      double maxHours = 0;
+      trackHours.forEach((track, hrs) {
+        if (hrs > maxHours) {
+          maxHours = hrs;
+          bestTrack = track;
+        }
+      });
+
       if (mounted) {
         setState(() {
           _sessionMaps = mapped;
+          _sessionCount = mapped.length;
+          _totalExpenseBeforeGst = totalExpense;
+          _totalExpenseInclGst = totalExpense * 1.18;
+          _usdExpense = _totalExpenseInclGst / 83.0; // Hardcoded USD conversion
+          _topTrackName = bestTrack;
+          _topTrackHours = maxHours.round();
+          _activeTestingDays = uniqueDays.length;
           _isLoading = false;
         });
       }
@@ -56,15 +122,21 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
     }
   }
 
-  double get _totalMonthlyCost =>
-      _sessionMaps.fold(0.0, (sum, s) => sum + (s['costINR'] as double));
-  int get _sessionCount => _sessionMaps.length;
-  double get _avgEfficiency => 70.2; // Placeholder for now
-  int get _activeAlerts => 2; // Placeholder
-
   final _currencyFmt = NumberFormat.compactCurrency(
     locale: 'en_IN',
     symbol: '₹',
+    decimalDigits: 1,
+  );
+  
+  final _currencyFmtFull = NumberFormat.currency(
+    locale: 'en_IN',
+    symbol: '₹',
+    decimalDigits: 0,
+  );
+
+  final _usdFmt = NumberFormat.compactCurrency(
+    locale: 'en_US',
+    symbol: '\$',
     decimalDigits: 1,
   );
 
@@ -75,22 +147,13 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
       backgroundColor: const Color(0xFF050811), // Deep Space
       body: Stack(
         children: [
-          // Background ambient glow
-          Positioned(
-            top: -200,
-            left: -200,
-            child: Container(
-              width: 600,
-              height: 600,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    const Color(0xFF7000FF).withAlpha(15), // Stellar purple
-                    Colors.transparent,
-                  ],
-                ),
-              ),
+          // Background Image
+          Positioned.fill(
+            child: Image.asset(
+              'assets/images/GYRacing_DesktopTeamsWallpaper_5-1779284234231.png',
+              fit: BoxFit.cover,
+              color: Colors.black.withOpacity(0.6),
+              colorBlendMode: BlendMode.darken,
             ),
           ),
           SafeArea(
@@ -146,10 +209,10 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
             spacing: 16,
             runSpacing: 16,
             children: [
-              SizedBox(width: double.infinity, child: _buildMetricCard('Total Revenue', _currencyFmt.format(_totalMonthlyCost))),
-              SizedBox(width: double.infinity, child: _buildMetricCard('Avg. Efficiency', '${_avgEfficiency}%')),
+              SizedBox(width: double.infinity, child: _buildMetricCard('Total Testing Expense', _currencyFmtFull.format(_totalExpenseInclGst), subtitle: 'Excl GST: ${_currencyFmtFull.format(_totalExpenseBeforeGst)}\nUSD: ${_usdFmt.format(_usdExpense)}')),
+              SizedBox(width: double.infinity, child: _buildMetricCard('Most Utilized Track', _topTrackName, subtitle: '$_topTrackHours Hours')),
               SizedBox(width: double.infinity, child: _buildMetricCard('Total Sessions', '$_sessionCount')),
-              SizedBox(width: double.infinity, child: _buildMetricCard('Active Alerts', '$_activeAlerts', isAlert: true)),
+              SizedBox(width: double.infinity, child: _buildMetricCard('Active Testing Days', '$_activeTestingDays')),
             ],
           ),
         ),
@@ -173,24 +236,41 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        Row(
           children: [
-            Text(
-              'NATRAX TrackLog',
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFFdfe2f0),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Image.asset(
+                'assets/images/goodyear-sightline-logo-single-black-1779279917234.png',
+                height: 40,
+                fit: BoxFit.contain,
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              'Proving Ground Telemetry & Operations',
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 14,
-                color: const Color(0xFFA8B0C8),
-              ),
+            const SizedBox(width: 16),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'NATRAX TrackLog',
+                  style: GoogleFonts.spaceGrotesk(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFFdfe2f0),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Proving Ground Telemetry & Operations',
+                  style: GoogleFonts.spaceGrotesk(
+                    fontSize: 14,
+                    color: const Color(0xFFA8B0C8),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -224,23 +304,22 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
   Widget _buildMetricsRow() {
     return Row(
       children: [
-        Expanded(child: _buildMetricCard('Total Revenue', _currencyFmt.format(_totalMonthlyCost))),
+        Expanded(child: _buildMetricCard('Total Testing Expense', _currencyFmtFull.format(_totalExpenseInclGst), subtitle: 'Excl GST: ${_currencyFmtFull.format(_totalExpenseBeforeGst)}\nUSD: ${_usdFmt.format(_usdExpense)}')),
         const SizedBox(width: 24),
-        Expanded(child: _buildMetricCard('Avg. Efficiency', '${_avgEfficiency}%')),
+        Expanded(child: _buildMetricCard('Most Utilized Track', _topTrackName, subtitle: '$_topTrackHours Hours')),
         const SizedBox(width: 24),
         Expanded(child: _buildMetricCard('Total Sessions', '$_sessionCount')),
         const SizedBox(width: 24),
-        Expanded(child: _buildMetricCard('Active Alerts', '$_activeAlerts', isAlert: true)),
+        Expanded(child: _buildMetricCard('Active Testing Days', '$_activeTestingDays')),
       ],
     );
   }
 
-  Widget _buildMetricCard(String title, String value, {bool isAlert = false}) {
-    final color = isAlert ? const Color(0xFFFF4D6A) : AppTheme.primary;
+   Widget _buildMetricCard(String title, String value, {String? subtitle}) {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: const Color(0xFF0A1025).withAlpha(150),
+        color: const Color(0xFF0A1025).withOpacity(0.85),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withAlpha(25)),
       ),
@@ -253,33 +332,44 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
               fontSize: 12,
               fontWeight: FontWeight.w700,
               color: const Color(0xFFA8B0C8),
-              letterSpacing: 1.5,
+              letterSpacing: 1.2,
             ),
           ),
           const SizedBox(height: 12),
           Text(
             value,
             style: GoogleFonts.spaceGrotesk(
-              fontSize: 36,
-              fontWeight: FontWeight.w800,
-              color: const Color(0xFFdfe2f0),
+              fontSize: 32,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
             ),
           ),
-          const SizedBox(height: 16),
-          // Micro sparkline simulation
-          Container(
-            height: 2,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  color.withAlpha(50),
-                  color,
-                  color.withAlpha(50),
+          if (subtitle != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              subtitle,
+              style: GoogleFonts.spaceGrotesk(
+                fontSize: 12,
+                color: AppTheme.primary,
+              ),
+            ),
+          ] else ...[
+            const SizedBox(height: 12),
+            Container(
+              height: 2,
+              width: 60,
+              decoration: BoxDecoration(
+                color: AppTheme.primary,
+                borderRadius: BorderRadius.circular(2),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.primary.withAlpha(100),
+                    blurRadius: 8,
+                  ),
                 ],
               ),
             ),
-          )
+          ],
         ],
       ),
     );
