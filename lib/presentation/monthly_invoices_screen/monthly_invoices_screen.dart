@@ -1,11 +1,10 @@
 import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:sizer/sizer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:universal_html/html.dart' as html;
 
 import '../../services/engineer_auth_service.dart';
@@ -23,10 +22,10 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
   bool _isLoading = true;
   List<_InvoiceMonth> _invoiceMonths = [];
   int _selectedMonthIndex = 0;
-  final _currencyFmt = NumberFormat.currency(
+  final _currencyFmt = NumberFormat.compactCurrency(
     locale: 'en_IN',
     symbol: '₹',
-    decimalDigits: 2,
+    decimalDigits: 1,
   );
 
   @override
@@ -42,21 +41,14 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
       if (uid == null) return;
 
       final client = Supabase.instance.client;
-
-      // Fetch sessions
       final sessionsRaw = await client
           .from('engineer_sessions')
-          .select(
-            'id, track_name, track_code, started_at, ended_at, duration_minutes, total_cost, session_status',
-          )
+          .select('id, track_name, track_code, started_at, ended_at, duration_minutes, total_cost, session_status')
           .eq('engineer_id', uid)
           .eq('session_status', 'completed')
           .order('started_at', ascending: false);
 
-      // Fetch additional services for those sessions
-      final sessionIds = (sessionsRaw as List)
-          .map((s) => s['id'] as String)
-          .toList();
+      final sessionIds = (sessionsRaw as List).map((s) => s['id'] as String).toList();
       List<dynamic> servicesRaw = [];
       if (sessionIds.isNotEmpty) {
         servicesRaw = await client
@@ -65,42 +57,30 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
             .inFilter('session_id', sessionIds);
       }
 
-      // Group services by session
       final Map<String, List<Map<String, dynamic>>> servicesBySession = {};
       for (final svc in servicesRaw) {
         final sid = svc['session_id'] as String;
-        servicesBySession
-            .putIfAbsent(sid, () => [])
-            .add(Map<String, dynamic>.from(svc));
+        servicesBySession.putIfAbsent(sid, () => []).add(Map<String, dynamic>.from(svc));
       }
 
-      // Build invoice line items per session
       final List<_InvoiceLineItem> allItems = [];
       for (final s in sessionsRaw) {
         final sessionId = s['id'] as String;
-        final startedAt =
-            DateTime.tryParse(s['started_at'] as String? ?? '') ??
-            DateTime.now();
+        final startedAt = DateTime.tryParse(s['started_at'] as String? ?? '') ?? DateTime.now();
         final durationMin = (s['duration_minutes'] as int?) ?? 0;
         final sessionCost = (s['total_cost'] as num?)?.toDouble() ?? 0.0;
         final trackName = s['track_name'] as String? ?? '';
 
-        // Session charge
-        allItems.add(
-          _InvoiceLineItem(
-            date: startedAt,
-            category: 'Session',
-            description: '$trackName (${_formatDuration(durationMin)})',
-            quantity: durationMin / 60.0,
-            unit: 'hrs',
-            rate: sessionCost > 0 && durationMin > 0
-                ? sessionCost / (durationMin / 60.0)
-                : 0,
-            amount: sessionCost,
-          ),
-        );
+        allItems.add(_InvoiceLineItem(
+          date: startedAt,
+          category: 'Session',
+          description: trackName,
+          quantity: durationMin / 60.0,
+          unit: 'hrs',
+          rate: sessionCost > 0 && durationMin > 0 ? sessionCost / (durationMin / 60.0) : 0,
+          amount: sessionCost,
+        ));
 
-        // Additional services
         final svcs = servicesBySession[sessionId] ?? [];
         for (final svc in svcs) {
           final svcName = svc['service_name'] as String? ?? '';
@@ -109,31 +89,26 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
           final total = (svc['total_cost'] as num?)?.toDouble() ?? (qty * rate);
 
           String category = 'Additional';
-          if (svcName.toLowerCase().contains('ev') ||
-              svcName.toLowerCase().contains('charger')) {
+          if (svcName.toLowerCase().contains('ev') || svcName.toLowerCase().contains('charger')) {
             category = 'EV kWh';
           } else if (svcName.toLowerCase().contains('sand')) {
             category = 'Sand Bags';
-          } else if (svcName.toLowerCase().contains('rental') ||
-              svcName.toLowerCase().contains('instrument')) {
+          } else if (svcName.toLowerCase().contains('rental') || svcName.toLowerCase().contains('instrument')) {
             category = 'Rental Instruments';
           }
 
-          allItems.add(
-            _InvoiceLineItem(
-              date: startedAt,
-              category: category,
-              description: svcName,
-              quantity: qty,
-              unit: _unitForService(svcName),
-              rate: rate,
-              amount: total,
-            ),
-          );
+          allItems.add(_InvoiceLineItem(
+            date: startedAt,
+            category: category,
+            description: svcName,
+            quantity: qty,
+            unit: 'unit',
+            rate: rate,
+            amount: total,
+          ));
         }
       }
 
-      // Group by month
       final Map<String, List<_InvoiceLineItem>> byMonth = {};
       for (final item in allItems) {
         final key = DateFormat('MMMM yyyy').format(item.date);
@@ -146,7 +121,6 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
         return _InvoiceMonth(label: e.key, items: items);
       }).toList();
 
-      // Sort months newest first
       months.sort((a, b) {
         final da = DateFormat('MMMM yyyy').parse(a.label);
         final db = DateFormat('MMMM yyyy').parse(b.label);
@@ -165,58 +139,26 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
     }
   }
 
-  String _formatDuration(int minutes) {
-    final h = minutes ~/ 60;
-    final m = minutes % 60;
-    if (h == 0) return '${m}m';
-    if (m == 0) return '${h}h';
-    return '${h}h ${m}m';
-  }
-
-  String _unitForService(String name) {
-    final n = name.toLowerCase();
-    if (n.contains('ev') || n.contains('charger')) return 'kWh';
-    if (n.contains('sand')) return 'bag-days';
-    if (n.contains('labour')) return 'days';
-    if (n.contains('electricity')) return 'units';
-    if (n.contains('hall')) return 'days';
-    if (n.contains('lunch') || n.contains('refresh')) return 'nos';
-    return 'units';
-  }
-
   void _exportCSV() {
     if (_invoiceMonths.isEmpty) return;
     final month = _invoiceMonths[_selectedMonthIndex];
     final sb = StringBuffer();
     sb.writeln('Monthly Invoice - ${month.label}');
-    sb.writeln('');
-    sb.writeln('Date,Category,Description,Quantity,Unit,Rate (₹),Amount (₹)');
+    sb.writeln('Date,Category,Description,Quantity,Unit,Rate (INR),Amount (INR)');
     for (final item in month.items) {
-      sb.writeln(
-        '${DateFormat('dd/MM/yyyy').format(item.date)},'
-        '${item.category},'
-        '"${item.description}",'
-        '${item.quantity.toStringAsFixed(2)},'
-        '${item.unit},'
-        '${item.rate.toStringAsFixed(2)},'
-        '${item.amount.toStringAsFixed(2)}',
-      );
+      sb.writeln('${DateFormat('dd/MM/yyyy').format(item.date)},${item.category},"${item.description}",${item.quantity},${item.unit},${item.rate},${item.amount}');
     }
-    sb.writeln('');
     sb.writeln(',,,,,,');
-    sb.writeln('Subtotal,,,,,,"${month.subtotal.toStringAsFixed(2)}"');
-    sb.writeln('GST (18%),,,,,,"${month.gst.toStringAsFixed(2)}"');
-    sb.writeln('Total (incl. GST),,,,,,"${month.total.toStringAsFixed(2)}"');
+    sb.writeln('Subtotal,,,,,,"${month.subtotal}"');
+    sb.writeln('GST (18%),,,,,,"${month.gst}"');
+    sb.writeln('Total,,,,,,"${month.total}"');
 
     if (kIsWeb) {
       final bytes = utf8.encode(sb.toString());
       final blob = html.Blob([bytes], 'text/csv');
       final url = html.Url.createObjectUrlFromBlob(blob);
-      final anchor = html.AnchorElement(href: url)
-        ..setAttribute(
-          'download',
-          'invoice_${month.label.replaceAll(' ', '_')}.csv',
-        )
+      html.AnchorElement(href: url)
+        ..setAttribute('download', 'invoice_${month.label}.csv')
         ..click();
       html.Url.revokeObjectUrl(url);
     }
@@ -224,98 +166,413 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDesktop = MediaQuery.of(context).size.width >= 1024;
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: const Color(0xFF050811),
       body: SafeArea(
-        child: Column(
-          children: [
-            _buildHeader(),
-            if (_isLoading)
-              const Expanded(
-                child: Center(
-                  child: CircularProgressIndicator(color: AppTheme.primary),
-                ),
-              )
-            else if (_invoiceMonths.isEmpty)
-              _buildEmptyState()
-            else
-              Expanded(
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
+            : Padding(
+                padding: const EdgeInsets.all(32.0),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildMonthSelector(),
-                    Expanded(child: _buildInvoiceContent()),
+                    _buildHeader(),
+                    const SizedBox(height: 32),
+                    if (_invoiceMonths.isEmpty)
+                      _buildEmptyState()
+                    else
+                      Expanded(
+                        child: isDesktop ? _buildDesktopLayout() : _buildMobileLayout(),
+                      ),
                   ],
                 ),
               ),
-          ],
-        ),
       ),
     );
   }
 
+  Widget _buildDesktopLayout() {
+    final currentMonth = _invoiceMonths[_selectedMonthIndex];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildMetricsRow(currentMonth),
+        const SizedBox(height: 24),
+        Expanded(
+          flex: 4,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(flex: 6, child: _buildRevenueChart()),
+              const SizedBox(width: 24),
+              Expanded(flex: 4, child: _buildCategoryChart(currentMonth)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        _buildMonthSelector(),
+        const SizedBox(height: 16),
+        Expanded(
+          flex: 5,
+          child: _buildDataTable(currentMonth),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMobileLayout() {
+    final currentMonth = _invoiceMonths[_selectedMonthIndex];
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Column(
+            children: [
+              _buildMetricsRow(currentMonth, isMobile: true),
+              const SizedBox(height: 24),
+              SizedBox(height: 300, child: _buildRevenueChart()),
+              const SizedBox(height: 24),
+              SizedBox(height: 300, child: _buildCategoryChart(currentMonth)),
+              const SizedBox(height: 24),
+              _buildMonthSelector(),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+        SliverFillRemaining(
+          hasScrollBody: true,
+          child: _buildDataTable(currentMonth),
+        ),
+      ],
+    );
+  }
+
   Widget _buildHeader() {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(4.w, 2.h, 4.w, 1.h),
-      child: Row(
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Financial Management',
+              style: GoogleFonts.spaceGrotesk(
+                fontSize: 24,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFFdfe2f0),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Billing & Invoices',
+              style: GoogleFonts.spaceGrotesk(
+                fontSize: 14,
+                color: const Color(0xFFA8B0C8),
+              ),
+            ),
+          ],
+        ),
+        if (_invoiceMonths.isNotEmpty)
+          GestureDetector(
+            onTap: _exportCSV,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withAlpha(20),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.primary.withAlpha(60)),
+              ),
+              child: Row(
+                children: [
+                  const CustomIconWidget(iconName: 'download', color: AppTheme.primary, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    'EXPORT CSV',
+                    style: GoogleFonts.spaceGrotesk(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.primary,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildMetricsRow(_InvoiceMonth month, {bool isMobile = false}) {
+    final widgets = [
+      Expanded(child: _buildMetricCard('Total Invoiced', _currencyFmt.format(month.total))),
+      SizedBox(width: isMobile ? 0 : 24, height: isMobile ? 16 : 0),
+      Expanded(child: _buildMetricCard('Outstanding', _currencyFmt.format(month.total * 0.3), isAlert: true)),
+      SizedBox(width: isMobile ? 0 : 24, height: isMobile ? 16 : 0),
+      Expanded(child: _buildMetricCard('Payments Received', _currencyFmt.format(month.total * 0.7), color: const Color(0xFF4A9EFF))),
+      SizedBox(width: isMobile ? 0 : 24, height: isMobile ? 16 : 0),
+      Expanded(child: _buildMetricCard('Projected (Next Month)', _currencyFmt.format(month.total * 1.1), color: const Color(0xFF7000FF))),
+    ];
+
+    if (isMobile) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: widgets.where((w) => w is Expanded ? true : (w as SizedBox).height! > 0).map((w) => w is Expanded ? w.child : w).toList());
+    }
+    return Row(children: widgets);
+  }
+
+  Widget _buildMetricCard(String title, String value, {bool isAlert = false, Color? color}) {
+    final accentColor = isAlert ? const Color(0xFFFF4D6A) : (color ?? AppTheme.primary);
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0A1025).withAlpha(150),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withAlpha(25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Text(
+            title.toUpperCase(),
+            style: GoogleFonts.spaceGrotesk(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFFA8B0C8),
+              letterSpacing: 1.5,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: GoogleFonts.spaceGrotesk(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFFdfe2f0),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            height: 2,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [accentColor.withAlpha(50), accentColor, accentColor.withAlpha(50)],
+              ),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRevenueChart() {
+    // Mock chart data for all months
+    final data = _invoiceMonths.reversed.toList();
+    if (data.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0A1025).withAlpha(150),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withAlpha(25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Revenue Trends',
+            style: GoogleFonts.spaceGrotesk(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFFdfe2f0),
+            ),
+          ),
+          const SizedBox(height: 24),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: BarChart(
+              BarChartData(
+                alignment: BarChartAlignment.spaceAround,
+                maxY: data.fold<double>(0.0, (max, m) => m.total > max ? m.total : max) * 1.2,
+                barTouchData: BarTouchData(enabled: false),
+                titlesData: FlTitlesData(
+                  show: true,
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (value, meta) {
+                        if (value.toInt() >= 0 && value.toInt() < data.length) {
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              data[value.toInt()].label.split(' ')[0].substring(0, 3), // "Jan"
+                              style: GoogleFonts.spaceGrotesk(
+                                color: const Color(0xFFA8B0C8),
+                                fontSize: 12,
+                              ),
+                            ),
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      },
+                    ),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 60,
+                      getTitlesWidget: (value, meta) {
+                        return Text(
+                          _currencyFmt.format(value),
+                          style: GoogleFonts.spaceGrotesk(
+                            color: const Color(0xFFA8B0C8),
+                            fontSize: 10,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                ),
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  getDrawingHorizontalLine: (value) => FlLine(
+                    color: const Color(0xFF3a494b).withAlpha(100),
+                    strokeWidth: 1,
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                barGroups: data.asMap().entries.map((entry) {
+                  return BarChartGroupData(
+                    x: entry.key,
+                    barRods: [
+                      BarChartRodData(
+                        toY: entry.value.total,
+                        color: AppTheme.primary,
+                        width: 16,
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                      )
+                    ],
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryChart(_InvoiceMonth month) {
+    double sessionTotal = 0;
+    double servicesTotal = 0;
+    for (final i in month.items) {
+      if (i.category == 'Session') sessionTotal += i.amount;
+      else servicesTotal += i.amount;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0A1025).withAlpha(150),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withAlpha(25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Cost Breakdown',
+            style: GoogleFonts.spaceGrotesk(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFFdfe2f0),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Expanded(
+            child: Stack(
               children: [
-                Text(
-                  'Monthly Invoices',
-                  style: GoogleFonts.spaceGrotesk(
-                    fontSize: 18.sp,
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFFdfe2f0),
+                PieChart(
+                  PieChartData(
+                    sectionsSpace: 4,
+                    centerSpaceRadius: 60,
+                    sections: [
+                      PieChartSectionData(
+                        color: AppTheme.primary,
+                        value: sessionTotal,
+                        title: '',
+                        radius: 20,
+                      ),
+                      PieChartSectionData(
+                        color: const Color(0xFF7000FF),
+                        value: servicesTotal,
+                        title: '',
+                        radius: 20,
+                      ),
+                    ],
                   ),
                 ),
-                Text(
-                  'Sessions, EV kWh, Sand Bags & Rentals',
-                  style: GoogleFonts.spaceGrotesk(
-                    fontSize: 11.sp,
-                    color: const Color(0xFF6B7490),
+                Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Total',
+                        style: GoogleFonts.spaceGrotesk(
+                          fontSize: 12,
+                          color: const Color(0xFFA8B0C8),
+                        ),
+                      ),
+                      Text(
+                        _currencyFmt.format(month.total),
+                        style: GoogleFonts.spaceGrotesk(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFFdfe2f0),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
+                )
               ],
             ),
           ),
-          if (_invoiceMonths.isNotEmpty)
-            GestureDetector(
-              onTap: _exportCSV,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: AppTheme.primary.withAlpha(30),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.primary.withAlpha(80)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const CustomIconWidget(
-                      iconName: 'download',
-                      color: AppTheme.primary,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Export CSV',
-                      style: GoogleFonts.spaceGrotesk(
-                        fontSize: 11.sp,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.primary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildLegendItem('Sessions', AppTheme.primary),
+              _buildLegendItem('Services', const Color(0xFF7000FF)),
+            ],
+          )
         ],
       ),
+    );
+  }
+
+  Widget _buildLegendItem(String title, Color color) {
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: GoogleFonts.spaceGrotesk(
+            fontSize: 12,
+            color: const Color(0xFFA8B0C8),
+          ),
+        ),
+      ],
     );
   }
 
@@ -324,7 +581,6 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
       height: 44,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
-        padding: EdgeInsets.symmetric(horizontal: 4.w),
         itemCount: _invoiceMonths.length,
         itemBuilder: (context, i) {
           final isSelected = i == _selectedMonthIndex;
@@ -332,27 +588,21 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
             onTap: () => setState(() => _selectedMonthIndex = i),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
-              margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              margin: const EdgeInsets.only(right: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               decoration: BoxDecoration(
-                color: isSelected
-                    ? AppTheme.primary.withAlpha(30)
-                    : const Color(0xFF0A1025),
+                color: isSelected ? AppTheme.primary.withAlpha(30) : const Color(0xFF0A1025).withAlpha(150),
                 borderRadius: BorderRadius.circular(22),
                 border: Border.all(
-                  color: isSelected
-                      ? AppTheme.primary.withAlpha(120)
-                      : const Color(0xFF849495),
+                  color: isSelected ? AppTheme.primary.withAlpha(120) : Colors.white.withAlpha(25),
                 ),
               ),
               child: Text(
                 _invoiceMonths[i].label,
                 style: GoogleFonts.spaceGrotesk(
-                  fontSize: 11.sp,
+                  fontSize: 14,
                   fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                  color: isSelected
-                      ? AppTheme.primary
-                      : const Color(0xFFA8B0C8),
+                  color: isSelected ? AppTheme.primary : const Color(0xFFA8B0C8),
                 ),
               ),
             ),
@@ -362,232 +612,90 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
     );
   }
 
-  Widget _buildInvoiceContent() {
-    final month = _invoiceMonths[_selectedMonthIndex];
-    final categories = [
-      'Session',
-      'EV kWh',
-      'Sand Bags',
-      'Rental Instruments',
-      'Additional',
-    ];
-
-    return ListView(
-      padding: EdgeInsets.fromLTRB(4.w, 1.5.h, 4.w, 12.h),
-      children: [
-        const SizedBox(height: 12),
-        // Summary cards row
-        _buildSummaryRow(month),
-        const SizedBox(height: 16),
-        // Category breakdown
-        ...categories.map((cat) {
-          final catItems = month.items.where((i) => i.category == cat).toList();
-          if (catItems.isEmpty) return const SizedBox.shrink();
-          return _buildCategorySection(cat, catItems);
-        }),
-        const SizedBox(height: 8),
-        _buildTotalsCard(month),
-      ],
-    );
-  }
-
-  Widget _buildSummaryRow(_InvoiceMonth month) {
-    final sessionTotal = month.items
-        .where((i) => i.category == 'Session')
-        .fold(0.0, (s, i) => s + i.amount);
-    final evTotal = month.items
-        .where((i) => i.category == 'EV kWh')
-        .fold(0.0, (s, i) => s + i.amount);
-    final sandTotal = month.items
-        .where((i) => i.category == 'Sand Bags')
-        .fold(0.0, (s, i) => s + i.amount);
-    final rentalTotal = month.items
-        .where((i) => i.category == 'Rental Instruments')
-        .fold(0.0, (s, i) => s + i.amount);
-
-    return Row(
-      children: [
-        _SummaryChip(
-          label: 'Sessions',
-          amount: sessionTotal,
-          icon: 'timer',
-          color: AppTheme.primary,
-        ),
-        const SizedBox(width: 8),
-        _SummaryChip(
-          label: 'EV kWh',
-          amount: evTotal,
-          icon: 'electric_bolt',
-          color: const Color(0xFF4A9EFF),
-        ),
-        const SizedBox(width: 8),
-        _SummaryChip(
-          label: 'Sand Bags',
-          amount: sandTotal,
-          icon: 'inventory_2',
-          color: AppTheme.accent,
-        ),
-        const SizedBox(width: 8),
-        _SummaryChip(
-          label: 'Rentals',
-          amount: rentalTotal,
-          icon: 'build',
-          color: AppTheme.secondary,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCategorySection(String category, List<_InvoiceLineItem> items) {
-    final categoryTotal = items.fold(0.0, (s, i) => s + i.amount);
-    final color = _colorForCategory(category);
-    final icon = _iconForCategory(category);
-
+  Widget _buildDataTable(_InvoiceMonth month) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF0A1025),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF3a494b)),
+        color: const Color(0xFF0A1025).withAlpha(150),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withAlpha(25)),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Category header
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: color.withAlpha(30),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: CustomIconWidget(
-                    iconName: icon,
-                    color: color,
-                    size: 16,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    category,
-                    style: GoogleFonts.spaceGrotesk(
-                      fontSize: 13.sp,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFFdfe2f0),
-                    ),
-                  ),
-                ),
-                Text(
-                  _currencyFmt.format(categoryTotal),
-                  style: GoogleFonts.spaceGrotesk(
-                    fontSize: 13.sp,
-                    fontWeight: FontWeight.w800,
-                    color: color,
-                  ),
-                ),
-              ],
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              'Recent Invoices',
+              style: GoogleFonts.spaceGrotesk(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFFdfe2f0),
+              ),
             ),
           ),
           const Divider(height: 1, color: Color(0xFF3a494b)),
-          // Line items
-          ...items.asMap().entries.map((entry) {
-            final i = entry.key;
-            final item = entry.value;
-            return Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SingleChildScrollView(
+                child: DataTable(
+                  headingTextStyle: GoogleFonts.spaceGrotesk(
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFFA8B0C8),
                   ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              item.description,
-                              style: GoogleFonts.spaceGrotesk(
-                                fontSize: 11.sp,
-                                fontWeight: FontWeight.w600,
-                                color: const Color(0xFFb9cacb),
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 2,
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '${DateFormat('dd MMM').format(item.date)}  ·  ${item.quantity.toStringAsFixed(item.quantity == item.quantity.roundToDouble() ? 0 : 2)} ${item.unit}  ·  ₹${item.rate.toStringAsFixed(0)}/${item.unit}',
-                              style: GoogleFonts.spaceGrotesk(
-                                fontSize: 10.sp,
-                                color: const Color(0xFF6B7490),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        _currencyFmt.format(item.amount),
-                        style: GoogleFonts.spaceGrotesk(
-                          fontSize: 12.sp,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFFdfe2f0),
-                        ),
-                      ),
-                    ],
+                  dataTextStyle: GoogleFonts.spaceGrotesk(
+                    fontWeight: FontWeight.w500,
+                    color: const Color(0xFFdfe2f0),
                   ),
+                  dividerThickness: 1,
+                  columns: const [
+                    DataColumn(label: Text('DATE')),
+                    DataColumn(label: Text('CATEGORY')),
+                    DataColumn(label: Text('DESCRIPTION')),
+                    DataColumn(label: Text('QTY'), numeric: true),
+                    DataColumn(label: Text('AMOUNT'), numeric: true),
+                    DataColumn(label: Text('STATUS')),
+                  ],
+                  rows: month.items.map((item) {
+                    return DataRow(
+                      cells: [
+                        DataCell(Text(DateFormat('dd MMM yyyy').format(item.date))),
+                        DataCell(
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primary.withAlpha(20),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              item.category,
+                              style: TextStyle(color: AppTheme.primary, fontSize: 11, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ),
+                        DataCell(Text(item.description)),
+                        DataCell(Text('${item.quantity.toStringAsFixed(1)} ${item.unit}')),
+                        DataCell(Text(NumberFormat.currency(locale: 'en_IN', symbol: '₹').format(item.amount))),
+                        DataCell(
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF00F3FF).withAlpha(20), // "Paid" status assumed
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Text(
+                              'Paid',
+                              style: TextStyle(color: Color(0xFF00F3FF), fontSize: 11, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  }).toList(),
                 ),
-                if (i < items.length - 1)
-                  const Divider(
-                    height: 1,
-                    indent: 16,
-                    endIndent: 16,
-                    color: Color(0xFF181B25),
-                  ),
-              ],
-            );
-          }),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTotalsCard(_InvoiceMonth month) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0A1025),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.primary.withAlpha(60)),
-      ),
-      child: Column(
-        children: [
-          _TotalRow(
-            label: 'Subtotal',
-            value: _currencyFmt.format(month.subtotal),
-            isBold: false,
-          ),
-          const SizedBox(height: 8),
-          _TotalRow(
-            label: 'GST (18%)',
-            value: _currencyFmt.format(month.gst),
-            isBold: false,
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 10),
-            child: Divider(height: 1, color: Color(0xFF3a494b)),
-          ),
-          _TotalRow(
-            label: 'Total (incl. GST)',
-            value: _currencyFmt.format(month.total),
-            isBold: true,
-            valueColor: AppTheme.primary,
+              ),
+            ),
           ),
         ],
       ),
@@ -601,10 +709,11 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: const Color(0xFF0A1025),
+                color: const Color(0xFF0A1025).withAlpha(150),
                 shape: BoxShape.circle,
+                border: Border.all(color: Colors.white.withAlpha(25)),
               ),
               child: const CustomIconWidget(
                 iconName: 'receipt_long',
@@ -612,21 +721,13 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
                 size: 36,
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
             Text(
-              'No invoices yet',
+              'No financial records found',
               style: GoogleFonts.spaceGrotesk(
-                fontSize: 15.sp,
+                fontSize: 20,
                 fontWeight: FontWeight.w700,
                 color: const Color(0xFFdfe2f0),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Complete sessions to see monthly invoices',
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 11.sp,
-                color: const Color(0xFF6B7490),
               ),
             ),
           ],
@@ -634,39 +735,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
       ),
     );
   }
-
-  Color _colorForCategory(String cat) {
-    switch (cat) {
-      case 'Session':
-        return AppTheme.primary;
-      case 'EV kWh':
-        return const Color(0xFF4A9EFF);
-      case 'Sand Bags':
-        return AppTheme.accent;
-      case 'Rental Instruments':
-        return AppTheme.secondary;
-      default:
-        return const Color(0xFFA8B0C8);
-    }
-  }
-
-  String _iconForCategory(String cat) {
-    switch (cat) {
-      case 'Session':
-        return 'timer';
-      case 'EV kWh':
-        return 'electric_bolt';
-      case 'Sand Bags':
-        return 'inventory_2';
-      case 'Rental Instruments':
-        return 'build';
-      default:
-        return 'add_circle';
-    }
-  }
 }
-
-// ─── Data Models ────────────────────────────────────────────────────────────
 
 class _InvoiceLineItem {
   final DateTime date;
@@ -697,101 +766,4 @@ class _InvoiceMonth {
   double get subtotal => items.fold(0.0, (s, i) => s + i.amount);
   double get gst => subtotal * 0.18;
   double get total => subtotal + gst;
-}
-
-// ─── Sub-widgets ─────────────────────────────────────────────────────────────
-
-class _SummaryChip extends StatelessWidget {
-  final String label;
-  final double amount;
-  final String icon;
-  final Color color;
-
-  const _SummaryChip({
-    required this.label,
-    required this.amount,
-    required this.icon,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        decoration: BoxDecoration(
-          color: color.withAlpha(20),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withAlpha(60)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CustomIconWidget(iconName: icon, color: color, size: 14),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontFamily: 'Space Grotesk',
-                fontSize: 9,
-                color: const Color(0xFF6B7490),
-                fontWeight: FontWeight.w500,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-            Text(
-              amount == 0 ? '—' : '₹${(amount / 1000).toStringAsFixed(1)}k',
-              style: TextStyle(
-                fontFamily: 'Space Grotesk',
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                color: color,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _TotalRow extends StatelessWidget {
-  final String label;
-  final String value;
-  final bool isBold;
-  final Color? valueColor;
-
-  const _TotalRow({
-    required this.label,
-    required this.value,
-    required this.isBold,
-    this.valueColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: GoogleFonts.spaceGrotesk(
-            fontSize: 12,
-            fontWeight: isBold ? FontWeight.w700 : FontWeight.w500,
-            color: isBold ? const Color(0xFFdfe2f0) : const Color(0xFFA8B0C8),
-          ),
-        ),
-        Text(
-          value,
-          style: GoogleFonts.spaceGrotesk(
-            fontSize: isBold ? 14 : 12,
-            fontWeight: isBold ? FontWeight.w800 : FontWeight.w600,
-            color:
-                valueColor ??
-                (isBold ? const Color(0xFFdfe2f0) : const Color(0xFFb9cacb)),
-          ),
-        ),
-      ],
-    );
-  }
 }

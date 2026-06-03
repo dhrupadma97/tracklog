@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>NATRAX TrackLog | Manager Operations</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        body {
+            background-color: #050811;
+            color: #dfe2f0;
+            font-family: 'Space Grotesk', sans-serif;
+            overflow-x: hidden;
+        }
+
+        .glass-panel {
+            background: rgba(10, 16, 37, 0.6);
+            backdrop-filter: blur(40px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .glass-panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            border: 1px solid rgba(0, 243, 255, 0.15);
+            pointer-events: none;
+            border-radius: inherit;
+        }
+
+        .stellar-glow {
+            position: fixed;
+            width: 800px;
+            height: 800px;
+            background: radial-gradient(circle, rgba(112, 0, 255, 0.1) 0%, rgba(0, 243, 255, 0.05) 50%, rgba(5, 8, 17, 0) 100%);
+            z-index: -1;
+            filter: blur(60px);
+            pointer-events: none;
+        }
+
+        .antigravity-button {
+            background-color: #00f3ff;
+            color: #050811;
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .antigravity-button:hover {
+            box-shadow: 0 0 25px rgba(0, 243, 255, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .status-glow-optimal {
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.4);
+            background-color: #00f3ff;
+        }
+
+        .status-glow-critical {
+            box-shadow: 0 0 15px rgba(255, 0, 85, 0.6);
+            background-color: #ffb4ab;
+            animation: pulse-critical 2s infinite;
+        }
+
+        @keyframes pulse-critical {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+
+        /* Hide scrollbars but keep functionality */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-dim": "#0f131d",
+                        "surface-bright": "#353944",
+                        "surface": "#0f131d",
+                        "on-background": "#dfe2f0",
+                        "on-secondary-fixed-variant": "#5700c9",
+                        "on-surface": "#dfe2f0",
+                        "background": "#0f131d",
+                        "tertiary-fixed": "#dce1ff",
+                        "secondary-fixed-dim": "#d1bcff",
+                        "on-tertiary-container": "#5a5f78",
+                        "on-primary-container": "#006b71",
+                        "tertiary-container": "#d5daf8",
+                        "secondary-fixed": "#e9ddff",
+                        "inverse-primary": "#00696f",
+                        "surface-tint": "#00dce6",
+                        "surface-container-highest": "#31353f",
+                        "on-secondary-fixed": "#23005b",
+                        "on-primary-fixed": "#002022",
+                        "primary-fixed-dim": "#00dce6",
+                        "on-tertiary": "#2a2f46",
+                        "surface-container-low": "#181b25",
+                        "outline-variant": "#3a494b",
+                        "outline": "#849495",
+                        "primary": "#e3fdff",
+                        "primary-container": "#00f3ff",
+                        "surface-container": "#1c1f29",
+                        "tertiary-fixed-dim": "#c0c5e2",
+                        "on-surface-variant": "#b9cacb",
+                        "primary-fixed": "#6ff6ff",
+                        "tertiary": "#f9f7ff",
+                        "on-error": "#690005",
+                        "secondary-container": "#7000ff",
+                        "on-tertiary-fixed": "#151a30",
+                        "surface-variant": "#31353f",
+                        "on-primary": "#00373a",
+                        "error-container": "#93000a",
+                        "error": "#ffb4ab",
+                        "secondary": "#d1bcff",
+                        "surface-container-high": "#262a34",
+                        "inverse-surface": "#dfe2f0",
+                        "on-tertiary-fixed-variant": "#40465d",
+                        "surface-container-lowest": "#0a0e17",
+                        "on-error-container": "#ffdad6",
+                        "inverse-on-surface": "#2d303b",
+                        "on-secondary": "#3c0090",
+                        "on-secondary-container": "#ddcdff",
+                        "on-primary-fixed-variant": "#004f53"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "1rem",
+                        "lg": "2rem",
+                        "xl": "3rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "container-padding-desktop": "40px",
+                        "stack-md": "16px",
+                        "stack-lg": "32px",
+                        "gutter": "24px",
+                        "stack-sm": "8px",
+                        "container-padding-mobile": "20px"
+                    },
+                    "fontFamily": {
+                        "label-caps": ["Space Grotesk"],
+                        "headline-lg": ["Space Grotesk"],
+                        "body-lg": ["Space Grotesk"],
+                        "data-mono": ["Space Grotesk"],
+                        "display-md": ["Space Grotesk"],
+                        "headline-lg-mobile": ["Space Grotesk"],
+                        "title-md": ["Space Grotesk"],
+                        "body-sm": ["Space Grotesk"],
+                        "display-lg": ["Space Grotesk"]
+                    },
+                    "fontSize": {
+                        "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.1em", "fontWeight": "700"}],
+                        "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "600"}],
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "data-mono": ["18px", {"lineHeight": "24px", "letterSpacing": "0.02em", "fontWeight": "700"}],
+                        "display-md": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "title-md": ["20px", {"lineHeight": "28px", "fontWeight": "500"}],
+                        "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "display-lg": ["72px", {"lineHeight": "80px", "letterSpacing": "-0.04em", "fontWeight": "700"}]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-background text-on-background selection:bg-primary-container selection:text-on-primary-container">
+<!-- Stellar Glow Atmospherics -->
+<div class="stellar-glow top-[-200px] left-[-200px]"></div>
+<div class="stellar-glow bottom-[-200px] right-[-200px]" style="background: radial-gradient(circle, rgba(0, 243, 255, 0.08) 0%, rgba(112, 0, 255, 0.03) 50%, transparent 100%);"></div>
+<!-- Top App Bar -->
+<header class="fixed top-0 w-full z-50 backdrop-blur-xl border-b border-outline-variant/30 flex justify-between items-center px-10 h-16 bg-background/40">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary-container text-3xl">speed</span>
+<h1 class="font-display-md text-headline-lg tracking-tighter text-primary">NATRAX TrackLog</h1>
+</div>
+<nav class="hidden md:flex gap-8">
+<a class="font-label-caps text-primary border-b-2 border-primary-container pb-1" href="#">Operations</a>
+<a class="font-label-caps text-on-surface-variant hover:text-primary transition-colors" href="#">Analytics</a>
+<a class="font-label-caps text-on-surface-variant hover:text-primary transition-colors" href="#">Facility</a>
+<a class="font-label-caps text-on-surface-variant hover:text-primary transition-colors" href="#">Reports</a>
+</nav>
+<div class="flex items-center gap-6">
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors">notifications</button>
+<div class="flex items-center gap-3">
+<div class="text-right hidden sm:block">
+<p class="font-title-md text-sm leading-none text-primary">Arjun Mehta</p>
+<p class="font-label-caps text-[10px] text-on-surface-variant">Ops Manager</p>
+</div>
+<span class="material-symbols-outlined text-4xl text-primary/80">account_circle</span>
+</div>
+</div>
+</header>
+<!-- Main Content Area -->
+<main class="pt-24 pb-24 px-10 min-h-screen">
+<div class="grid grid-cols-12 gap-gutter">
+<!-- Bento Grid Section: Real-time Metrics -->
+<section class="col-span-12 lg:col-span-9 grid grid-cols-1 md:grid-cols-4 gap-gutter mb-gutter">
+<!-- Revenue Card -->
+<div class="glass-panel p-6 rounded-xl flex flex-col justify-between h-40">
+<div>
+<p class="font-label-caps text-on-surface-variant">Projected Revenue</p>
+<h2 class="font-display-md text-display-md mt-2 text-primary">₹8.4M</h2>
+</div>
+<div class="flex items-center gap-2 text-primary-container">
+<span class="material-symbols-outlined text-sm">trending_up</span>
+<span class="font-label-caps text-[10px]">+12.4% vs prev. cycle</span>
+</div>
+</div>
+<!-- Utilization Card -->
+<div class="glass-panel p-6 rounded-xl flex flex-col justify-between h-40">
+<div>
+<p class="font-label-caps text-on-surface-variant">Utilization Rate</p>
+<h2 class="font-display-md text-display-md mt-2 text-primary">78.2%</h2>
+</div>
+<div class="w-full bg-surface-container-highest/30 h-1 rounded-full overflow-hidden">
+<div class="bg-primary-container h-full w-[78.2%]" style="box-shadow: 0 0 10px #00f3ff"></div>
+</div>
+</div>
+<!-- EV Energy Load -->
+<div class="glass-panel p-6 rounded-xl flex flex-col justify-between h-40">
+<div>
+<p class="font-label-caps text-on-surface-variant">EV Grid Load</p>
+<h2 class="font-display-md text-display-md mt-2 text-primary">412 <span class="text-xl">kW</span></h2>
+</div>
+<div class="flex items-center gap-2 text-primary-fixed-dim">
+<span class="material-symbols-outlined text-sm">bolt</span>
+<span class="font-label-caps text-[10px]">Optimal grid health</span>
+</div>
+</div>
+<!-- Active Sessions -->
+<div class="glass-panel p-6 rounded-xl flex flex-col justify-between h-40">
+<div>
+<p class="font-label-caps text-on-surface-variant">Active Sessions</p>
+<h2 class="font-display-md text-display-md mt-2 text-primary">24</h2>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">directions_car</span>
+<span class="font-label-caps text-[10px]">6 Tracks Operational</span>
+</div>
+</div>
+</section>
+<!-- Map View Container -->
+<section class="col-span-12 lg:col-span-9">
+<div class="glass-panel rounded-lg h-[600px] relative">
+<div class="absolute top-6 left-6 z-10 flex flex-col gap-2">
+<div class="bg-surface-dim/80 backdrop-blur-md p-3 border border-outline-variant/30 rounded-lg">
+<h3 class="font-label-caps text-primary text-sm flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-primary-container animate-pulse"></span>
+                                FACILITY LIVE FEED
+                            </h3>
+</div>
+</div>
+<!-- Map Image Placeholder -->
+<div class="w-full h-full overflow-hidden">
+<img alt="Track Map" class="w-full h-full object-cover opacity-60 grayscale brightness-75 contrast-125" data-alt="A futuristic, high-contrast satellite view of an automotive testing facility at night. The track circuits are highlighted with glowing cyan and neon purple lines, depicting a high-tech engineering environment. Dark, deep blue landscapes surround the facility with minimalist data overlays and digital grids superimposed on the topography. The lighting is ethereal and spatial, evoking a next-generation aerospace telemetry dashboard style." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC3Uqh7zfgv73LRj0xzkBI--IwvU_2nC_hlibs4Qy0xpRjXJXiq6kCEY4QrVN-AQ-yH74I5lUU1hLXI9pRhVkNVwEnM7pYoft8JjaujDbsEN8D_822T51u7s7ExYfdTQ-2t75jacIZpCTi2Gri05ejtc9HzOQ7h3i9-GijTT10J7DYYoLrQ9MoU5wy41G-UQzL8gEywADIxehLIWStzu1fMW3U9DOG-HMixg1h3Mf1N3QVuTJEgu2aexJK7vQPWj_s4m11MyhqVHILF"/>
+<!-- Map Overlays (Markers) -->
+<div class="absolute top-1/4 left-1/3 group cursor-pointer">
+<div class="relative">
+<div class="w-4 h-4 bg-primary-container rounded-full status-glow-optimal"></div>
+<div class="absolute top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap bg-surface-dim/90 p-2 rounded border border-primary-container/30">
+<p class="text-[10px] font-label-caps">High Speed Track</p>
+<p class="text-[12px] font-bold text-primary">12 Vehicles Active</p>
+</div>
+</div>
+</div>
+<div class="absolute bottom-1/3 right-1/4 group cursor-pointer">
+<div class="relative">
+<div class="w-4 h-4 bg-error rounded-full status-glow-critical"></div>
+<div class="absolute top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap bg-surface-dim/90 p-2 rounded border border-error/30">
+<p class="text-[10px] font-label-caps">Dynamic Platform</p>
+<p class="text-[12px] font-bold text-error">GEFENCE BREACH</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Map Controls -->
+<div class="absolute bottom-6 right-6 flex flex-col gap-2">
+<button class="w-10 h-10 glass-panel flex items-center justify-center hover:bg-primary-container hover:text-surface transition-all"><span class="material-symbols-outlined">add</span></button>
+<button class="w-10 h-10 glass-panel flex items-center justify-center hover:bg-primary-container hover:text-surface transition-all"><span class="material-symbols-outlined">remove</span></button>
+<button class="w-10 h-10 glass-panel flex items-center justify-center hover:bg-primary-container hover:text-surface transition-all"><span class="material-symbols-outlined">layers</span></button>
+</div>
+</div>
+</section>
+<!-- Sidebar: Critical Events -->
+<aside class="col-span-12 lg:col-span-3 flex flex-col gap-gutter">
+<div class="glass-panel rounded-lg p-6 flex-1 min-h-[400px]">
+<div class="flex items-center justify-between mb-6">
+<h3 class="font-headline-lg-mobile text-primary">Critical Events</h3>
+<span class="bg-error-container/20 text-error text-[10px] px-2 py-1 rounded font-label-caps border border-error/20">3 Active</span>
+</div>
+<div class="space-y-4 overflow-y-auto max-h-[700px] no-scrollbar">
+<!-- Event 1 -->
+<div class="p-4 border border-outline-variant/20 rounded-lg bg-surface-container-low/40">
+<div class="flex justify-between items-start mb-2">
+<span class="font-label-caps text-error text-[10px]">GEOFENCE BREACH</span>
+<span class="font-label-caps text-on-surface-variant text-[10px]">14:22:10</span>
+</div>
+<p class="font-title-md text-sm text-primary">Vehicle ID #40921</p>
+<p class="text-xs text-on-surface-variant mt-1">Exited perimeter: Sector 4 'The Loop' North Edge.</p>
+<div class="mt-3 flex gap-2">
+<button class="px-3 py-1 bg-error text-surface font-label-caps text-[10px] rounded-full hover:brightness-110">RESPOND</button>
+<button class="px-3 py-1 glass-panel text-on-surface-variant font-label-caps text-[10px] rounded-full">DETAILS</button>
+</div>
+</div>
+<!-- Event 2 -->
+<div class="p-4 border border-outline-variant/20 rounded-lg bg-surface-container-low/40">
+<div class="flex justify-between items-start mb-2">
+<span class="font-label-caps text-primary-container text-[10px]">TELEMETRY DROP</span>
+<span class="font-label-caps text-on-surface-variant text-[10px]">14:20:05</span>
+</div>
+<p class="font-title-md text-sm text-primary">Unit: Field Hub 04</p>
+<p class="text-xs text-on-surface-variant mt-1">Signal loss detected at West Oval curve sensors.</p>
+<div class="mt-3 flex gap-2">
+<button class="px-3 py-1 bg-primary-container text-surface font-label-caps text-[10px] rounded-full hover:brightness-110">RECONNECT</button>
+</div>
+</div>
+<!-- Event 3 -->
+<div class="p-4 border border-outline-variant/20 rounded-lg bg-surface-container-low/40 border-l-4 border-l-error">
+<div class="flex justify-between items-start mb-2">
+<span class="font-label-caps text-error text-[10px]">CRITICAL SPEED</span>
+<span class="font-label-caps text-on-surface-variant text-[10px]">14:18:45</span>
+</div>
+<p class="font-title-md text-sm text-primary">Vehicle ID #8812</p>
+<p class="text-xs text-on-surface-variant mt-1">Speed threshold exceeded on Wet Handling Track.</p>
+</div>
+<!-- Event 4 (Neutral) -->
+<div class="p-4 border border-outline-variant/10 rounded-lg bg-surface-container-low/20 opacity-60">
+<div class="flex justify-between items-start mb-2">
+<span class="font-label-caps text-on-surface-variant text-[10px]">SYSTEM UPDATE</span>
+<span class="font-label-caps text-on-surface-variant text-[10px]">13:55:00</span>
+</div>
+<p class="font-title-md text-sm text-primary">V.2.4.1 Deployed</p>
+<p class="text-xs text-on-surface-variant mt-1">Grid monitoring nodes updated successfully.</p>
+</div>
+</div>
+<button class="w-full mt-6 py-3 border border-outline-variant/30 rounded-lg font-label-caps text-xs text-on-surface-variant hover:bg-surface-container-high transition-colors">VIEW EVENT LOG</button>
+</div>
+<!-- Active Managers Mini-Card -->
+<div class="glass-panel rounded-lg p-6">
+<h4 class="font-label-caps text-xs text-on-surface-variant mb-4">ON-TRACK ENGINEERS</h4>
+<div class="space-y-4">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-secondary-container flex items-center justify-center text-xs text-primary">KS</div>
+<div>
+<p class="text-xs font-bold">Karan Sharma</p>
+<p class="text-[10px] text-primary-container">Zone A - Active</p>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center text-xs text-primary">LR</div>
+<div>
+<p class="text-xs font-bold">Lisa Ray</p>
+<p class="text-[10px] text-on-surface-variant">Zone D - Standby</p>
+</div>
+</div>
+</div>
+</div>
+</aside>
+</div>
+</main>
+<!-- Bottom Navigation (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full h-20 glass-panel border-t border-outline-variant/30 flex justify-around items-center px-4 z-50">
+<a class="flex flex-col items-center text-primary pt-1 border-t-2 border-primary-container" href="#">
+<span class="material-symbols-outlined">timer</span>
+<span class="font-label-caps text-[10px] mt-1">Session</span>
+</a>
+<a class="flex flex-col items-center text-on-surface-variant pt-1 hover:text-primary-fixed-dim transition-colors" href="#">
+<span class="material-symbols-outlined">history</span>
+<span class="font-label-caps text-[10px] mt-1">History</span>
+</a>
+<a class="flex flex-col items-center text-on-surface-variant pt-1 hover:text-primary-fixed-dim transition-colors" href="#">
+<span class="material-symbols-outlined">gate</span>
+<span class="font-label-caps text-[10px] mt-1">Gates</span>
+</a>
+<a class="flex flex-col items-center text-on-surface-variant pt-1 hover:text-primary-fixed-dim transition-colors" href="#">
+<span class="material-symbols-outlined">receipt_long</span>
+<span class="font-label-caps text-[10px] mt-1">Invoices</span>
+</a>
+</nav>
+<!-- Floating Action Button -->
+<button class="fixed bottom-24 right-10 w-16 h-16 rounded-full antigravity-button flex items-center justify-center z-50 md:bottom-10">
+<span class="material-symbols-outlined text-3xl">add</span>
+</button>
+<script>
+        // Micro-interaction for number counting
+        document.querySelectorAll('h2.font-display-md').forEach(header => {
+            const originalValue = header.innerText;
+            header.addEventListener('mouseenter', () => {
+                header.classList.add('scale-105', 'text-primary-container');
+            });
+            header.addEventListener('mouseleave', () => {
+                header.classList.remove('scale-105', 'text-primary-container');
+            });
+        });
+
+        // Atmospheric mouse glow effect
+        document.addEventListener('mousemove', (e) => {
+            const glow = document.querySelector('.stellar-glow');
+            const x = e.clientX;
+            const y = e.clientY;
+            // Move second glow subtly with mouse
+            const glows = document.querySelectorAll('.stellar-glow');
+            if (glows[1]) {
+                glows[1].style.transform = `translate(${(x - window.innerWidth/2) * 0.05}px, ${(y - window.innerHeight/2) * 0.05}px)`;
+            }
+        });
+    </script>
+</body></html>

@@ -152,18 +152,18 @@ class AppTheme {
     cardTheme: CardThemeData(
       color: cardDark,
       elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       margin: EdgeInsets.zero,
     ),
     inputDecorationTheme: InputDecorationThemeData(
       filled: true,
       fillColor: surfaceVariantDark,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         borderSide: const BorderSide(color: Color(0xFF849495)),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         borderSide: const BorderSide(color: Color(0xFF849495)),
       ),
       focusedBorder: OutlineInputBorder(
