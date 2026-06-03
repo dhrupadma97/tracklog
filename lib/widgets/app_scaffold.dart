@@ -55,6 +55,7 @@ class _WideScaffold extends StatefulWidget {
 
 class _WideScaffoldState extends State<_WideScaffold> {
   bool _isManager = false;
+  EngineerProfile? _profile;
 
   @override
   void initState() {
@@ -66,6 +67,7 @@ class _WideScaffoldState extends State<_WideScaffold> {
     final profile = await EngineerAuthService.instance.getCurrentProfile();
     if (mounted) {
       setState(() {
+        _profile = profile;
         _isManager = profile?.userRole == 'manager';
       });
     }
@@ -215,6 +217,10 @@ class _WideScaffoldState extends State<_WideScaffold> {
                               ),
                             );
                           }),
+                          const Spacer(),
+                          if (_profile != null || EngineerAuthService.instance.currentUser != null)
+                            _buildProfileSection(context),
+                          const SizedBox(height: 16),
                         ],
                       ),
                     ),
@@ -224,6 +230,125 @@ class _WideScaffoldState extends State<_WideScaffold> {
               // Content
               Expanded(child: widget.navigationShell),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProfileSection(BuildContext context) {
+    final name = _profile?.engineerName ??
+        EngineerAuthService.instance.currentUser?.email?.split('@').first ??
+        'User';
+    final role = _profile?.department ?? (_isManager ? 'Manager' : 'Engineer');
+    final initials = name.isNotEmpty
+        ? name.substring(0, name.length < 2 ? name.length : 2).toUpperCase()
+        : 'U';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF131929).withAlpha(150),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFF3A4460).withAlpha(60),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00C896).withAlpha(30),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: const Color(0xFF00C896).withAlpha(85),
+                    width: 1.5,
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    initials,
+                    style: const TextStyle(
+                      fontFamily: 'Manrope',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF00C896),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        fontFamily: 'Manrope',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFFE8EAF0),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      role,
+                      style: const TextStyle(
+                        fontFamily: 'Manrope',
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF6B7490),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Divider(color: Color(0xFF252E45)),
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: () async {
+              await EngineerAuthService.instance.signOut();
+              if (context.mounted) {
+                context.go('/login');
+              }
+            },
+            borderRadius: BorderRadius.circular(8),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.logout_rounded,
+                    color: Color(0xFFFF6B4A),
+                    size: 16,
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    'Logout',
+                    style: TextStyle(
+                      fontFamily: 'Manrope',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFFFF6B4A),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
