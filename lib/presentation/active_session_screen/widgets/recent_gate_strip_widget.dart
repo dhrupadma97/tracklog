@@ -31,7 +31,7 @@ class RecentGateStripWidget extends StatelessWidget {
               Text(
                 'NATRAX Tracks',
                 style: theme.textTheme.titleSmall?.copyWith(
-                  color: const Color(0xFFE8EAF0),
+                  color: const Color(0xFFdfe2f0),
                 ),
               ),
               const Spacer(),
@@ -63,12 +63,12 @@ class RecentGateStripWidget extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: isSelected
                         ? AppTheme.primary.withAlpha(26)
-                        : const Color(0xFF1A2236),
+                        : const Color(0xFF0A1025),
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(
                       color: isSelected
                           ? AppTheme.primary.withAlpha(128)
-                          : const Color(0xFF3A4460),
+                          : const Color(0xFF849495),
                       width: isSelected ? 1.5 : 1,
                     ),
                   ),
@@ -97,7 +97,7 @@ class RecentGateStripWidget extends StatelessWidget {
                         style: theme.textTheme.titleSmall?.copyWith(
                           color: isSelected
                               ? AppTheme.primary
-                              : const Color(0xFFE8EAF0),
+                              : const Color(0xFFdfe2f0),
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -109,7 +109,7 @@ class RecentGateStripWidget extends StatelessWidget {
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF252E45),
+                          color: const Color(0xFF3a494b),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(

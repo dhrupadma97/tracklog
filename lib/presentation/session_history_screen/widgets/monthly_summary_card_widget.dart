@@ -73,7 +73,7 @@ class MonthlySummaryCardWidget extends StatelessWidget {
                 Text(
                   'Summary',
                   style: theme.textTheme.titleSmall?.copyWith(
-                    color: const Color(0xFFE8EAF0),
+                    color: const Color(0xFFdfe2f0),
                   ),
                 ),
                 const Spacer(),
@@ -83,10 +83,10 @@ class MonthlySummaryCardWidget extends StatelessWidget {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1A2236),
+                    color: const Color(0xFF0A1025),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: const Color(0xFF3A4460),
+                      color: const Color(0xFF849495),
                       width: 1,
                     ),
                   ),
@@ -96,7 +96,7 @@ class MonthlySummaryCardWidget extends StatelessWidget {
                       Text(
                         'Monthly',
                         style: theme.textTheme.labelMedium?.copyWith(
-                          color: const Color(0xFFE8EAF0),
+                          color: const Color(0xFFdfe2f0),
                         ),
                       ),
                       const SizedBox(width: 4),
@@ -185,7 +185,7 @@ class _SummaryCard extends StatelessWidget {
           Text(
             data.value,
             style: TextStyle(
-              fontFamily: 'Manrope',
+              fontFamily: 'Space Grotesk',
               fontSize: 20,
               fontWeight: FontWeight.w800,
               color: Colors.white,

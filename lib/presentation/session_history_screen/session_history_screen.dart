@@ -99,9 +99,9 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
             SnackBar(
               content: Text(
                 'Exporting $_sessionCount sessions...',
-                style: const TextStyle(fontFamily: 'Manrope'),
+                style: const TextStyle(fontFamily: 'Space Grotesk'),
               ),
-              backgroundColor: const Color(0xFF1A2236),
+              backgroundColor: const Color(0xFF0A1025),
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -116,7 +116,7 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
         ),
         label: const Text(
           'Export Report',
-          style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w700),
+          style: TextStyle(fontFamily: 'Space Grotesk', fontWeight: FontWeight.w700),
         ),
         backgroundColor: AppTheme.primary,
         foregroundColor: const Color(0xFF001A10),
@@ -134,7 +134,7 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
               ),
             ),
             Positioned.fill(
-              child: Container(color: const Color(0xFF0A0E1A).withAlpha(220)),
+              child: Container(color: const Color(0xFF050811).withAlpha(220)),
             ),
             _isLoading
                 ? const Center(
@@ -190,7 +190,7 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
     return Row(
       children: [
         Expanded(flex: 5, child: _buildPhoneLayout(theme)),
-        Container(width: 1, color: const Color(0xFF252E45)),
+        Container(width: 1, color: const Color(0xFF3a494b)),
         Expanded(
           flex: 4,
           child: Padding(
@@ -262,7 +262,7 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
               Text(
                 'Sessions',
                 style: theme.textTheme.titleSmall?.copyWith(
-                  color: const Color(0xFFE8EAF0),
+                  color: const Color(0xFFdfe2f0),
                 ),
               ),
               const SizedBox(width: 8),
@@ -300,19 +300,19 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
                       decoration: BoxDecoration(
                         color: isSelected
                             ? AppTheme.primary.withAlpha(38)
-                            : const Color(0xFF1A2236),
+                            : const Color(0xFF0A1025),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
                           color: isSelected
                               ? AppTheme.primary.withAlpha(128)
-                              : const Color(0xFF3A4460),
+                              : const Color(0xFF849495),
                           width: 1,
                         ),
                       ),
                       child: Text(
                         f,
                         style: TextStyle(
-                          fontFamily: 'Manrope',
+                          fontFamily: 'Space Grotesk',
                           fontSize: 12,
                           fontWeight: isSelected
                               ? FontWeight.w700

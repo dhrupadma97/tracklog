@@ -53,7 +53,7 @@ class SessionStatusHeaderWidget extends StatelessWidget {
                 Text(
                   'NATRAX TrackLog',
                   style: theme.textTheme.titleLarge?.copyWith(
-                    color: const Color(0xFFE8EAF0),
+                    color: const Color(0xFFdfe2f0),
                   ),
                 ),
               ],
@@ -86,7 +86,7 @@ class SessionStatusHeaderWidget extends StatelessWidget {
                 Text(
                   gpsLocked ? 'GPS Locked' : 'Searching',
                   style: TextStyle(
-                    fontFamily: 'Manrope',
+                    fontFamily: 'Space Grotesk',
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                     color: gpsLocked ? AppTheme.primary : AppTheme.warning,
@@ -103,12 +103,12 @@ class SessionStatusHeaderWidget extends StatelessWidget {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: const Color(0xFF1C2438),
+                color: const Color(0xFF181B25),
                 shape: BoxShape.circle,
                 border: Border.all(
                   color: sessionActive
                       ? AppTheme.primary.withAlpha(128)
-                      : const Color(0xFF3A4460),
+                      : const Color(0xFF849495),
                   width: 2,
                 ),
               ),
@@ -116,10 +116,10 @@ class SessionStatusHeaderWidget extends StatelessWidget {
                 child: Text(
                   engineerName.isNotEmpty ? engineerName[0].toUpperCase() : 'E',
                   style: const TextStyle(
-                    fontFamily: 'Manrope',
+                    fontFamily: 'Space Grotesk',
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFFE8EAF0),
+                    color: Color(0xFFdfe2f0),
                   ),
                 ),
               ),
@@ -134,22 +134,22 @@ class SessionStatusHeaderWidget extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A2236),
+        backgroundColor: const Color(0xFF0A1025),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16.0),
         ),
         title: Text(
           'Sign Out',
           style: const TextStyle(
-            fontFamily: 'Manrope',
+            fontFamily: 'Space Grotesk',
             fontWeight: FontWeight.w700,
-            color: Color(0xFFE8EAF0),
+            color: Color(0xFFdfe2f0),
           ),
         ),
         content: Text(
           'Sign out of $engineerName\'s profile?',
           style: const TextStyle(
-            fontFamily: 'Manrope',
+            fontFamily: 'Space Grotesk',
             color: Color(0xFFA8B0C8),
             fontSize: 14,
           ),
@@ -159,7 +159,7 @@ class SessionStatusHeaderWidget extends StatelessWidget {
             onPressed: () => Navigator.of(ctx).pop(),
             child: const Text(
               'Cancel',
-              style: TextStyle(fontFamily: 'Manrope', color: Color(0xFFA8B0C8)),
+              style: TextStyle(fontFamily: 'Space Grotesk', color: Color(0xFFA8B0C8)),
             ),
           ),
           TextButton(
@@ -171,7 +171,7 @@ class SessionStatusHeaderWidget extends StatelessWidget {
             child: const Text(
               'Sign Out',
               style: TextStyle(
-                fontFamily: 'Manrope',
+                fontFamily: 'Space Grotesk',
                 color: AppTheme.error,
                 fontWeight: FontWeight.w700,
               ),

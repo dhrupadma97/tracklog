@@ -101,10 +101,10 @@ class _SplashScreenState extends State<SplashScreen>
                     Text(
                       'NATRAX TrackLog',
                       style: TextStyle(
-                        fontFamily: 'Manrope',
+                        fontFamily: 'Space Grotesk',
                         fontSize: 22,
                         fontWeight: FontWeight.w700,
-                        color: const Color(0xFFE8EAF0),
+                        color: const Color(0xFFdfe2f0),
                         letterSpacing: 1.2,
                       ),
                     ),
@@ -112,7 +112,7 @@ class _SplashScreenState extends State<SplashScreen>
                     Text(
                       'Track Utilisation · Indore',
                       style: TextStyle(
-                        fontFamily: 'Manrope',
+                        fontFamily: 'Space Grotesk',
                         fontSize: 13,
                         fontWeight: FontWeight.w400,
                         color: AppTheme.primary.withAlpha(200),

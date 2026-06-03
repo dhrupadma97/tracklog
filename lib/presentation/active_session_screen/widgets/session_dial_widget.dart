@@ -35,7 +35,7 @@ class SessionDialWidget extends StatelessWidget {
     final theme = Theme.of(context);
     final dialColor = sessionActive
         ? AppTheme.primary
-        : const Color(0xFF3A4460);
+        : const Color(0xFF849495);
     final glowColor = sessionActive
         ? AppTheme.primary.withAlpha(77)
         : Colors.transparent;
@@ -44,12 +44,12 @@ class SessionDialWidget extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF131929),
+          color: const Color(0xFF0A1025),
           borderRadius: BorderRadius.circular(28),
           border: Border.all(
             color: sessionActive
                 ? AppTheme.primary.withAlpha(51)
-                : const Color(0xFF252E45),
+                : const Color(0xFF3a494b),
             width: 1,
           ),
           boxShadow: sessionActive
@@ -69,10 +69,10 @@ class SessionDialWidget extends StatelessWidget {
                     vertical: 5,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1C2438),
+                    color: const Color(0xFF181B25),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: const Color(0xFF3A4460),
+                      color: const Color(0xFF849495),
                       width: 1,
                     ),
                   ),
@@ -88,7 +88,7 @@ class SessionDialWidget extends StatelessWidget {
                       Text(
                         gateLabel,
                         style: theme.textTheme.labelMedium?.copyWith(
-                          color: const Color(0xFFE8EAF0),
+                          color: const Color(0xFFdfe2f0),
                         ),
                       ),
                     ],
@@ -130,7 +130,7 @@ class SessionDialWidget extends StatelessWidget {
                     size: const Size(200, 200),
                     painter: _ArcPainter(
                       progress: _progress,
-                      trackColor: const Color(0xFF252E45),
+                      trackColor: const Color(0xFF3a494b),
                       progressColor: dialColor,
                       strokeWidth: 10,
                     ),
@@ -165,10 +165,10 @@ class SessionDialWidget extends StatelessWidget {
                       Text(
                         _formatTime(elapsed),
                         style: const TextStyle(
-                          fontFamily: 'Manrope',
+                          fontFamily: 'Space Grotesk',
                           fontSize: 32,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFFE8EAF0),
+                          color: Color(0xFFdfe2f0),
                           fontFeatures: [FontFeature.tabularFigures()],
                           letterSpacing: 2,
                         ),
@@ -177,7 +177,7 @@ class SessionDialWidget extends StatelessWidget {
                       Text(
                         sessionActive ? 'Session Running' : 'Session Idle',
                         style: TextStyle(
-                          fontFamily: 'Manrope',
+                          fontFamily: 'Space Grotesk',
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
                           color: sessionActive

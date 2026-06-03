@@ -140,7 +140,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
         data: Theme.of(context).copyWith(
           colorScheme: const ColorScheme.dark(
             primary: AppTheme.primary,
-            surface: Color(0xFF1A2236),
+            surface: Color(0xFF0A1025),
           ),
         ),
         child: child!,
@@ -157,7 +157,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
         data: Theme.of(context).copyWith(
           colorScheme: const ColorScheme.dark(
             primary: AppTheme.primary,
-            surface: Color(0xFF1A2236),
+            surface: Color(0xFF0A1025),
           ),
         ),
         child: child!,
@@ -179,7 +179,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
         data: Theme.of(context).copyWith(
           colorScheme: const ColorScheme.dark(
             primary: AppTheme.primary,
-            surface: Color(0xFF1A2236),
+            surface: Color(0xFF0A1025),
           ),
         ),
         child: child!,
@@ -357,7 +357,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
       SnackBar(
         content: Text(
           message,
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.spaceGrotesk(
             fontSize: 13,
             fontWeight: FontWeight.w500,
             color: Colors.white,
@@ -421,15 +421,15 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
               children: [
                 Text(
                   'Manual Entry',
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
-                    color: const Color(0xFFE8EAF0),
+                    color: const Color(0xFFdfe2f0),
                   ),
                 ),
                 Text(
                   'Correct or add track timing records',
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
                     color: const Color(0xFF6B7490),
@@ -479,7 +479,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                   _pendingCount > 0
                       ? 'Offline — $_pendingCount entr${_pendingCount == 1 ? 'y' : 'ies'} queued. Will sync automatically when connected.'
                       : 'You\'re offline. Entries will be queued and synced when connectivity returns.',
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
                     color: const Color(0xFFFF3B30),
@@ -513,7 +513,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
             Expanded(
               child: Text(
                 '$_pendingCount queued entr${_pendingCount == 1 ? 'y' : 'ies'} ready to sync.',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   fontSize: 11,
                   fontWeight: FontWeight.w500,
                   color: const Color(0xFFFF9500),
@@ -546,7 +546,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                       )
                     : Text(
                         'Sync Now',
-                        style: GoogleFonts.manrope(
+                        style: GoogleFonts.spaceGrotesk(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
                           color: const Color(0xFFFF9500),
@@ -581,7 +581,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
             Expanded(
               child: Text(
                 'Use this form to manually add or correct track session timings when the system fails to record automatically.',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   fontSize: 11,
                   fontWeight: FontWeight.w500,
                   color: const Color(0xFFFF9500),
@@ -604,9 +604,9 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
           child: Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: const Color(0xFF1A2236).withAlpha(200),
+              color: const Color(0xFF0A1025).withAlpha(200),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFF3A4460).withAlpha(120)),
+              border: Border.all(color: const Color(0xFF849495).withAlpha(120)),
             ),
             child: Form(
               key: _formKey,
@@ -650,7 +650,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
   Widget _buildSectionLabel(String label) {
     return Text(
       label,
-      style: GoogleFonts.manrope(
+      style: GoogleFonts.spaceGrotesk(
         fontSize: 12,
         fontWeight: FontWeight.w700,
         color: const Color(0xFF6B7490),
@@ -663,19 +663,19 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F1520),
+        color: const Color(0xFF0A1025),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF3A4460).withAlpha(120)),
+        border: Border.all(color: const Color(0xFF849495).withAlpha(120)),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: _selectedTrackCode,
           isExpanded: true,
-          dropdownColor: const Color(0xFF1A2236),
-          style: GoogleFonts.manrope(
+          dropdownColor: const Color(0xFF0A1025),
+          style: GoogleFonts.spaceGrotesk(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: const Color(0xFFE8EAF0),
+            color: const Color(0xFFdfe2f0),
           ),
           items: _tracks.map((t) {
             return DropdownMenuItem<String>(
@@ -737,9 +737,9 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
         decoration: BoxDecoration(
-          color: const Color(0xFF0F1520),
+          color: const Color(0xFF0A1025),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF3A4460).withAlpha(120)),
+          border: Border.all(color: const Color(0xFF849495).withAlpha(120)),
         ),
         child: Column(
           children: [
@@ -747,10 +747,10 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
             const SizedBox(height: 4),
             Text(
               label,
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.spaceGrotesk(
                 fontSize: 10,
                 fontWeight: FontWeight.w600,
-                color: const Color(0xFFE8EAF0),
+                color: const Color(0xFFdfe2f0),
               ),
               textAlign: TextAlign.center,
               overflow: TextOverflow.ellipsis,
@@ -768,14 +768,14 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
           child: TextFormField(
             controller: _durationHrsCtrl,
             keyboardType: TextInputType.number,
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.spaceGrotesk(
               fontSize: 13,
-              color: const Color(0xFFE8EAF0),
+              color: const Color(0xFFdfe2f0),
             ),
             decoration: InputDecoration(
               labelText: 'Hours',
               suffixText: 'hrs',
-              suffixStyle: GoogleFonts.manrope(
+              suffixStyle: GoogleFonts.spaceGrotesk(
                 fontSize: 12,
                 color: const Color(0xFF6B7490),
               ),
@@ -793,14 +793,14 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
           child: TextFormField(
             controller: _durationMinsCtrl,
             keyboardType: TextInputType.number,
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.spaceGrotesk(
               fontSize: 13,
-              color: const Color(0xFFE8EAF0),
+              color: const Color(0xFFdfe2f0),
             ),
             decoration: InputDecoration(
               labelText: 'Minutes',
               suffixText: 'min',
-              suffixStyle: GoogleFonts.manrope(
+              suffixStyle: GoogleFonts.spaceGrotesk(
                 fontSize: 12,
                 color: const Color(0xFF6B7490),
               ),
@@ -822,11 +822,11 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     return TextFormField(
       controller: _costCtrl,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      style: GoogleFonts.manrope(fontSize: 13, color: const Color(0xFFE8EAF0)),
+      style: GoogleFonts.spaceGrotesk(fontSize: 13, color: const Color(0xFFdfe2f0)),
       decoration: InputDecoration(
         labelText: 'Total Cost',
         prefixText: '₹ ',
-        prefixStyle: GoogleFonts.manrope(
+        prefixStyle: GoogleFonts.spaceGrotesk(
           fontSize: 13,
           color: AppTheme.primary,
           fontWeight: FontWeight.w700,
@@ -863,19 +863,19 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
               decoration: BoxDecoration(
                 color: isSelected
                     ? color.withAlpha(30)
-                    : const Color(0xFF0F1520),
+                    : const Color(0xFF0A1025),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
                   color: isSelected
                       ? color.withAlpha(150)
-                      : const Color(0xFF3A4460).withAlpha(80),
+                      : const Color(0xFF849495).withAlpha(80),
                   width: isSelected ? 1.5 : 1,
                 ),
               ),
               child: Text(
                 s['label'] as String,
                 textAlign: TextAlign.center,
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                   color: isSelected ? color : const Color(0xFF6B7490),
@@ -892,7 +892,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     return TextFormField(
       controller: _notesCtrl,
       maxLines: 2,
-      style: GoogleFonts.manrope(fontSize: 13, color: const Color(0xFFE8EAF0)),
+      style: GoogleFonts.spaceGrotesk(fontSize: 13, color: const Color(0xFFdfe2f0)),
       decoration: const InputDecoration(
         labelText: 'Notes',
         hintText: 'e.g. System failure, GPS lost, manual correction...',
@@ -925,7 +925,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
               : isOffline
               ? 'Queue Entry (Offline)'
               : 'Save Entry',
-          style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700),
+          style: GoogleFonts.spaceGrotesk(fontSize: 14, fontWeight: FontWeight.w700),
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: isOffline
@@ -951,9 +951,9 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(
             decoration: BoxDecoration(
-              color: const Color(0xFF1A2236).withAlpha(190),
+              color: const Color(0xFF0A1025).withAlpha(190),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFF3A4460).withAlpha(100)),
+              border: Border.all(color: const Color(0xFF849495).withAlpha(100)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -971,10 +971,10 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                       Expanded(
                         child: Text(
                           'Recent Manual Entries',
-                          style: GoogleFonts.manrope(
+                          style: GoogleFonts.spaceGrotesk(
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
-                            color: const Color(0xFFE8EAF0),
+                            color: const Color(0xFFdfe2f0),
                           ),
                         ),
                       ),
@@ -990,7 +990,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                   ),
                 ),
                 const Divider(
-                  color: Color(0xFF252E45),
+                  color: Color(0xFF3a494b),
                   height: 1,
                   thickness: 1,
                 ),
@@ -1011,7 +1011,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                           child: Text(
                             'No manual entries yet.\nUse the form above to add records.',
                             textAlign: TextAlign.center,
-                            style: GoogleFonts.manrope(
+                            style: GoogleFonts.spaceGrotesk(
                               fontSize: 13,
                               color: const Color(0xFF6B7490),
                             ),
@@ -1023,7 +1023,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                         physics: const NeverScrollableScrollPhysics(),
                         itemCount: _recentEntries.length,
                         separatorBuilder: (_, __) => const Divider(
-                          color: Color(0xFF252E45),
+                          color: Color(0xFF3a494b),
                           height: 1,
                           thickness: 1,
                           indent: 18,
@@ -1061,7 +1061,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                                   child: Center(
                                     child: Text(
                                       trackCode,
-                                      style: GoogleFonts.manrope(
+                                      style: GoogleFonts.spaceGrotesk(
                                         fontSize: 10,
                                         fontWeight: FontWeight.w800,
                                         color: const Color(0xFFFF9500),
@@ -1077,10 +1077,10 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                                     children: [
                                       Text(
                                         trackName,
-                                        style: GoogleFonts.manrope(
+                                        style: GoogleFonts.spaceGrotesk(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w600,
-                                          color: const Color(0xFFE8EAF0),
+                                          color: const Color(0xFFdfe2f0),
                                         ),
                                         overflow: TextOverflow.ellipsis,
                                       ),
@@ -1090,7 +1090,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                                                 'dd MMM yyyy',
                                               ).format(startedAt)
                                             : '—',
-                                        style: GoogleFonts.manrope(
+                                        style: GoogleFonts.spaceGrotesk(
                                           fontSize: 11,
                                           color: const Color(0xFF6B7490),
                                         ),
@@ -1103,7 +1103,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                                   children: [
                                     Text(
                                       '₹${cost.toStringAsFixed(0)}',
-                                      style: GoogleFonts.manrope(
+                                      style: GoogleFonts.spaceGrotesk(
                                         fontSize: 13,
                                         fontWeight: FontWeight.w700,
                                         color: AppTheme.primary,
@@ -1111,7 +1111,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                                     ),
                                     Text(
                                       '${durationMins ~/ 60}h ${durationMins % 60}m',
-                                      style: GoogleFonts.manrope(
+                                      style: GoogleFonts.spaceGrotesk(
                                         fontSize: 11,
                                         color: const Color(0xFF6B7490),
                                       ),

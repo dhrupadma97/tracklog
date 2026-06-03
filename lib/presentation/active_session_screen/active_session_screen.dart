@@ -228,7 +228,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
           child: Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: const Color(0xFF1A2236),
+              color: const Color(0xFF0A1025),
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: AppTheme.primary.withAlpha(100),
@@ -265,17 +265,17 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                 const SizedBox(height: 16),
                 Text(
                   'Start Testing Session',
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
-                    color: const Color(0xFFE8EAF0),
+                    color: const Color(0xFFdfe2f0),
                   ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'You are about to begin a track testing session.\nMake sure all equipment is ready before proceeding.',
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     fontSize: 13,
                     color: const Color(0xFF6B7490),
                     height: 1.5,
@@ -289,7 +289,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                     vertical: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0F1520),
+                    color: const Color(0xFF0A1025),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(
@@ -303,7 +303,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                       const SizedBox(width: 6),
                       Text(
                         _currentGate,
-                        style: GoogleFonts.manrope(
+                        style: GoogleFonts.spaceGrotesk(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
                           color: AppTheme.primary,
@@ -323,13 +323,13 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
                             side: BorderSide(
-                              color: const Color(0xFF3A4460).withAlpha(150),
+                              color: const Color(0xFF849495).withAlpha(150),
                             ),
                           ),
                         ),
                         child: Text(
                           'Cancel',
-                          style: GoogleFonts.manrope(
+                          style: GoogleFonts.spaceGrotesk(
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
                             color: const Color(0xFF6B7490),
@@ -355,7 +355,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                         ),
                         child: Text(
                           'Start Now',
-                          style: GoogleFonts.manrope(
+                          style: GoogleFonts.spaceGrotesk(
                             fontSize: 14,
                             fontWeight: FontWeight.w800,
                           ),
@@ -576,9 +576,9 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    const Color(0xFF0A0E1A).withAlpha(230),
-                    const Color(0xFF0A0E1A).withAlpha(210),
-                    const Color(0xFF0A0E1A).withAlpha(240),
+                    const Color(0xFF050811).withAlpha(230),
+                    const Color(0xFF050811).withAlpha(210),
+                    const Color(0xFF050811).withAlpha(240),
                   ],
                 ),
               ),
@@ -623,7 +623,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                   Expanded(
                     child: Text(
                       'Manager View — Read Only. Session controls are disabled.',
-                      style: GoogleFonts.manrope(
+                      style: GoogleFonts.spaceGrotesk(
                         color: const Color(0xFF9C88FF),
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
@@ -681,7 +681,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                       width: 3,
                       height: 14,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF00C896),
+                        color: const Color(0xFF00F3FF),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -689,10 +689,10 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                     const Text(
                       'Live Track Map',
                       style: TextStyle(
-                        fontFamily: 'Manrope',
+                        fontFamily: 'Space Grotesk',
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFFE8EAF0),
+                        color: Color(0xFFdfe2f0),
                       ),
                     ),
                     const Spacer(),
@@ -703,10 +703,10 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                           vertical: 3,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF00C896).withAlpha(30),
+                          color: const Color(0xFF00F3FF).withAlpha(30),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                            color: const Color(0xFF00C896).withAlpha(80),
+                            color: const Color(0xFF00F3FF).withAlpha(80),
                             width: 1,
                           ),
                         ),
@@ -717,7 +717,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                               width: 5,
                               height: 5,
                               decoration: const BoxDecoration(
-                                color: Color(0xFF00C896),
+                                color: Color(0xFF00F3FF),
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -725,10 +725,10 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                             const Text(
                               'Tracking',
                               style: TextStyle(
-                                fontFamily: 'Manrope',
+                                fontFamily: 'Space Grotesk',
                                 fontSize: 9,
                                 fontWeight: FontWeight.w700,
-                                color: Color(0xFF00C896),
+                                color: Color(0xFF00F3FF),
                               ),
                             ),
                           ],
@@ -785,10 +785,10 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
               margin: const EdgeInsets.symmetric(horizontal: 20),
               padding: const EdgeInsets.symmetric(vertical: 14),
               decoration: BoxDecoration(
-                color: const Color(0xFF1A2236).withAlpha(180),
+                color: const Color(0xFF0A1025).withAlpha(180),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: const Color(0xFF3A4460).withAlpha(100),
+                  color: const Color(0xFF849495).withAlpha(100),
                 ),
               ),
               child: Row(
@@ -802,7 +802,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                   const SizedBox(width: 8),
                   Text(
                     'Session controls restricted to engineers',
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.spaceGrotesk(
                       color: const Color(0xFF4A5470),
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
@@ -839,10 +839,10 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: const Color(0xFFE8500A).withAlpha(20),
+          color: const Color(0xFF00F3FF).withAlpha(20),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: const Color(0xFFE8500A).withAlpha(80),
+            color: const Color(0xFF00F3FF).withAlpha(80),
             width: 1,
           ),
         ),
@@ -850,7 +850,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
           children: [
             const Icon(
               Icons.info_outline_rounded,
-              color: Color(0xFFE8500A),
+              color: Color(0xFF00F3FF),
               size: 16,
             ),
             const SizedBox(width: 8),
@@ -861,7 +861,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                   Text(
                     'T1/T2/T3 — 2 Hour Daily Minimum',
                     style: theme.textTheme.labelSmall?.copyWith(
-                      color: const Color(0xFFE8500A),
+                      color: const Color(0xFF00F3FF),
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -889,9 +889,9 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A2236),
+          color: const Color(0xFF0A1025),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFF252E45), width: 1),
+          border: Border.all(color: const Color(0xFF3a494b), width: 1),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -956,7 +956,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                           Text(
                             service,
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: const Color(0xFFE8EAF0),
+                              color: const Color(0xFFdfe2f0),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -1010,8 +1010,8 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                             textAlign: TextAlign.right,
                             style: theme.textTheme.titleSmall?.copyWith(
                               color: qty > 0
-                                  ? const Color(0xFFE8EAF0)
-                                  : const Color(0xFF3A4460),
+                                  ? const Color(0xFFdfe2f0)
+                                  : const Color(0xFF849495),
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -1035,7 +1035,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                       Text(
                         'Universal EV Charger',
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFFE8EAF0),
+                          color: const Color(0xFFdfe2f0),
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -1051,19 +1051,19 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                       decimal: true,
                     ),
                     textAlign: TextAlign.center,
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.spaceGrotesk(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                       color: const Color(0xFF6C63FF),
                     ),
                     decoration: InputDecoration(
                       hintText: '0',
-                      hintStyle: GoogleFonts.manrope(
+                      hintStyle: GoogleFonts.spaceGrotesk(
                         fontSize: 13,
-                        color: const Color(0xFF3A4460),
+                        color: const Color(0xFF849495),
                       ),
                       suffixText: 'kWh',
-                      suffixStyle: GoogleFonts.manrope(
+                      suffixStyle: GoogleFonts.spaceGrotesk(
                         fontSize: 10,
                         color: const Color(0xFF6B7490),
                       ),
@@ -1073,7 +1073,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                         vertical: 8,
                       ),
                       filled: true,
-                      fillColor: const Color(0xFF252E45),
+                      fillColor: const Color(0xFF3a494b),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                         borderSide: BorderSide.none,
@@ -1094,8 +1094,8 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                     textAlign: TextAlign.right,
                     style: theme.textTheme.titleSmall?.copyWith(
                       color: _evKwh > 0
-                          ? const Color(0xFFE8EAF0)
-                          : const Color(0xFF3A4460),
+                          ? const Color(0xFFdfe2f0)
+                          : const Color(0xFF849495),
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -1116,7 +1116,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                       Text(
                         'Sand bags 20/50kg',
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFFE8EAF0),
+                          color: const Color(0xFFdfe2f0),
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -1133,19 +1133,19 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                     controller: _sandBagQtyController,
                     keyboardType: TextInputType.number,
                     textAlign: TextAlign.center,
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.spaceGrotesk(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                       color: const Color(0xFF6C63FF),
                     ),
                     decoration: InputDecoration(
                       hintText: '0',
-                      hintStyle: GoogleFonts.manrope(
+                      hintStyle: GoogleFonts.spaceGrotesk(
                         fontSize: 13,
-                        color: const Color(0xFF3A4460),
+                        color: const Color(0xFF849495),
                       ),
                       suffixText: 'bags',
-                      suffixStyle: GoogleFonts.manrope(
+                      suffixStyle: GoogleFonts.spaceGrotesk(
                         fontSize: 10,
                         color: const Color(0xFF6B7490),
                       ),
@@ -1155,7 +1155,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                         vertical: 8,
                       ),
                       filled: true,
-                      fillColor: const Color(0xFF252E45),
+                      fillColor: const Color(0xFF3a494b),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                         borderSide: BorderSide.none,
@@ -1191,7 +1191,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                             data: Theme.of(ctx).copyWith(
                               colorScheme: const ColorScheme.dark(
                                 primary: Color(0xFF6C63FF),
-                                surface: Color(0xFF1A2236),
+                                surface: Color(0xFF0A1025),
                               ),
                             ),
                             child: child!,
@@ -1221,7 +1221,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                             data: Theme.of(ctx).copyWith(
                               colorScheme: const ColorScheme.dark(
                                 primary: Color(0xFF6C63FF),
-                                surface: Color(0xFF1A2236),
+                                surface: Color(0xFF0A1025),
                               ),
                             ),
                             child: child!,
@@ -1259,7 +1259,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                             .inDays;
                         return Text(
                           '$_sandBagQty bags × ${days > 0 ? days : 0} days × ₹150',
-                          style: GoogleFonts.manrope(
+                          style: GoogleFonts.spaceGrotesk(
                             fontSize: 11,
                             color: const Color(0xFFA8B0C8),
                           ),
@@ -1269,7 +1269,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                         _sandBagRentalCost > 0
                             ? '₹${_sandBagRentalCost.toStringAsFixed(0)}'
                             : '—',
-                        style: GoogleFonts.manrope(
+                        style: GoogleFonts.spaceGrotesk(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
                           color: const Color(0xFF6C63FF),
@@ -1314,10 +1314,10 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF252E45),
+                  color: const Color(0xFF3a494b),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: const Color(0xFF3A4460),
+                    color: const Color(0xFF849495),
                     style: BorderStyle.solid,
                   ),
                 ),
@@ -1332,7 +1332,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                     const SizedBox(width: 6),
                     Text(
                       'Add Rental Instrument',
-                      style: GoogleFonts.manrope(
+                      style: GoogleFonts.spaceGrotesk(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: const Color(0xFF6C63FF),
@@ -1366,7 +1366,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
 
             if (_additionalServicesCost > 0) ...[
               const SizedBox(height: 10),
-              Container(height: 1, color: const Color(0xFF252E45)),
+              Container(height: 1, color: const Color(0xFF3a494b)),
               const SizedBox(height: 10),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1374,7 +1374,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                   Text(
                     'Total (Track + Services)',
                     style: theme.textTheme.titleSmall?.copyWith(
-                      color: const Color(0xFFE8EAF0),
+                      color: const Color(0xFFdfe2f0),
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -1397,11 +1397,11 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
   Widget _buildSectionDivider(ThemeData theme, String label) {
     return Row(
       children: [
-        Container(height: 1, width: 20, color: const Color(0xFF252E45)),
+        Container(height: 1, width: 20, color: const Color(0xFF3a494b)),
         const SizedBox(width: 8),
         Text(
           label,
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.spaceGrotesk(
             fontSize: 10,
             fontWeight: FontWeight.w700,
             color: const Color(0xFF6B7490),
@@ -1409,7 +1409,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
           ),
         ),
         const SizedBox(width: 8),
-        Expanded(child: Container(height: 1, color: const Color(0xFF252E45))),
+        Expanded(child: Container(height: 1, color: const Color(0xFF3a494b))),
       ],
     );
   }
@@ -1425,7 +1425,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
         decoration: BoxDecoration(
-          color: const Color(0xFF252E45),
+          color: const Color(0xFF3a494b),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
@@ -1442,7 +1442,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                 children: [
                   Text(
                     label,
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.spaceGrotesk(
                       fontSize: 9,
                       color: const Color(0xFF6B7490),
                     ),
@@ -1451,12 +1451,12 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                     date != null
                         ? DateFormat('dd MMM yyyy').format(date)
                         : 'Select',
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.spaceGrotesk(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                       color: date != null
-                          ? const Color(0xFFE8EAF0)
-                          : const Color(0xFF3A4460),
+                          ? const Color(0xFFdfe2f0)
+                          : const Color(0xFF849495),
                     ),
                   ),
                 ],
@@ -1496,7 +1496,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
         decoration: BoxDecoration(
           color: const Color(0xFF1A2235),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFF3A4460), width: 1),
+          border: Border.all(color: const Color(0xFF849495), width: 1),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1565,7 +1565,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
     return Row(
       children: [
         Expanded(flex: 6, child: _buildPhoneLayout(theme)),
-        Container(width: 1, color: const Color(0xFF252E45)),
+        Container(width: 1, color: const Color(0xFF3a494b)),
         Expanded(flex: 4, child: _buildTabletSidebar(theme)),
       ],
     );
@@ -1617,7 +1617,7 @@ class _ServiceQtyButton extends StatelessWidget {
         width: 28,
         height: 28,
         decoration: BoxDecoration(
-          color: const Color(0xFF252E45),
+          color: const Color(0xFF3a494b),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(icon, color: const Color(0xFFA8B0C8), size: 16),
@@ -1687,7 +1687,7 @@ class _DetailRow extends StatelessWidget {
           Text(
             value,
             style: theme.textTheme.titleSmall?.copyWith(
-              color: const Color(0xFFE8EAF0),
+              color: const Color(0xFFdfe2f0),
             ),
           ),
         ],
@@ -1751,9 +1751,9 @@ class _SessionSummarySheet extends StatelessWidget {
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: const Color(0xFF131929),
+        color: const Color(0xFF0A1025),
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: const Color(0xFF3A4460), width: 1),
+        border: Border.all(color: const Color(0xFF849495), width: 1),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1839,10 +1839,10 @@ class _SessionSummarySheet extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFFE8500A).withAlpha(20),
+                color: const Color(0xFF00F3FF).withAlpha(20),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: const Color(0xFFE8500A).withAlpha(60),
+                  color: const Color(0xFF00F3FF).withAlpha(60),
                   width: 1,
                 ),
               ),
@@ -1850,7 +1850,7 @@ class _SessionSummarySheet extends StatelessWidget {
                 children: [
                   const Icon(
                     Icons.info_outline_rounded,
-                    color: Color(0xFFE8500A),
+                    color: Color(0xFF00F3FF),
                     size: 14,
                   ),
                   const SizedBox(width: 6),
@@ -1860,7 +1860,7 @@ class _SessionSummarySheet extends StatelessWidget {
                           ? 'Minimum 2h daily charge applied for $trackCode track'
                           : 'Charged at actual daily usage (${totalDailyHours.toStringAsFixed(2)}h > 2h minimum)',
                       style: theme.textTheme.labelSmall?.copyWith(
-                        color: const Color(0xFFE8500A),
+                        color: const Color(0xFF00F3FF),
                       ),
                     ),
                   ),
@@ -1873,9 +1873,9 @@ class _SessionSummarySheet extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: const Color(0xFF1A2236),
+              color: const Color(0xFF0A1025),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFF252E45), width: 1),
+              border: Border.all(color: const Color(0xFF3a494b), width: 1),
             ),
             child: Column(
               children: [
@@ -1892,12 +1892,12 @@ class _SessionSummarySheet extends StatelessWidget {
                 ),
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 8),
-                  child: Divider(color: Color(0xFF252E45), height: 1),
+                  child: Divider(color: Color(0xFF3a494b), height: 1),
                 ),
                 _InvoiceRow(
                   label: 'Subtotal (Excl. GST)',
                   value: '₹${subtotalExclGst.toStringAsFixed(0)}',
-                  color: const Color(0xFFE8EAF0),
+                  color: const Color(0xFFdfe2f0),
                   bold: true,
                 ),
                 const SizedBox(height: 6),
@@ -1926,7 +1926,7 @@ class _SessionSummarySheet extends StatelessWidget {
                 Text(
                   'Total Invoice (incl. GST)',
                   style: theme.textTheme.titleMedium?.copyWith(
-                    color: const Color(0xFFE8EAF0),
+                    color: const Color(0xFFdfe2f0),
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -1949,7 +1949,7 @@ class _SessionSummarySheet extends StatelessWidget {
               label: const Text(
                 'Done',
                 style: TextStyle(
-                  fontFamily: 'Manrope',
+                  fontFamily: 'Space Grotesk',
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -2122,9 +2122,9 @@ class _RentalInstrumentRowState extends State<_RentalInstrumentRow> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF252E45),
+        color: const Color(0xFF3a494b),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF3A4460).withAlpha(80)),
+        border: Border.all(color: const Color(0xFF849495).withAlpha(80)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2134,16 +2134,16 @@ class _RentalInstrumentRowState extends State<_RentalInstrumentRow> {
               Expanded(
                 child: TextField(
                   controller: _nameCtrl,
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     fontSize: 12,
-                    color: const Color(0xFFE8EAF0),
+                    color: const Color(0xFFdfe2f0),
                     fontWeight: FontWeight.w600,
                   ),
                   decoration: InputDecoration(
                     hintText: 'Instrument name',
-                    hintStyle: GoogleFonts.manrope(
+                    hintStyle: GoogleFonts.spaceGrotesk(
                       fontSize: 12,
-                      color: const Color(0xFF3A4460),
+                      color: const Color(0xFF849495),
                     ),
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(
@@ -2151,7 +2151,7 @@ class _RentalInstrumentRowState extends State<_RentalInstrumentRow> {
                       vertical: 8,
                     ),
                     filled: true,
-                    fillColor: const Color(0xFF1A2236),
+                    fillColor: const Color(0xFF0A1025),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide.none,
@@ -2188,23 +2188,23 @@ class _RentalInstrumentRowState extends State<_RentalInstrumentRow> {
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     fontSize: 12,
-                    color: const Color(0xFFE8EAF0),
+                    color: const Color(0xFFdfe2f0),
                   ),
                   decoration: InputDecoration(
                     hintText: '0',
-                    hintStyle: GoogleFonts.manrope(
+                    hintStyle: GoogleFonts.spaceGrotesk(
                       fontSize: 12,
-                      color: const Color(0xFF3A4460),
+                      color: const Color(0xFF849495),
                     ),
                     prefixText: '₹ ',
-                    prefixStyle: GoogleFonts.manrope(
+                    prefixStyle: GoogleFonts.spaceGrotesk(
                       fontSize: 12,
                       color: const Color(0xFF6B7490),
                     ),
                     suffixText: '/day',
-                    suffixStyle: GoogleFonts.manrope(
+                    suffixStyle: GoogleFonts.spaceGrotesk(
                       fontSize: 10,
                       color: const Color(0xFF6B7490),
                     ),
@@ -2214,7 +2214,7 @@ class _RentalInstrumentRowState extends State<_RentalInstrumentRow> {
                       vertical: 8,
                     ),
                     filled: true,
-                    fillColor: const Color(0xFF1A2236),
+                    fillColor: const Color(0xFF0A1025),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide.none,
@@ -2231,18 +2231,18 @@ class _RentalInstrumentRowState extends State<_RentalInstrumentRow> {
                 child: TextField(
                   controller: _daysCtrl,
                   keyboardType: TextInputType.number,
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     fontSize: 12,
-                    color: const Color(0xFFE8EAF0),
+                    color: const Color(0xFFdfe2f0),
                   ),
                   decoration: InputDecoration(
                     hintText: '0',
-                    hintStyle: GoogleFonts.manrope(
+                    hintStyle: GoogleFonts.spaceGrotesk(
                       fontSize: 12,
-                      color: const Color(0xFF3A4460),
+                      color: const Color(0xFF849495),
                     ),
                     suffixText: 'days',
-                    suffixStyle: GoogleFonts.manrope(
+                    suffixStyle: GoogleFonts.spaceGrotesk(
                       fontSize: 10,
                       color: const Color(0xFF6B7490),
                     ),
@@ -2252,7 +2252,7 @@ class _RentalInstrumentRowState extends State<_RentalInstrumentRow> {
                       vertical: 8,
                     ),
                     filled: true,
-                    fillColor: const Color(0xFF1A2236),
+                    fillColor: const Color(0xFF0A1025),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide.none,
@@ -2270,12 +2270,12 @@ class _RentalInstrumentRowState extends State<_RentalInstrumentRow> {
                 child: Text(
                   cost > 0 ? '₹${cost.toStringAsFixed(0)}' : '—',
                   textAlign: TextAlign.right,
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     color: cost > 0
                         ? const Color(0xFF6C63FF)
-                        : const Color(0xFF3A4460),
+                        : const Color(0xFF849495),
                   ),
                 ),
               ),

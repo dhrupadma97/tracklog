@@ -130,9 +130,9 @@ class _GateManagementScreenState extends State<GateManagementScreen> {
       SnackBar(
         content: const Text(
           'Gate removed',
-          style: TextStyle(fontFamily: 'Manrope'),
+          style: TextStyle(fontFamily: 'Space Grotesk'),
         ),
-        backgroundColor: const Color(0xFF1A2236),
+        backgroundColor: const Color(0xFF0A1025),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         action: SnackBarAction(
@@ -178,7 +178,7 @@ class _GateManagementScreenState extends State<GateManagementScreen> {
         ),
         label: const Text(
           'New Gate',
-          style: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w700),
+          style: TextStyle(fontFamily: 'Space Grotesk', fontWeight: FontWeight.w700),
         ),
         backgroundColor: AppTheme.primary,
         foregroundColor: const Color(0xFF001A10),
@@ -215,7 +215,7 @@ class _GateManagementScreenState extends State<GateManagementScreen> {
                     child: Container(
                       height: 44,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1A2236),
+                        color: const Color(0xFF0A1025),
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
                           color: AppTheme.primary.withAlpha(102),
@@ -225,14 +225,14 @@ class _GateManagementScreenState extends State<GateManagementScreen> {
                       child: TextField(
                         autofocus: true,
                         style: const TextStyle(
-                          fontFamily: 'Manrope',
+                          fontFamily: 'Space Grotesk',
                           fontSize: 14,
-                          color: Color(0xFFE8EAF0),
+                          color: Color(0xFFdfe2f0),
                         ),
                         decoration: const InputDecoration(
                           hintText: 'Search gates...',
                           hintStyle: TextStyle(
-                            fontFamily: 'Manrope',
+                            fontFamily: 'Space Grotesk',
                             color: Color(0xFF6B7490),
                             fontSize: 14,
                           ),
@@ -261,10 +261,10 @@ class _GateManagementScreenState extends State<GateManagementScreen> {
                       width: 44,
                       height: 44,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1A2236),
+                        color: const Color(0xFF0A1025),
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
-                          color: const Color(0xFF3A4460),
+                          color: const Color(0xFF849495),
                           width: 1,
                         ),
                       ),
@@ -303,10 +303,10 @@ class _GateManagementScreenState extends State<GateManagementScreen> {
                       width: 44,
                       height: 44,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1A2236),
+                        color: const Color(0xFF0A1025),
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
-                          color: const Color(0xFF3A4460),
+                          color: const Color(0xFF849495),
                           width: 1,
                         ),
                       ),
@@ -399,9 +399,9 @@ class _GateManagementScreenState extends State<GateManagementScreen> {
               SnackBar(
                 content: const Text(
                   'Geofence boundary updated',
-                  style: TextStyle(fontFamily: 'Manrope'),
+                  style: TextStyle(fontFamily: 'Space Grotesk'),
                 ),
-                backgroundColor: const Color(0xFF1A2236),
+                backgroundColor: const Color(0xFF0A1025),
                 behavior: SnackBarBehavior.floating,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -419,7 +419,7 @@ class _GateManagementScreenState extends State<GateManagementScreen> {
     return Row(
       children: [
         Expanded(flex: 5, child: _buildPhoneList(theme)),
-        Container(width: 1, color: const Color(0xFF252E45)),
+        Container(width: 1, color: const Color(0xFF3a494b)),
         Expanded(flex: 4, child: _buildTabletDetailPanel(theme, gates)),
       ],
     );
@@ -444,9 +444,9 @@ class _GateManagementScreenState extends State<GateManagementScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFF131929),
+              color: const Color(0xFF0A1025),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFF252E45), width: 1),
+              border: Border.all(color: const Color(0xFF3a494b), width: 1),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -454,7 +454,7 @@ class _GateManagementScreenState extends State<GateManagementScreen> {
                 Text(
                   'NATRAX Center',
                   style: theme.textTheme.titleSmall?.copyWith(
-                    color: const Color(0xFFE8EAF0),
+                    color: const Color(0xFFdfe2f0),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -517,7 +517,7 @@ class _StatChip extends StatelessWidget {
             Text(
               value,
               style: TextStyle(
-                fontFamily: 'Manrope',
+                fontFamily: 'Space Grotesk',
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
                 color: color,
@@ -554,7 +554,7 @@ class _CoordRow extends StatelessWidget {
           Text(
             value,
             style: theme.textTheme.labelMedium?.copyWith(
-              color: const Color(0xFFE8EAF0),
+              color: const Color(0xFFdfe2f0),
               fontWeight: FontWeight.w600,
               fontFeatures: const [FontFeature.tabularFigures()],
             ),

@@ -118,7 +118,7 @@ class _LoginScreenState extends State<LoginScreen>
         return StatefulBuilder(
           builder: (ctx, setDialogState) {
             return Dialog(
-              backgroundColor: const Color(0xFF0D1525),
+              backgroundColor: const Color(0xFF0A1025),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20.0),
                 side: BorderSide(color: Colors.white.withAlpha(20)),
@@ -134,12 +134,12 @@ class _LoginScreenState extends State<LoginScreen>
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFE8500A).withAlpha(25),
+                            color: const Color(0xFF00F3FF).withAlpha(25),
                             borderRadius: BorderRadius.circular(10.0),
                           ),
                           child: const Icon(
                             Icons.lock_reset_rounded,
-                            color: Color(0xFFE8500A),
+                            color: Color(0xFF00F3FF),
                             size: 20,
                           ),
                         ),
@@ -147,7 +147,7 @@ class _LoginScreenState extends State<LoginScreen>
                         Expanded(
                           child: Text(
                             'Reset Password',
-                            style: GoogleFonts.manrope(
+                            style: GoogleFonts.spaceGrotesk(
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
                               color: Colors.white,
@@ -168,7 +168,7 @@ class _LoginScreenState extends State<LoginScreen>
                     if (!emailSent) ...[
                       Text(
                         'Enter your registered email address and we\'ll send you a password reset link.',
-                        style: GoogleFonts.manrope(
+                        style: GoogleFonts.spaceGrotesk(
                           fontSize: 13,
                           color: Colors.white.withAlpha(140),
                           height: 1.5,
@@ -178,13 +178,13 @@ class _LoginScreenState extends State<LoginScreen>
                       TextField(
                         controller: resetEmailController,
                         keyboardType: TextInputType.emailAddress,
-                        style: GoogleFonts.manrope(
-                          color: const Color(0xFFE8EAF0),
+                        style: GoogleFonts.spaceGrotesk(
+                          color: const Color(0xFFdfe2f0),
                           fontSize: 14,
                         ),
                         decoration: InputDecoration(
                           hintText: 'engineer@goodyear.com',
-                          hintStyle: GoogleFonts.manrope(
+                          hintStyle: GoogleFonts.spaceGrotesk(
                             color: const Color(0xFF6B7490),
                             fontSize: 13,
                           ),
@@ -210,7 +210,7 @@ class _LoginScreenState extends State<LoginScreen>
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: const BorderSide(
-                              color: Color(0xFFE8500A),
+                              color: Color(0xFF00F3FF),
                               width: 1.5,
                             ),
                           ),
@@ -236,7 +236,7 @@ class _LoginScreenState extends State<LoginScreen>
                           ),
                           child: Text(
                             dialogError!,
-                            style: GoogleFonts.manrope(
+                            style: GoogleFonts.spaceGrotesk(
                               color: AppTheme.error,
                               fontSize: 12,
                             ),
@@ -288,10 +288,10 @@ class _LoginScreenState extends State<LoginScreen>
                                   }
                                 },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFE8500A),
+                            backgroundColor: const Color(0xFF00F3FF),
                             foregroundColor: Colors.white,
                             disabledBackgroundColor: const Color(
-                              0xFFE8500A,
+                              0xFF00F3FF,
                             ).withAlpha(80),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12.0),
@@ -311,7 +311,7 @@ class _LoginScreenState extends State<LoginScreen>
                                 )
                               : Text(
                                   'Send Reset Link',
-                                  style: GoogleFonts.manrope(
+                                  style: GoogleFonts.spaceGrotesk(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w700,
                                   ),
@@ -338,7 +338,7 @@ class _LoginScreenState extends State<LoginScreen>
                             const SizedBox(height: 12),
                             Text(
                               'Reset link sent!',
-                              style: GoogleFonts.manrope(
+                              style: GoogleFonts.spaceGrotesk(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w700,
                                 color: AppTheme.success,
@@ -347,7 +347,7 @@ class _LoginScreenState extends State<LoginScreen>
                             const SizedBox(height: 6),
                             Text(
                               'Check your inbox at ${resetEmailController.text.trim()} and follow the link to reset your password.',
-                              style: GoogleFonts.manrope(
+                              style: GoogleFonts.spaceGrotesk(
                                 fontSize: 12,
                                 color: Colors.white.withAlpha(160),
                                 height: 1.5,
@@ -362,8 +362,8 @@ class _LoginScreenState extends State<LoginScreen>
                         onPressed: () => Navigator.of(ctx).pop(),
                         child: Text(
                           'Back to Sign In',
-                          style: GoogleFonts.manrope(
-                            color: const Color(0xFFE8500A),
+                          style: GoogleFonts.spaceGrotesk(
+                            color: const Color(0xFF00F3FF),
                             fontWeight: FontWeight.w700,
                             fontSize: 14,
                           ),
@@ -395,7 +395,7 @@ class _LoginScreenState extends State<LoginScreen>
     final size = MediaQuery.of(context).size;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF060B18),
+      backgroundColor: const Color(0xFF050811),
       body: Stack(
         children: [
           // ── Background: aerial track image ──────────────────────────
@@ -406,7 +406,7 @@ class _LoginScreenState extends State<LoginScreen>
               semanticLabel:
                   'Goodyear racing team wallpaper with race cars on track',
               errorBuilder: (_, __, ___) =>
-                  Container(color: const Color(0xFF060B18)),
+                  Container(color: const Color(0xFF050811)),
             ),
           ),
 
@@ -422,10 +422,10 @@ class _LoginScreenState extends State<LoginScreen>
                       end: Alignment.bottomCenter,
                       stops: const [0.0, 0.35, 0.65, 1.0],
                       colors: [
-                        const Color(0xFF060B18).withAlpha(200),
-                        const Color(0xFF060B18).withAlpha(140),
-                        const Color(0xFF060B18).withAlpha(210),
-                        const Color(0xFF060B18).withAlpha(255),
+                        const Color(0xFF050811).withAlpha(200),
+                        const Color(0xFF050811).withAlpha(140),
+                        const Color(0xFF050811).withAlpha(210),
+                        const Color(0xFF050811).withAlpha(255),
                       ],
                     ),
                   ),
@@ -449,7 +449,7 @@ class _LoginScreenState extends State<LoginScreen>
                     gradient: RadialGradient(
                       colors: [
                         const Color(
-                          0xFFE8500A,
+                          0xFF00F3FF,
                         ).withAlpha((30 + (_bgPulseAnim.value * 20)).toInt()),
                         Colors.transparent,
                       ],
@@ -496,9 +496,9 @@ class _LoginScreenState extends State<LoginScreen>
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    Color(0xFFE8500A),
-                    Color(0xFFFF7A2F),
-                    Color(0xFFE8500A),
+                    Color(0xFF00F3FF),
+                    Color(0xFF7000FF),
+                    Color(0xFF00F3FF),
                   ],
                 ),
               ),
@@ -574,12 +574,12 @@ class _LoginScreenState extends State<LoginScreen>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: const Color(0xFFE8500A),
+                color: const Color(0xFF00F3FF),
                 borderRadius: BorderRadius.circular(6.0),
               ),
               child: Text(
                 'NATRAX',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
                   color: Colors.white,
@@ -616,7 +616,7 @@ class _LoginScreenState extends State<LoginScreen>
             children: [
               TextSpan(
                 text: 'Track',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   fontSize: 32,
                   fontWeight: FontWeight.w800,
                   color: Colors.white,
@@ -625,10 +625,10 @@ class _LoginScreenState extends State<LoginScreen>
               ),
               TextSpan(
                 text: 'Log',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   fontSize: 32,
                   fontWeight: FontWeight.w800,
-                  color: const Color(0xFFE8500A),
+                  color: const Color(0xFF00F3FF),
                   height: 1.1,
                 ),
               ),
@@ -638,7 +638,7 @@ class _LoginScreenState extends State<LoginScreen>
         const SizedBox(height: 6),
         Text(
           'Proving Ground Session Management',
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.spaceGrotesk(
             fontSize: 13,
             fontWeight: FontWeight.w400,
             color: Colors.white.withAlpha(160),
@@ -675,16 +675,16 @@ class _LoginScreenState extends State<LoginScreen>
           children: [
             Text(
               value,
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.spaceGrotesk(
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
-                color: const Color(0xFFE8500A),
+                color: const Color(0xFF00F3FF),
               ),
             ),
             const SizedBox(height: 2),
             Text(
               label,
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.spaceGrotesk(
                 fontSize: 10,
                 fontWeight: FontWeight.w500,
                 color: Colors.white.withAlpha(120),
@@ -701,7 +701,7 @@ class _LoginScreenState extends State<LoginScreen>
   Widget _buildLoginCard() {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF0D1525).withAlpha(230),
+        color: const Color(0xFF0A1025).withAlpha(230),
         borderRadius: BorderRadius.circular(20.0),
         border: Border.all(color: Colors.white.withAlpha(18)),
         boxShadow: [
@@ -711,7 +711,7 @@ class _LoginScreenState extends State<LoginScreen>
             offset: const Offset(0, 20),
           ),
           BoxShadow(
-            color: const Color(0xFFE8500A).withAlpha(15),
+            color: const Color(0xFF00F3FF).withAlpha(15),
             blurRadius: 60,
             offset: const Offset(0, 0),
           ),
@@ -734,14 +734,14 @@ class _LoginScreenState extends State<LoginScreen>
                   width: 3,
                   height: 18,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE8500A),
+                    color: const Color(0xFF00F3FF),
                     borderRadius: BorderRadius.circular(2.0),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Text(
                   _isSignUp ? 'Create Engineer Profile' : 'Engineer Sign In',
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                     color: Colors.white,
@@ -760,7 +760,7 @@ class _LoginScreenState extends State<LoginScreen>
                   ),
                   child: Text(
                     'SECURE',
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.spaceGrotesk(
                       fontSize: 9,
                       fontWeight: FontWeight.w700,
                       color: AppTheme.primary,
@@ -828,8 +828,8 @@ class _LoginScreenState extends State<LoginScreen>
                   TextFormField(
                     controller: _passwordController,
                     obscureText: _obscurePassword,
-                    style: GoogleFonts.manrope(
-                      color: const Color(0xFFE8EAF0),
+                    style: GoogleFonts.spaceGrotesk(
+                      color: const Color(0xFFdfe2f0),
                       fontSize: 14,
                     ),
                     decoration: _inputDecoration(
@@ -870,8 +870,8 @@ class _LoginScreenState extends State<LoginScreen>
                         onTap: _showForgotPasswordDialog,
                         child: Text(
                           'Forgot Password?',
-                          style: GoogleFonts.manrope(
-                            color: const Color(0xFFE8500A),
+                          style: GoogleFonts.spaceGrotesk(
+                            color: const Color(0xFF00F3FF),
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                           ),
@@ -903,7 +903,7 @@ class _LoginScreenState extends State<LoginScreen>
                           Expanded(
                             child: Text(
                               _errorMessage!,
-                              style: GoogleFonts.manrope(
+                              style: GoogleFonts.spaceGrotesk(
                                 color: AppTheme.error,
                                 fontSize: 12,
                                 fontWeight: FontWeight.w500,
@@ -923,10 +923,10 @@ class _LoginScreenState extends State<LoginScreen>
                     child: ElevatedButton(
                       onPressed: _isLoading ? null : _submit,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFE8500A),
+                        backgroundColor: const Color(0xFF00F3FF),
                         foregroundColor: Colors.white,
                         disabledBackgroundColor: const Color(
-                          0xFFE8500A,
+                          0xFF00F3FF,
                         ).withAlpha(80),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12.0),
@@ -951,7 +951,7 @@ class _LoginScreenState extends State<LoginScreen>
                                   _isSignUp
                                       ? 'Create Profile & Sign In'
                                       : 'Sign In to TrackLog',
-                                  style: GoogleFonts.manrope(
+                                  style: GoogleFonts.spaceGrotesk(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w700,
                                     letterSpacing: 0.3,
@@ -982,7 +982,7 @@ class _LoginScreenState extends State<LoginScreen>
       children: [
         Text(
           _isSignUp ? 'Already have a profile? ' : 'New engineer? ',
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.spaceGrotesk(
             color: Colors.white.withAlpha(140),
             fontSize: 13,
           ),
@@ -991,8 +991,8 @@ class _LoginScreenState extends State<LoginScreen>
           onTap: _toggleMode,
           child: Text(
             _isSignUp ? 'Sign In' : 'Create Profile',
-            style: GoogleFonts.manrope(
-              color: const Color(0xFFE8500A),
+            style: GoogleFonts.spaceGrotesk(
+              color: const Color(0xFF00F3FF),
               fontSize: 13,
               fontWeight: FontWeight.w700,
             ),
@@ -1031,7 +1031,7 @@ class _LoginScreenState extends State<LoginScreen>
               const SizedBox(width: 8),
               Text(
                 'Demo Accounts',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   color: AppTheme.info,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -1061,7 +1061,7 @@ class _LoginScreenState extends State<LoginScreen>
             const SizedBox(width: 12),
             Text(
               'NATRAX · Pithampur, Madhya Pradesh',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.spaceGrotesk(
                 fontSize: 10,
                 color: Colors.white.withAlpha(60),
                 letterSpacing: 0.5,
@@ -1074,7 +1074,7 @@ class _LoginScreenState extends State<LoginScreen>
         const SizedBox(height: 6),
         Text(
           'Asia\'s Largest Automotive Proving Ground',
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.spaceGrotesk(
             fontSize: 10,
             color: Colors.white.withAlpha(40),
             letterSpacing: 0.3,
@@ -1086,7 +1086,7 @@ class _LoginScreenState extends State<LoginScreen>
           onTap: () => context.push(AppRoutes.privacyPolicy),
           child: Text(
             'Privacy Policy',
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.spaceGrotesk(
               fontSize: 11,
               color: AppTheme.primary.withAlpha(180),
               fontWeight: FontWeight.w500,
@@ -1103,7 +1103,7 @@ class _LoginScreenState extends State<LoginScreen>
   Widget _buildLabel(String label) {
     return Text(
       label,
-      style: GoogleFonts.manrope(
+      style: GoogleFonts.spaceGrotesk(
         color: Colors.white.withAlpha(160),
         fontSize: 12,
         fontWeight: FontWeight.w600,
@@ -1119,7 +1119,7 @@ class _LoginScreenState extends State<LoginScreen>
   }) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: GoogleFonts.manrope(
+      hintStyle: GoogleFonts.spaceGrotesk(
         color: const Color(0xFF6B7490),
         fontSize: 13,
       ),
@@ -1137,7 +1137,7 @@ class _LoginScreenState extends State<LoginScreen>
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFFE8500A), width: 1.5),
+        borderSide: const BorderSide(color: Color(0xFF00F3FF), width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -1163,7 +1163,7 @@ class _LoginScreenState extends State<LoginScreen>
       controller: controller,
       keyboardType: keyboardType,
       textCapitalization: textCapitalization,
-      style: GoogleFonts.manrope(color: const Color(0xFFE8EAF0), fontSize: 14),
+      style: GoogleFonts.spaceGrotesk(color: const Color(0xFFdfe2f0), fontSize: 14),
       decoration: _inputDecoration(hint: hint, icon: icon),
       validator: validator,
     );
@@ -1176,7 +1176,7 @@ class _LoginScreenState extends State<LoginScreen>
           width: 5,
           height: 5,
           decoration: const BoxDecoration(
-            color: Color(0xFFE8500A),
+            color: Color(0xFF00F3FF),
             shape: BoxShape.circle,
           ),
         ),
@@ -1184,7 +1184,7 @@ class _LoginScreenState extends State<LoginScreen>
         Expanded(
           child: Text(
             '$email  /  $password',
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.spaceGrotesk(
               color: Colors.white.withAlpha(160),
               fontSize: 11,
               fontWeight: FontWeight.w500,

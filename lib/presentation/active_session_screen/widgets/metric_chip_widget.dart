@@ -22,12 +22,12 @@ class MetricChipWidget extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A2236),
+          color: const Color(0xFF0A1025),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isActive
                 ? AppTheme.primary.withAlpha(51)
-                : const Color(0xFF3A4460),
+                : const Color(0xFF849495),
             width: 1,
           ),
         ),
@@ -39,7 +39,7 @@ class MetricChipWidget extends StatelessWidget {
               decoration: BoxDecoration(
                 color: isActive
                     ? AppTheme.primary.withAlpha(38)
-                    : const Color(0xFF252E45),
+                    : const Color(0xFF3a494b),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Center(
@@ -64,7 +64,7 @@ class MetricChipWidget extends StatelessWidget {
                   Text(
                     value,
                     style: theme.textTheme.labelMedium?.copyWith(
-                      color: const Color(0xFFE8EAF0),
+                      color: const Color(0xFFdfe2f0),
                       fontWeight: FontWeight.w700,
                     ),
                     maxLines: 1,

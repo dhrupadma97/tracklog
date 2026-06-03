@@ -149,7 +149,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       SnackBar(
         content: Text(
           message,
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.spaceGrotesk(
             fontSize: 13,
             fontWeight: FontWeight.w500,
             color: Colors.white,
@@ -248,15 +248,15 @@ class _SettingsScreenState extends State<SettingsScreen>
             children: [
               Text(
                 'Settings',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   fontSize: 20,
                   fontWeight: FontWeight.w800,
-                  color: const Color(0xFFE8EAF0),
+                  color: const Color(0xFFdfe2f0),
                 ),
               ),
               Text(
                 'Manage your account preferences',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                   color: const Color(0xFF6B7490),
@@ -284,9 +284,9 @@ class _SettingsScreenState extends State<SettingsScreen>
           child: Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: const Color(0xFF1A2236).withAlpha(200),
+              color: const Color(0xFF0A1025).withAlpha(200),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFF3A4460).withAlpha(120)),
+              border: Border.all(color: const Color(0xFF849495).withAlpha(120)),
             ),
             child: Row(
               children: [
@@ -308,7 +308,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   child: Center(
                     child: Text(
                       name.isNotEmpty ? name[0].toUpperCase() : 'E',
-                      style: GoogleFonts.manrope(
+                      style: GoogleFonts.spaceGrotesk(
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
                         color: AppTheme.primary,
@@ -323,17 +323,17 @@ class _SettingsScreenState extends State<SettingsScreen>
                     children: [
                       Text(
                         name,
-                        style: GoogleFonts.manrope(
+                        style: GoogleFonts.spaceGrotesk(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
-                          color: const Color(0xFFE8EAF0),
+                          color: const Color(0xFFdfe2f0),
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 2),
                       Text(
                         email,
-                        style: GoogleFonts.manrope(
+                        style: GoogleFonts.spaceGrotesk(
                           fontSize: 12,
                           color: const Color(0xFFA8B0C8),
                         ),
@@ -373,7 +373,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       ),
       child: Text(
         label,
-        style: GoogleFonts.manrope(
+        style: GoogleFonts.spaceGrotesk(
           fontSize: 10,
           fontWeight: FontWeight.w700,
           color: color,
@@ -396,9 +396,9 @@ class _SettingsScreenState extends State<SettingsScreen>
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(
             decoration: BoxDecoration(
-              color: const Color(0xFF1A2236).withAlpha(190),
+              color: const Color(0xFF0A1025).withAlpha(190),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFF3A4460).withAlpha(100)),
+              border: Border.all(color: const Color(0xFF849495).withAlpha(100)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -415,17 +415,17 @@ class _SettingsScreenState extends State<SettingsScreen>
                       const SizedBox(width: 10),
                       Text(
                         title,
-                        style: GoogleFonts.manrope(
+                        style: GoogleFonts.spaceGrotesk(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
-                          color: const Color(0xFFE8EAF0),
+                          color: const Color(0xFFdfe2f0),
                         ),
                       ),
                     ],
                   ),
                 ),
                 const Divider(
-                  color: Color(0xFF252E45),
+                  color: Color(0xFF3a494b),
                   height: 1,
                   thickness: 1,
                 ),
@@ -487,7 +487,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   )
                 : Text(
                     'Update Password',
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.spaceGrotesk(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                     ),
@@ -507,7 +507,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     return TextField(
       controller: controller,
       obscureText: obscure,
-      style: GoogleFonts.manrope(fontSize: 13, color: const Color(0xFFE8EAF0)),
+      style: GoogleFonts.spaceGrotesk(fontSize: 13, color: const Color(0xFFdfe2f0)),
       decoration: InputDecoration(
         labelText: label,
         suffixIcon: GestureDetector(
@@ -563,7 +563,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           child: ElevatedButton(
             onPressed: _savingNotifications ? null : _saveNotifications,
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1C2438),
+              backgroundColor: const Color(0xFF181B25),
               foregroundColor: AppTheme.primary,
               padding: const EdgeInsets.symmetric(vertical: 13),
               shape: RoundedRectangleBorder(
@@ -583,7 +583,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   )
                 : Text(
                     'Save Preferences',
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.spaceGrotesk(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                     ),
@@ -619,15 +619,15 @@ class _SettingsScreenState extends State<SettingsScreen>
               children: [
                 Text(
                   item.label,
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: const Color(0xFFE8EAF0),
+                    color: const Color(0xFFdfe2f0),
                   ),
                 ),
                 Text(
                   item.subtitle,
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     fontSize: 11,
                     color: const Color(0xFF6B7490),
                   ),
@@ -648,7 +648,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       children: [
         Text(
           'Choose how often activity reports are exported and sent.',
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.spaceGrotesk(
             fontSize: 12,
             color: const Color(0xFFA8B0C8),
           ),
@@ -681,7 +681,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           child: ElevatedButton(
             onPressed: _savingExport ? null : _saveExportFrequency,
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1C2438),
+              backgroundColor: const Color(0xFF181B25),
               foregroundColor: AppTheme.primary,
               padding: const EdgeInsets.symmetric(vertical: 13),
               shape: RoundedRectangleBorder(
@@ -701,7 +701,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   )
                 : Text(
                     'Save Frequency',
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.spaceGrotesk(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                     ),
@@ -718,7 +718,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       children: [
         Text(
           'Manage and track Purchase Orders for your sessions.',
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.spaceGrotesk(
             fontSize: 12,
             color: const Color(0xFFA8B0C8),
           ),
@@ -731,7 +731,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             icon: const Icon(Icons.receipt_long_rounded, size: 18),
             label: Text(
               'Open PO Tracker',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.spaceGrotesk(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
               ),
@@ -757,7 +757,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       children: [
         Text(
           'Configure email report subscriptions and send session summaries.',
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.spaceGrotesk(
             fontSize: 12,
             color: const Color(0xFFA8B0C8),
           ),
@@ -770,13 +770,13 @@ class _SettingsScreenState extends State<SettingsScreen>
             icon: const Icon(Icons.email_rounded, size: 18),
             label: Text(
               'Open Email Reports',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.spaceGrotesk(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
               ),
             ),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1C2438),
+              backgroundColor: const Color(0xFF181B25),
               foregroundColor: AppTheme.primary,
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(
@@ -806,12 +806,12 @@ class _SettingsScreenState extends State<SettingsScreen>
         decoration: BoxDecoration(
           color: isSelected
               ? AppTheme.primary.withAlpha(25)
-              : const Color(0xFF1C2438),
+              : const Color(0xFF181B25),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected
                 ? AppTheme.primary.withAlpha(150)
-                : const Color(0xFF3A4460).withAlpha(100),
+                : const Color(0xFF849495).withAlpha(100),
             width: isSelected ? 1.5 : 1,
           ),
         ),
@@ -847,15 +847,15 @@ class _SettingsScreenState extends State<SettingsScreen>
             const SizedBox(height: 10),
             Text(
               label,
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.spaceGrotesk(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
-                color: isSelected ? AppTheme.primary : const Color(0xFFE8EAF0),
+                color: isSelected ? AppTheme.primary : const Color(0xFFdfe2f0),
               ),
             ),
             Text(
               subtitle,
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.spaceGrotesk(
                 fontSize: 11,
                 color: const Color(0xFF6B7490),
               ),
@@ -880,12 +880,12 @@ class _SettingsScreenState extends State<SettingsScreen>
         decoration: BoxDecoration(
           color: selected
               ? AppTheme.primary.withAlpha(25)
-              : const Color(0xFF1C2438),
+              : const Color(0xFF181B25),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: selected
                 ? AppTheme.primary.withAlpha(150)
-                : const Color(0xFF3A4460).withAlpha(100),
+                : const Color(0xFF849495).withAlpha(100),
             width: selected ? 1.5 : 1,
           ),
         ),
@@ -899,10 +899,10 @@ class _SettingsScreenState extends State<SettingsScreen>
             const SizedBox(width: 10),
             Text(
               label,
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.spaceGrotesk(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
-                color: selected ? AppTheme.primary : const Color(0xFFE8EAF0),
+                color: selected ? AppTheme.primary : const Color(0xFFdfe2f0),
               ),
             ),
           ],

@@ -87,14 +87,14 @@ class _PendingReturnsCardWidgetState extends State<PendingReturnsCardWidget> {
           children: [
             const Icon(
               Icons.check_circle_rounded,
-              color: Color(0xFF00C896),
+              color: Color(0xFF00F3FF),
               size: 16,
             ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
                 message,
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
@@ -102,7 +102,7 @@ class _PendingReturnsCardWidgetState extends State<PendingReturnsCardWidget> {
             ),
           ],
         ),
-        backgroundColor: const Color(0xFF1A2236),
+        backgroundColor: const Color(0xFF0A1025),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         duration: const Duration(seconds: 2),
@@ -210,7 +210,7 @@ class _PendingReturnsCardWidgetState extends State<PendingReturnsCardWidget> {
               children: [
                 Text(
                   'Pending Returns',
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     color: const Color(0xFFFF6B35),
@@ -218,7 +218,7 @@ class _PendingReturnsCardWidgetState extends State<PendingReturnsCardWidget> {
                 ),
                 Text(
                   '${_sandBags.length + _instruments.length} item${(_sandBags.length + _instruments.length) == 1 ? '' : 's'} unreturned',
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     fontSize: 10,
                     color: const Color(0xFF8B7090),
                   ),
@@ -231,7 +231,7 @@ class _PendingReturnsCardWidgetState extends State<PendingReturnsCardWidget> {
             children: [
               Text(
                 '₹${_totalLiveCost.toStringAsFixed(0)}',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
                   color: const Color(0xFFFF6B35),
@@ -239,7 +239,7 @@ class _PendingReturnsCardWidgetState extends State<PendingReturnsCardWidget> {
               ),
               Text(
                 'running total',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   fontSize: 9,
                   color: const Color(0xFF8B7090),
                 ),
@@ -319,17 +319,17 @@ class _PendingReturnsCardWidgetState extends State<PendingReturnsCardWidget> {
               children: [
                 Text(
                   title,
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: const Color(0xFFE8EAF0),
+                    color: const Color(0xFFdfe2f0),
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     fontSize: 10,
                     color: const Color(0xFF8B7090),
                   ),
@@ -344,7 +344,7 @@ class _PendingReturnsCardWidgetState extends State<PendingReturnsCardWidget> {
             children: [
               Text(
                 '₹${liveCost.toStringAsFixed(0)}',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   color: daysElapsed > 3
@@ -362,13 +362,13 @@ class _PendingReturnsCardWidgetState extends State<PendingReturnsCardWidget> {
                   ),
                   decoration: BoxDecoration(
                     color: isReturning
-                        ? const Color(0xFF252E45)
-                        : const Color(0xFF00C896).withAlpha(30),
+                        ? const Color(0xFF3a494b)
+                        : const Color(0xFF00F3FF).withAlpha(30),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
                       color: isReturning
-                          ? const Color(0xFF3A4460)
-                          : const Color(0xFF00C896).withAlpha(100),
+                          ? const Color(0xFF849495)
+                          : const Color(0xFF00F3FF).withAlpha(100),
                     ),
                   ),
                   child: isReturning
@@ -377,15 +377,15 @@ class _PendingReturnsCardWidgetState extends State<PendingReturnsCardWidget> {
                           height: 12,
                           child: CircularProgressIndicator(
                             strokeWidth: 1.5,
-                            color: Color(0xFF00C896),
+                            color: Color(0xFF00F3FF),
                           ),
                         )
                       : Text(
                           'Return Today',
-                          style: GoogleFonts.manrope(
+                          style: GoogleFonts.spaceGrotesk(
                             fontSize: 10,
                             fontWeight: FontWeight.w700,
-                            color: const Color(0xFF00C896),
+                            color: const Color(0xFF00F3FF),
                           ),
                         ),
                 ),
@@ -411,7 +411,7 @@ class _PendingReturnsCardWidgetState extends State<PendingReturnsCardWidget> {
           Expanded(
             child: Text(
               'Costs calculated daily. Tap "Return Today" to stop the counter.',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.spaceGrotesk(
                 fontSize: 10,
                 color: const Color(0xFF8B7090),
               ),

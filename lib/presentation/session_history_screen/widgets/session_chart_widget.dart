@@ -75,9 +75,9 @@ class _SessionChartWidgetState extends State<SessionChartWidget> {
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF131929),
+          color: const Color(0xFF0A1025),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFF252E45), width: 1),
+          border: Border.all(color: const Color(0xFF3a494b), width: 1),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -114,7 +114,7 @@ class _SessionChartWidgetState extends State<SessionChartWidget> {
                       drawVerticalLine: false,
                       horizontalInterval: 2,
                       getDrawingHorizontalLine: (_) => const FlLine(
-                        color: Color(0xFF252E45),
+                        color: Color(0xFF3a494b),
                         strokeWidth: 1,
                         dashArray: [4, 4],
                       ),
@@ -129,7 +129,7 @@ class _SessionChartWidgetState extends State<SessionChartWidget> {
                           getTitlesWidget: (v, _) => Text(
                             '${v.toInt()}h',
                             style: const TextStyle(
-                              fontFamily: 'Manrope',
+                              fontFamily: 'Space Grotesk',
                               fontSize: 10,
                               color: Color(0xFF6B7490),
                             ),
@@ -144,7 +144,7 @@ class _SessionChartWidgetState extends State<SessionChartWidget> {
                           getTitlesWidget: (v, _) => Text(
                             v.toInt().toString(),
                             style: const TextStyle(
-                              fontFamily: 'Manrope',
+                              fontFamily: 'Space Grotesk',
                               fontSize: 10,
                               color: Color(0xFF6B7490),
                             ),
@@ -182,16 +182,16 @@ class _SessionChartWidgetState extends State<SessionChartWidget> {
                     lineTouchData: LineTouchData(
                       touchTooltipData: LineTouchTooltipData(
                         tooltipRoundedRadius: 10,
-                        tooltipBgColor: const Color(0xFF1C2438),
+                        tooltipBgColor: const Color(0xFF181B25),
                         getTooltipItems: (spots) => spots
                             .map(
                               (s) => LineTooltipItem(
                                 '${s.y.toStringAsFixed(1)}h',
                                 const TextStyle(
-                                  fontFamily: 'Manrope',
+                                  fontFamily: 'Space Grotesk',
                                   fontSize: 12,
                                   fontWeight: FontWeight.w700,
-                                  color: Color(0xFFE8EAF0),
+                                  color: Color(0xFFdfe2f0),
                                 ),
                               ),
                             )
@@ -252,11 +252,11 @@ class _PeriodTab extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              fontFamily: 'Manrope',
+              fontFamily: 'Space Grotesk',
               fontSize: 13,
               fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
               color: isSelected
-                  ? const Color(0xFFE8EAF0)
+                  ? const Color(0xFFdfe2f0)
                   : const Color(0xFF6B7490),
             ),
           ),

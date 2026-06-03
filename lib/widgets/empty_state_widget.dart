@@ -64,7 +64,7 @@ class EmptyStateWidget extends StatelessWidget {
                 label: Text(
                   ctaLabel!,
                   style: const TextStyle(
-                    fontFamily: 'Manrope',
+                    fontFamily: 'Space Grotesk',
                     fontWeight: FontWeight.w700,
                   ),
                 ),

@@ -257,10 +257,10 @@ class _TrackMapWidgetState extends State<TrackMapWidget> {
           center: LatLng(lat, lng),
           radius: radius,
           fillColor: isHighlighted
-              ? const Color(0xFF00C896).withAlpha(50)
+              ? const Color(0xFF00F3FF).withAlpha(50)
               : const Color(0xFFFF6B35).withAlpha(30),
           strokeColor: isHighlighted
-              ? const Color(0xFF00C896)
+              ? const Color(0xFF00F3FF)
               : const Color(0xFFFF6B35),
           strokeWidth: isHighlighted ? 2 : 1,
         ),
@@ -281,7 +281,7 @@ class _TrackMapWidgetState extends State<TrackMapWidget> {
           center: LatLng(lat, lng),
           radius: radius * 1.15,
           fillColor: Colors.transparent,
-          strokeColor: const Color(0xFF00C896).withAlpha(60),
+          strokeColor: const Color(0xFF00F3FF).withAlpha(60),
           strokeWidth: 1,
         ),
       );
@@ -378,10 +378,10 @@ class _TrackMapWidgetState extends State<TrackMapWidget> {
             // Loading overlay
             if (!_mapReady)
               Container(
-                color: const Color(0xFF0A0E1A),
+                color: const Color(0xFF050811),
                 child: const Center(
                   child: CircularProgressIndicator(
-                    color: Color(0xFF00C896),
+                    color: Color(0xFF00F3FF),
                     strokeWidth: 2,
                   ),
                 ),
@@ -396,10 +396,10 @@ class _TrackMapWidgetState extends State<TrackMapWidget> {
                   vertical: 5,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0F1520).withAlpha(220),
+                  color: const Color(0xFF0A1025).withAlpha(220),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: const Color(0xFF00C896).withAlpha(100),
+                    color: const Color(0xFF00F3FF).withAlpha(100),
                     width: 1,
                   ),
                 ),
@@ -410,7 +410,7 @@ class _TrackMapWidgetState extends State<TrackMapWidget> {
                       width: 6,
                       height: 6,
                       decoration: const BoxDecoration(
-                        color: Color(0xFF00C896),
+                        color: Color(0xFF00F3FF),
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -418,10 +418,10 @@ class _TrackMapWidgetState extends State<TrackMapWidget> {
                     const Text(
                       'NATRAX · Live',
                       style: TextStyle(
-                        fontFamily: 'Manrope',
+                        fontFamily: 'Space Grotesk',
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFFE8EAF0),
+                        color: Color(0xFFdfe2f0),
                         letterSpacing: 0.5,
                       ),
                     ),
@@ -449,7 +449,7 @@ class _TrackMapWidgetState extends State<TrackMapWidget> {
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
                         color: _keyValid
-                            ? const Color(0xFF00C896).withAlpha(150)
+                            ? const Color(0xFF00F3FF).withAlpha(150)
                             : const Color(0xFFFF4444).withAlpha(150),
                         width: 1,
                       ),
@@ -461,7 +461,7 @@ class _TrackMapWidgetState extends State<TrackMapWidget> {
                               ? Icons.check_circle_outline
                               : Icons.error_outline,
                           color: _keyValid
-                              ? const Color(0xFF00C896)
+                              ? const Color(0xFF00F3FF)
                               : const Color(0xFFFF4444),
                           size: 14,
                         ),
@@ -472,7 +472,7 @@ class _TrackMapWidgetState extends State<TrackMapWidget> {
                             style: TextStyle(
                               fontSize: 9,
                               color: _keyValid
-                                  ? const Color(0xFF00C896)
+                                  ? const Color(0xFF00F3FF)
                                   : const Color(0xFFFF6666),
                               fontWeight: FontWeight.w600,
                             ),
@@ -513,9 +513,9 @@ class _MapButton extends StatelessWidget {
           width: 38,
           height: 38,
           decoration: BoxDecoration(
-            color: const Color(0xFF0F1520).withAlpha(230),
+            color: const Color(0xFF0A1025).withAlpha(230),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFF3A4460), width: 1),
+            border: Border.all(color: const Color(0xFF849495), width: 1),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withAlpha(60),
@@ -524,7 +524,7 @@ class _MapButton extends StatelessWidget {
               ),
             ],
           ),
-          child: Icon(icon, color: const Color(0xFF00C896), size: 18),
+          child: Icon(icon, color: const Color(0xFF00F3FF), size: 18),
         ),
       ),
     );

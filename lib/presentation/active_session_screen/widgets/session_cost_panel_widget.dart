@@ -56,12 +56,12 @@ class SessionCostPanelWidget extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A2236),
+          color: const Color(0xFF0A1025),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: sessionActive
                 ? AppTheme.secondary.withAlpha(51)
-                : const Color(0xFF252E45),
+                : const Color(0xFF3a494b),
             width: 1,
           ),
         ),
@@ -103,10 +103,10 @@ class SessionCostPanelWidget extends StatelessWidget {
                 Text(
                   '₹${estimatedCost.toStringAsFixed(0)}',
                   style: const TextStyle(
-                    fontFamily: 'Manrope',
+                    fontFamily: 'Space Grotesk',
                     fontSize: 40,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFFE8EAF0),
+                    color: Color(0xFFdfe2f0),
                     fontFeatures: [FontFeature.tabularFigures()],
                   ),
                 ),
@@ -123,7 +123,7 @@ class SessionCostPanelWidget extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            Container(height: 1, color: const Color(0xFF252E45)),
+            Container(height: 1, color: const Color(0xFF3a494b)),
             const SizedBox(height: 12),
             Row(
               children: [

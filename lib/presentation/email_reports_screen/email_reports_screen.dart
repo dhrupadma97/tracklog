@@ -187,7 +187,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
       SnackBar(
         content: Text(
           msg,
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.spaceGrotesk(
             color: Colors.white,
             fontSize: 13,
             fontWeight: FontWeight.w600,
@@ -234,7 +234,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                 child: RefreshIndicator(
                   onRefresh: _loadData,
                   color: AppTheme.primary,
-                  backgroundColor: const Color(0xFF1A2236),
+                  backgroundColor: const Color(0xFF0A1025),
                   child: CustomScrollView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     slivers: [
@@ -273,7 +273,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
           const SizedBox(height: 12),
           Text(
             'Failed to load report data',
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.spaceGrotesk(
               color: Colors.white70,
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -284,7 +284,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
             onPressed: _loadData,
             child: Text(
               'Retry',
-              style: GoogleFonts.manrope(color: AppTheme.primary),
+              style: GoogleFonts.spaceGrotesk(color: AppTheme.primary),
             ),
           ),
         ],
@@ -316,7 +316,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
             children: [
               Text(
                 'Email Reports',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   color: Colors.white,
                   fontSize: 20,
                   fontWeight: FontWeight.w800,
@@ -324,7 +324,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
               ),
               Text(
                 'PO Spend & Session Summaries',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   color: const Color(0xFF6B7490),
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
@@ -339,9 +339,9 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: const Color(0xFF1A2236).withAlpha(180),
+              color: const Color(0xFF0A1025).withAlpha(180),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFF3A4460).withAlpha(120)),
+              border: Border.all(color: const Color(0xFF849495).withAlpha(120)),
             ),
             child: const Icon(
               Icons.refresh,
@@ -362,16 +362,16 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: const Color(0xFF1A2236).withAlpha(200),
+            color: const Color(0xFF0A1025).withAlpha(200),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFF3A4460).withAlpha(120)),
+            border: Border.all(color: const Color(0xFF849495).withAlpha(120)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 'SEND REPORT NOW',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   color: const Color(0xFF6B7490),
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
@@ -415,7 +415,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                     const SizedBox(width: 10),
                     Text(
                       'Sending report to all active subscribers…',
-                      style: GoogleFonts.manrope(
+                      style: GoogleFonts.spaceGrotesk(
                         color: const Color(0xFF8A94B0),
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
@@ -443,7 +443,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                     Expanded(
                       child: Text(
                         'Reports include PO spend summary, balance, utilisation, and session logs for the selected period.',
-                        style: GoogleFonts.manrope(
+                        style: GoogleFonts.spaceGrotesk(
                           color: const Color(0xFF8A94B0),
                           fontSize: 11,
                           fontWeight: FontWeight.w400,
@@ -485,7 +485,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
               const SizedBox(height: 6),
               Text(
                 label,
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   color: color,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -507,7 +507,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
           children: [
             Text(
               'MANAGER SUBSCRIBERS',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.spaceGrotesk(
                 color: const Color(0xFF6B7490),
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
@@ -533,7 +533,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                     const SizedBox(width: 4),
                     Text(
                       'Add',
-                      style: GoogleFonts.manrope(
+                      style: GoogleFonts.spaceGrotesk(
                         color: AppTheme.primary,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -554,10 +554,10 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
               child: Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1A2236).withAlpha(200),
+                  color: const Color(0xFF0A1025).withAlpha(200),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: const Color(0xFF3A4460).withAlpha(120),
+                    color: const Color(0xFF849495).withAlpha(120),
                   ),
                 ),
                 child: Center(
@@ -565,13 +565,13 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                     children: [
                       Icon(
                         Icons.group_outlined,
-                        color: const Color(0xFF3A4460),
+                        color: const Color(0xFF849495),
                         size: 36,
                       ),
                       const SizedBox(height: 10),
                       Text(
                         'No subscribers yet',
-                        style: GoogleFonts.manrope(
+                        style: GoogleFonts.spaceGrotesk(
                           color: const Color(0xFF6B7490),
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
@@ -580,7 +580,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                       const SizedBox(height: 4),
                       Text(
                         'Add manager emails to receive monthly/yearly reports',
-                        style: GoogleFonts.manrope(
+                        style: GoogleFonts.spaceGrotesk(
                           color: const Color(0xFF4A5470),
                           fontSize: 12,
                           fontWeight: FontWeight.w400,
@@ -600,10 +600,10 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
               filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
               child: Container(
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1A2236).withAlpha(200),
+                  color: const Color(0xFF0A1025).withAlpha(200),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: const Color(0xFF3A4460).withAlpha(120),
+                    color: const Color(0xFF849495).withAlpha(120),
                   ),
                 ),
                 child: Column(
@@ -653,7 +653,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                     sub.managerName.isNotEmpty
                         ? sub.managerName[0].toUpperCase()
                         : '?',
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.spaceGrotesk(
                       color: typeColor,
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
@@ -668,7 +668,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                   children: [
                     Text(
                       sub.managerName,
-                      style: GoogleFonts.manrope(
+                      style: GoogleFonts.spaceGrotesk(
                         color: Colors.white,
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
@@ -677,7 +677,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                     ),
                     Text(
                       sub.email,
-                      style: GoogleFonts.manrope(
+                      style: GoogleFonts.spaceGrotesk(
                         color: const Color(0xFF6B7490),
                         fontSize: 11,
                         fontWeight: FontWeight.w400,
@@ -687,7 +687,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                     if (sub.lastSentAt != null)
                       Text(
                         'Last sent: ${_formatDate(sub.lastSentAt!)}',
-                        style: GoogleFonts.manrope(
+                        style: GoogleFonts.spaceGrotesk(
                           color: const Color(0xFF4A5470),
                           fontSize: 10,
                           fontWeight: FontWeight.w400,
@@ -706,7 +706,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                 ),
                 child: Text(
                   typeLabel,
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     color: typeColor,
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
@@ -733,20 +733,20 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                   final confirm = await showDialog<bool>(
                     context: context,
                     builder: (ctx) => AlertDialog(
-                      backgroundColor: const Color(0xFF1A2236),
+                      backgroundColor: const Color(0xFF0A1025),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                       ),
                       title: Text(
                         'Remove Subscriber',
-                        style: GoogleFonts.manrope(
+                        style: GoogleFonts.spaceGrotesk(
                           color: Colors.white,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                       content: Text(
                         'Remove ${sub.managerName} from report subscribers?',
-                        style: GoogleFonts.manrope(
+                        style: GoogleFonts.spaceGrotesk(
                           color: const Color(0xFF8A94B0),
                           fontSize: 13,
                         ),
@@ -756,7 +756,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                           onPressed: () => Navigator.pop(ctx, false),
                           child: Text(
                             'Cancel',
-                            style: GoogleFonts.manrope(
+                            style: GoogleFonts.spaceGrotesk(
                               color: const Color(0xFF6B7490),
                             ),
                           ),
@@ -765,7 +765,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                           onPressed: () => Navigator.pop(ctx, true),
                           child: Text(
                             'Remove',
-                            style: GoogleFonts.manrope(
+                            style: GoogleFonts.spaceGrotesk(
                               color: Colors.redAccent,
                               fontWeight: FontWeight.w700,
                             ),
@@ -809,7 +809,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
       children: [
         Text(
           'RECENT SEND LOG',
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.spaceGrotesk(
             color: const Color(0xFF6B7490),
             fontSize: 11,
             fontWeight: FontWeight.w700,
@@ -823,10 +823,10 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
             filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
             child: Container(
               decoration: BoxDecoration(
-                color: const Color(0xFF1A2236).withAlpha(200),
+                color: const Color(0xFF0A1025).withAlpha(200),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: const Color(0xFF3A4460).withAlpha(120),
+                  color: const Color(0xFF849495).withAlpha(120),
                 ),
               ),
               child: Column(
@@ -867,7 +867,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                   children: [
                     Text(
                       log.recipientEmail,
-                      style: GoogleFonts.manrope(
+                      style: GoogleFonts.spaceGrotesk(
                         color: Colors.white,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -876,7 +876,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                     ),
                     Text(
                       _formatDate(log.sentAt),
-                      style: GoogleFonts.manrope(
+                      style: GoogleFonts.spaceGrotesk(
                         color: const Color(0xFF4A5470),
                         fontSize: 10,
                         fontWeight: FontWeight.w400,
@@ -893,7 +893,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                 ),
                 child: Text(
                   log.reportType,
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     color: typeColor,
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
@@ -909,7 +909,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                 ),
                 child: Text(
                   isSent ? 'Sent' : 'Failed',
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     color: statusColor,
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
@@ -1027,7 +1027,7 @@ class _AddSubscriberSheetState extends State<_AddSubscriberSheet> {
           child: Container(
             padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
             decoration: const BoxDecoration(
-              color: Color(0xFF1A2236),
+              color: Color(0xFF0A1025),
               borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
             ),
             child: Column(
@@ -1039,7 +1039,7 @@ class _AddSubscriberSheetState extends State<_AddSubscriberSheet> {
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF3A4460),
+                      color: const Color(0xFF849495),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -1047,7 +1047,7 @@ class _AddSubscriberSheetState extends State<_AddSubscriberSheet> {
                 const SizedBox(height: 20),
                 Text(
                   'Add Manager Subscriber',
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     color: Colors.white,
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
@@ -1056,7 +1056,7 @@ class _AddSubscriberSheetState extends State<_AddSubscriberSheet> {
                 const SizedBox(height: 4),
                 Text(
                   'This manager will receive PO spend & session reports',
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     color: const Color(0xFF6B7490),
                     fontSize: 12,
                     fontWeight: FontWeight.w400,
@@ -1080,7 +1080,7 @@ class _AddSubscriberSheetState extends State<_AddSubscriberSheet> {
                 const SizedBox(height: 16),
                 Text(
                   'Report Frequency',
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     color: const Color(0xFF8A94B0),
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -1116,7 +1116,7 @@ class _AddSubscriberSheetState extends State<_AddSubscriberSheet> {
                         Expanded(
                           child: Text(
                             _error!,
-                            style: GoogleFonts.manrope(
+                            style: GoogleFonts.spaceGrotesk(
                               color: Colors.redAccent,
                               fontSize: 12,
                             ),
@@ -1152,7 +1152,7 @@ class _AddSubscriberSheetState extends State<_AddSubscriberSheet> {
                                 )
                               : Text(
                                   'Add Subscriber',
-                                  style: GoogleFonts.manrope(
+                                  style: GoogleFonts.spaceGrotesk(
                                     color: Colors.white,
                                     fontSize: 15,
                                     fontWeight: FontWeight.w700,
@@ -1183,7 +1183,7 @@ class _AddSubscriberSheetState extends State<_AddSubscriberSheet> {
       children: [
         Text(
           label,
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.spaceGrotesk(
             color: const Color(0xFF8A94B0),
             fontSize: 12,
             fontWeight: FontWeight.w600,
@@ -1199,14 +1199,14 @@ class _AddSubscriberSheetState extends State<_AddSubscriberSheet> {
           child: TextField(
             controller: controller,
             keyboardType: keyboardType,
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.spaceGrotesk(
               color: Colors.white,
               fontSize: 14,
               fontWeight: FontWeight.w500,
             ),
             decoration: InputDecoration(
               hintText: hint,
-              hintStyle: GoogleFonts.manrope(
+              hintStyle: GoogleFonts.spaceGrotesk(
                 color: const Color(0xFF4A5470),
                 fontSize: 13,
               ),
@@ -1240,7 +1240,7 @@ class _AddSubscriberSheetState extends State<_AddSubscriberSheet> {
         ),
         child: Text(
           label,
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.spaceGrotesk(
             color: selected ? color : const Color(0xFF6B7490),
             fontSize: 12,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,

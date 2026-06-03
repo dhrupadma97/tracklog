@@ -264,15 +264,15 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
               children: [
                 Text(
                   'Monthly Invoices',
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     fontSize: 18.sp,
                     fontWeight: FontWeight.w800,
-                    color: const Color(0xFFE8EAF0),
+                    color: const Color(0xFFdfe2f0),
                   ),
                 ),
                 Text(
                   'Sessions, EV kWh, Sand Bags & Rentals',
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     fontSize: 11.sp,
                     color: const Color(0xFF6B7490),
                   ),
@@ -304,7 +304,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
                     const SizedBox(width: 6),
                     Text(
                       'Export CSV',
-                      style: GoogleFonts.manrope(
+                      style: GoogleFonts.spaceGrotesk(
                         fontSize: 11.sp,
                         fontWeight: FontWeight.w700,
                         color: AppTheme.primary,
@@ -337,17 +337,17 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
               decoration: BoxDecoration(
                 color: isSelected
                     ? AppTheme.primary.withAlpha(30)
-                    : const Color(0xFF1A2236),
+                    : const Color(0xFF0A1025),
                 borderRadius: BorderRadius.circular(22),
                 border: Border.all(
                   color: isSelected
                       ? AppTheme.primary.withAlpha(120)
-                      : const Color(0xFF3A4460),
+                      : const Color(0xFF849495),
                 ),
               ),
               child: Text(
                 _invoiceMonths[i].label,
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   fontSize: 11.sp,
                   fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                   color: isSelected
@@ -446,9 +446,9 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A2236),
+        color: const Color(0xFF0A1025),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF252E45)),
+        border: Border.all(color: const Color(0xFF3a494b)),
       ),
       child: Column(
         children: [
@@ -473,16 +473,16 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
                 Expanded(
                   child: Text(
                     category,
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.spaceGrotesk(
                       fontSize: 13.sp,
                       fontWeight: FontWeight.w700,
-                      color: const Color(0xFFE8EAF0),
+                      color: const Color(0xFFdfe2f0),
                     ),
                   ),
                 ),
                 Text(
                   _currencyFmt.format(categoryTotal),
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     fontSize: 13.sp,
                     fontWeight: FontWeight.w800,
                     color: color,
@@ -491,7 +491,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
               ],
             ),
           ),
-          const Divider(height: 1, color: Color(0xFF252E45)),
+          const Divider(height: 1, color: Color(0xFF3a494b)),
           // Line items
           ...items.asMap().entries.map((entry) {
             final i = entry.key;
@@ -512,10 +512,10 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
                           children: [
                             Text(
                               item.description,
-                              style: GoogleFonts.manrope(
+                              style: GoogleFonts.spaceGrotesk(
                                 fontSize: 11.sp,
                                 fontWeight: FontWeight.w600,
-                                color: const Color(0xFFCDD0E0),
+                                color: const Color(0xFFb9cacb),
                               ),
                               overflow: TextOverflow.ellipsis,
                               maxLines: 2,
@@ -523,7 +523,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
                             const SizedBox(height: 2),
                             Text(
                               '${DateFormat('dd MMM').format(item.date)}  ·  ${item.quantity.toStringAsFixed(item.quantity == item.quantity.roundToDouble() ? 0 : 2)} ${item.unit}  ·  ₹${item.rate.toStringAsFixed(0)}/${item.unit}',
-                              style: GoogleFonts.manrope(
+                              style: GoogleFonts.spaceGrotesk(
                                 fontSize: 10.sp,
                                 color: const Color(0xFF6B7490),
                               ),
@@ -534,10 +534,10 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
                       const SizedBox(width: 8),
                       Text(
                         _currencyFmt.format(item.amount),
-                        style: GoogleFonts.manrope(
+                        style: GoogleFonts.spaceGrotesk(
                           fontSize: 12.sp,
                           fontWeight: FontWeight.w700,
-                          color: const Color(0xFFE8EAF0),
+                          color: const Color(0xFFdfe2f0),
                         ),
                       ),
                     ],
@@ -548,7 +548,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
                     height: 1,
                     indent: 16,
                     endIndent: 16,
-                    color: Color(0xFF1C2438),
+                    color: Color(0xFF181B25),
                   ),
               ],
             );
@@ -562,7 +562,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF131929),
+        color: const Color(0xFF0A1025),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppTheme.primary.withAlpha(60)),
       ),
@@ -581,7 +581,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
           ),
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 10),
-            child: Divider(height: 1, color: Color(0xFF252E45)),
+            child: Divider(height: 1, color: Color(0xFF3a494b)),
           ),
           _TotalRow(
             label: 'Total (incl. GST)',
@@ -603,7 +603,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: const Color(0xFF1A2236),
+                color: const Color(0xFF0A1025),
                 shape: BoxShape.circle,
               ),
               child: const CustomIconWidget(
@@ -615,16 +615,16 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
             const SizedBox(height: 16),
             Text(
               'No invoices yet',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.spaceGrotesk(
                 fontSize: 15.sp,
                 fontWeight: FontWeight.w700,
-                color: const Color(0xFFE8EAF0),
+                color: const Color(0xFFdfe2f0),
               ),
             ),
             const SizedBox(height: 6),
             Text(
               'Complete sessions to see monthly invoices',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.spaceGrotesk(
                 fontSize: 11.sp,
                 color: const Color(0xFF6B7490),
               ),
@@ -732,7 +732,7 @@ class _SummaryChip extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                fontFamily: 'Manrope',
+                fontFamily: 'Space Grotesk',
                 fontSize: 9,
                 color: const Color(0xFF6B7490),
                 fontWeight: FontWeight.w500,
@@ -742,7 +742,7 @@ class _SummaryChip extends StatelessWidget {
             Text(
               amount == 0 ? '—' : '₹${(amount / 1000).toStringAsFixed(1)}k',
               style: TextStyle(
-                fontFamily: 'Manrope',
+                fontFamily: 'Space Grotesk',
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
                 color: color,
@@ -775,20 +775,20 @@ class _TotalRow extends StatelessWidget {
       children: [
         Text(
           label,
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.spaceGrotesk(
             fontSize: 12,
             fontWeight: isBold ? FontWeight.w700 : FontWeight.w500,
-            color: isBold ? const Color(0xFFE8EAF0) : const Color(0xFFA8B0C8),
+            color: isBold ? const Color(0xFFdfe2f0) : const Color(0xFFA8B0C8),
           ),
         ),
         Text(
           value,
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.spaceGrotesk(
             fontSize: isBold ? 14 : 12,
             fontWeight: isBold ? FontWeight.w800 : FontWeight.w600,
             color:
                 valueColor ??
-                (isBold ? const Color(0xFFE8EAF0) : const Color(0xFFCDD0E0)),
+                (isBold ? const Color(0xFFdfe2f0) : const Color(0xFFb9cacb)),
           ),
         ),
       ],

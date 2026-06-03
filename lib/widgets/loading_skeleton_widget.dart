@@ -52,9 +52,9 @@ class _LoadingSkeletonWidgetState extends State<LoadingSkeletonWidget>
             borderRadius: BorderRadius.circular(widget.borderRadius),
             gradient: LinearGradient(
               colors: const [
-                Color(0xFF1C2438),
+                Color(0xFF181B25),
                 Color(0xFF2A3550),
-                Color(0xFF1C2438),
+                Color(0xFF181B25),
               ],
               stops: [
                 (_shimmer.value - 0.3).clamp(0.0, 1.0),

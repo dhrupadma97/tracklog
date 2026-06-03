@@ -148,7 +148,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                 child: RefreshIndicator(
                   onRefresh: _loadData,
                   color: AppTheme.primary,
-                  backgroundColor: const Color(0xFF1A2236),
+                  backgroundColor: const Color(0xFF0A1025),
                   child: CustomScrollView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     slivers: [
@@ -189,7 +189,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
           const SizedBox(height: 12),
           Text(
             'Failed to load PO data',
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.spaceGrotesk(
               color: Colors.white70,
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -200,7 +200,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
             onPressed: _loadData,
             child: Text(
               'Retry',
-              style: GoogleFonts.manrope(color: AppTheme.primary),
+              style: GoogleFonts.spaceGrotesk(color: AppTheme.primary),
             ),
           ),
         ],
@@ -232,7 +232,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
             children: [
               Text(
                 'PO Tracker',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   color: Colors.white,
                   fontSize: 20,
                   fontWeight: FontWeight.w800,
@@ -240,7 +240,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
               ),
               Text(
                 'Purchase Order Utilisation',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   color: const Color(0xFF6B7490),
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
@@ -255,9 +255,9 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: const Color(0xFF1A2236).withAlpha(180),
+              color: const Color(0xFF0A1025).withAlpha(180),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFF3A4460).withAlpha(120)),
+              border: Border.all(color: const Color(0xFF849495).withAlpha(120)),
             ),
             child: const Icon(
               Icons.refresh,
@@ -278,9 +278,9 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: const Color(0xFF1A2236).withAlpha(200),
+            color: const Color(0xFF0A1025).withAlpha(200),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFF3A4460).withAlpha(120)),
+            border: Border.all(color: const Color(0xFF849495).withAlpha(120)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -301,7 +301,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                     ),
                     child: Text(
                       'PO # $_poNumber',
-                      style: GoogleFonts.manrope(
+                      style: GoogleFonts.spaceGrotesk(
                         color: const Color(0xFF4D9FFF),
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -321,7 +321,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                         const SizedBox(width: 4),
                         Text(
                           'Due ${_deliveryDate!.day.toString().padLeft(2, '0')}.${_deliveryDate!.month.toString().padLeft(2, '0')}.${_deliveryDate!.year}',
-                          style: GoogleFonts.manrope(
+                          style: GoogleFonts.spaceGrotesk(
                             color: const Color(0xFF6B7490),
                             fontSize: 11,
                             fontWeight: FontWeight.w500,
@@ -334,7 +334,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
               const SizedBox(height: 10),
               Text(
                 _vendorName,
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   color: Colors.white,
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
@@ -345,7 +345,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
               const SizedBox(height: 4),
               Text(
                 _description,
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   color: const Color(0xFF8A94B0),
                   fontSize: 11,
                   fontWeight: FontWeight.w400,
@@ -413,7 +413,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
         children: [
           Text(
             label,
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.spaceGrotesk(
               color: const Color(0xFF6B7490),
               fontSize: 10,
               fontWeight: FontWeight.w500,
@@ -423,7 +423,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
           const SizedBox(height: 4),
           Text(
             '₹${_formatAmount(amount)}',
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.spaceGrotesk(
               color: color,
               fontSize: bold ? 13 : 12,
               fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
@@ -451,16 +451,16 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: const Color(0xFF1A2236).withAlpha(200),
+            color: const Color(0xFF0A1025).withAlpha(200),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFF3A4460).withAlpha(120)),
+            border: Border.all(color: const Color(0xFF849495).withAlpha(120)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 'Balance Summary',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   color: const Color(0xFF6B7490),
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
@@ -523,7 +523,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
               const SizedBox(width: 6),
               Text(
                 label,
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   color: color.withAlpha(200),
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
@@ -534,7 +534,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
           const SizedBox(height: 8),
           Text(
             value,
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.spaceGrotesk(
               color: color,
               fontSize: 16,
               fontWeight: FontWeight.w800,
@@ -544,7 +544,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
           const SizedBox(height: 2),
           Text(
             subtitle,
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.spaceGrotesk(
               color: color.withAlpha(160),
               fontSize: 10,
               fontWeight: FontWeight.w500,
@@ -570,9 +570,9 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: const Color(0xFF1A2236).withAlpha(200),
+            color: const Color(0xFF0A1025).withAlpha(200),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFF3A4460).withAlpha(120)),
+            border: Border.all(color: const Color(0xFF849495).withAlpha(120)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -582,7 +582,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                 children: [
                   Text(
                     'PO Utilisation',
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.spaceGrotesk(
                       color: const Color(0xFF6B7490),
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
@@ -591,7 +591,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                   ),
                   Text(
                     '$pct% used',
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.spaceGrotesk(
                       color: barColor,
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -615,14 +615,14 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                 children: [
                   Text(
                     '₹0',
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.spaceGrotesk(
                       color: const Color(0xFF4A5470),
                       fontSize: 10,
                     ),
                   ),
                   Text(
                     '₹${_formatAmount(_totalPoWithTax)} (incl. tax)',
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.spaceGrotesk(
                       color: const Color(0xFF4A5470),
                       fontSize: 10,
                     ),
@@ -644,16 +644,16 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: const Color(0xFF1A2236).withAlpha(200),
+            color: const Color(0xFF0A1025).withAlpha(200),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFF3A4460).withAlpha(120)),
+            border: Border.all(color: const Color(0xFF849495).withAlpha(120)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 'Spend Breakdown',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   color: const Color(0xFF6B7490),
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
@@ -692,7 +692,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                 children: [
                   Text(
                     'Total Cumulative Spend',
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.spaceGrotesk(
                       color: Colors.white,
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
@@ -700,7 +700,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                   ),
                   Text(
                     '₹${_formatAmount(_totalSpend)}',
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.spaceGrotesk(
                       color: const Color(0xFFFF6B6B),
                       fontSize: 15,
                       fontWeight: FontWeight.w800,
@@ -741,7 +741,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
             children: [
               Text(
                 label,
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   color: Colors.white,
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -749,7 +749,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
               ),
               Text(
                 subtitle,
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   color: const Color(0xFF6B7490),
                   fontSize: 10,
                   fontWeight: FontWeight.w400,
@@ -765,7 +765,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
           children: [
             Text(
               '₹${_formatAmount(amount)}',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.spaceGrotesk(
                 color: color,
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
@@ -773,7 +773,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
             ),
             Text(
               '${pct.toStringAsFixed(1)}%',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.spaceGrotesk(
                 color: const Color(0xFF6B7490),
                 fontSize: 10,
                 fontWeight: FontWeight.w500,

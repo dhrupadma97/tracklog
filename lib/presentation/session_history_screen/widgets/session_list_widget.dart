@@ -101,12 +101,12 @@ class _SessionListItemState extends State<_SessionListItem>
             decoration: BoxDecoration(
               color: isWarning
                   ? AppTheme.warning.withAlpha(13)
-                  : const Color(0xFF131929),
+                  : const Color(0xFF0A1025),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: isWarning
                     ? AppTheme.warning.withAlpha(64)
-                    : const Color(0xFF252E45),
+                    : const Color(0xFF3a494b),
                 width: 1,
               ),
             ),
@@ -139,7 +139,7 @@ class _SessionListItemState extends State<_SessionListItem>
                               Text(
                                 '${s['gate']}',
                                 style: theme.textTheme.titleSmall?.copyWith(
-                                  color: const Color(0xFFE8EAF0),
+                                  color: const Color(0xFFdfe2f0),
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -209,7 +209,7 @@ class _SessionListItemState extends State<_SessionListItem>
                           child: Text(
                             '₹${cost.toStringAsFixed(0)}',
                             style: TextStyle(
-                              fontFamily: 'Manrope',
+                              fontFamily: 'Space Grotesk',
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
                               color: isWarning
@@ -247,7 +247,7 @@ class _SessionListItemState extends State<_SessionListItem>
                               child: Text(
                                 s['notes'] as String,
                                 style: TextStyle(
-                                  fontFamily: 'Manrope',
+                                  fontFamily: 'Space Grotesk',
                                   fontSize: 11,
                                   fontWeight: FontWeight.w500,
                                   color: AppTheme.warning,
@@ -291,7 +291,7 @@ class _MetaItem extends StatelessWidget {
         Text(
           value,
           style: TextStyle(
-            fontFamily: 'Manrope',
+            fontFamily: 'Space Grotesk',
             fontSize: 11,
             fontWeight: FontWeight.w500,
             color: color,

@@ -78,9 +78,9 @@ class _CreateGateSheetWidgetState extends State<CreateGateSheetWidget> {
       SnackBar(
         content: const Text(
           'Using NATRAX center coordinates (GPS demo)',
-          style: TextStyle(fontFamily: 'Manrope'),
+          style: TextStyle(fontFamily: 'Space Grotesk'),
         ),
-        backgroundColor: const Color(0xFF1A2236),
+        backgroundColor: const Color(0xFF0A1025),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
@@ -147,12 +147,12 @@ class _CreateGateSheetWidgetState extends State<CreateGateSheetWidget> {
       maxChildSize: 0.95,
       builder: (_, scrollController) => Container(
         decoration: const BoxDecoration(
-          color: Color(0xFF131929),
+          color: Color(0xFF0A1025),
           borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
           border: Border(
-            top: BorderSide(color: Color(0xFF3A4460), width: 1),
-            left: BorderSide(color: Color(0xFF3A4460), width: 1),
-            right: BorderSide(color: Color(0xFF3A4460), width: 1),
+            top: BorderSide(color: Color(0xFF849495), width: 1),
+            left: BorderSide(color: Color(0xFF849495), width: 1),
+            right: BorderSide(color: Color(0xFF849495), width: 1),
           ),
         ),
         child: Column(
@@ -164,7 +164,7 @@ class _CreateGateSheetWidgetState extends State<CreateGateSheetWidget> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF3A4460),
+                  color: const Color(0xFF849495),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -189,7 +189,7 @@ class _CreateGateSheetWidgetState extends State<CreateGateSheetWidget> {
                 ],
               ),
             ),
-            const Divider(color: Color(0xFF252E45), height: 24),
+            const Divider(color: Color(0xFF3a494b), height: 24),
             Expanded(
               child: Form(
                 key: _formKey,
@@ -239,12 +239,12 @@ class _CreateGateSheetWidgetState extends State<CreateGateSheetWidget> {
                                 decoration: BoxDecoration(
                                   color: isSelected
                                       ? AppTheme.primary.withAlpha(38)
-                                      : const Color(0xFF1A2236),
+                                      : const Color(0xFF0A1025),
                                   borderRadius: BorderRadius.circular(10),
                                   border: Border.all(
                                     color: isSelected
                                         ? AppTheme.primary.withAlpha(128)
-                                        : const Color(0xFF3A4460),
+                                        : const Color(0xFF849495),
                                     width: 1,
                                   ),
                                 ),
@@ -253,18 +253,18 @@ class _CreateGateSheetWidgetState extends State<CreateGateSheetWidget> {
                                     Text(
                                       t['code']!,
                                       style: TextStyle(
-                                        fontFamily: 'Manrope',
+                                        fontFamily: 'Space Grotesk',
                                         fontSize: 12,
                                         fontWeight: FontWeight.w700,
                                         color: isSelected
                                             ? AppTheme.primary
-                                            : const Color(0xFFE8EAF0),
+                                            : const Color(0xFFdfe2f0),
                                       ),
                                     ),
                                     Text(
                                       t['label']!,
                                       style: TextStyle(
-                                        fontFamily: 'Manrope',
+                                        fontFamily: 'Space Grotesk',
                                         fontSize: 10,
                                         color: isSelected
                                             ? AppTheme.primary.withAlpha(204)
@@ -361,7 +361,7 @@ class _CreateGateSheetWidgetState extends State<CreateGateSheetWidget> {
                             Text(
                               'Use Current Location',
                               style: TextStyle(
-                                fontFamily: 'Manrope',
+                                fontFamily: 'Space Grotesk',
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
                                 color: AppTheme.primary,
@@ -400,7 +400,7 @@ class _CreateGateSheetWidgetState extends State<CreateGateSheetWidget> {
                             const Text(
                               'Set Boundary on Map',
                               style: TextStyle(
-                                fontFamily: 'Manrope',
+                                fontFamily: 'Space Grotesk',
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
                                 color: Color(0xFF4A9EFF),
@@ -441,7 +441,7 @@ class _CreateGateSheetWidgetState extends State<CreateGateSheetWidget> {
                           child: Text(
                             '${_radiusMeters.toInt()} m',
                             style: TextStyle(
-                              fontFamily: 'Manrope',
+                              fontFamily: 'Space Grotesk',
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
                               color: AppTheme.primary,
@@ -454,7 +454,7 @@ class _CreateGateSheetWidgetState extends State<CreateGateSheetWidget> {
                     SliderTheme(
                       data: SliderTheme.of(context).copyWith(
                         activeTrackColor: AppTheme.primary,
-                        inactiveTrackColor: const Color(0xFF252E45),
+                        inactiveTrackColor: const Color(0xFF3a494b),
                         thumbColor: AppTheme.primary,
                         overlayColor: AppTheme.primary.withAlpha(26),
                         trackHeight: 4,
@@ -506,10 +506,10 @@ class _CreateGateSheetWidgetState extends State<CreateGateSheetWidget> {
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1A2236),
+                        color: const Color(0xFF0A1025),
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
-                          color: const Color(0xFF3A4460),
+                          color: const Color(0xFF849495),
                           width: 1,
                         ),
                       ),
@@ -530,7 +530,7 @@ class _CreateGateSheetWidgetState extends State<CreateGateSheetWidget> {
                                 Text(
                                   'Gate Active',
                                   style: theme.textTheme.titleSmall?.copyWith(
-                                    color: const Color(0xFFE8EAF0),
+                                    color: const Color(0xFFdfe2f0),
                                   ),
                                 ),
                                 Text(
@@ -565,7 +565,7 @@ class _CreateGateSheetWidgetState extends State<CreateGateSheetWidget> {
                         label: Text(
                           isEdit ? 'Save Changes' : 'Create Gate',
                           style: const TextStyle(
-                            fontFamily: 'Manrope',
+                            fontFamily: 'Space Grotesk',
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
                           ),
@@ -601,7 +601,7 @@ class _SectionLabel extends StatelessWidget {
         Text(
           label.toUpperCase(),
           style: const TextStyle(
-            fontFamily: 'Manrope',
+            fontFamily: 'Space Grotesk',
             fontSize: 10,
             fontWeight: FontWeight.w700,
             color: Color(0xFF6B7490),
@@ -609,7 +609,7 @@ class _SectionLabel extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-        Expanded(child: Container(height: 1, color: const Color(0xFF252E45))),
+        Expanded(child: Container(height: 1, color: const Color(0xFF3a494b))),
       ],
     );
   }
@@ -662,12 +662,12 @@ class _GlassFormFieldState extends State<_GlassFormField> {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             decoration: BoxDecoration(
-              color: const Color(0xFF1A2236),
+              color: const Color(0xFF0A1025),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
                 color: _focused
                     ? AppTheme.primary.withAlpha(153)
-                    : const Color(0xFF3A4460),
+                    : const Color(0xFF849495),
                 width: _focused ? 1.5 : 1,
               ),
               boxShadow: _focused
@@ -686,14 +686,14 @@ class _GlassFormFieldState extends State<_GlassFormField> {
               inputFormatters: widget.inputFormatters,
               validator: widget.validator,
               style: const TextStyle(
-                fontFamily: 'Manrope',
+                fontFamily: 'Space Grotesk',
                 fontSize: 14,
-                color: Color(0xFFE8EAF0),
+                color: Color(0xFFdfe2f0),
               ),
               decoration: InputDecoration(
                 hintText: widget.hint,
                 hintStyle: const TextStyle(
-                  fontFamily: 'Manrope',
+                  fontFamily: 'Space Grotesk',
                   color: Color(0xFF6B7490),
                   fontSize: 13,
                 ),
@@ -718,12 +718,12 @@ class _GlassFormFieldState extends State<_GlassFormField> {
                 ),
                 helperText: widget.helperText,
                 helperStyle: const TextStyle(
-                  fontFamily: 'Manrope',
+                  fontFamily: 'Space Grotesk',
                   fontSize: 11,
                   color: Color(0xFF6B7490),
                 ),
                 errorStyle: const TextStyle(
-                  fontFamily: 'Manrope',
+                  fontFamily: 'Space Grotesk',
                   fontSize: 11,
                   color: Color(0xFFFF4D6A),
                 ),

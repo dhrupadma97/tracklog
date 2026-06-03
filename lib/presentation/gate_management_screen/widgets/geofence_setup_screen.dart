@@ -199,8 +199,8 @@ class _GeofenceSetupScreenState extends State<GeofenceSetupScreen>
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: const BoxDecoration(
-        color: Color(0xFF0F1520),
-        border: Border(bottom: BorderSide(color: Color(0xFF252E45), width: 1)),
+        color: Color(0xFF0A1025),
+        border: Border(bottom: BorderSide(color: Color(0xFF3a494b), width: 1)),
       ),
       child: Row(
         children: [
@@ -210,13 +210,13 @@ class _GeofenceSetupScreenState extends State<GeofenceSetupScreen>
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: const Color(0xFF1A2236),
+                color: const Color(0xFF0A1025),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF3A4460), width: 1),
+                border: Border.all(color: const Color(0xFF849495), width: 1),
               ),
               child: const Icon(
                 Icons.arrow_back_rounded,
-                color: Color(0xFFE8EAF0),
+                color: Color(0xFFdfe2f0),
                 size: 20,
               ),
             ),
@@ -229,10 +229,10 @@ class _GeofenceSetupScreenState extends State<GeofenceSetupScreen>
                 const Text(
                   'Set Geofence Boundary',
                   style: TextStyle(
-                    fontFamily: 'Manrope',
+                    fontFamily: 'Space Grotesk',
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFFE8EAF0),
+                    color: Color(0xFFdfe2f0),
                   ),
                 ),
                 Text(
@@ -240,7 +240,7 @@ class _GeofenceSetupScreenState extends State<GeofenceSetupScreen>
                       ? 'Live map · tap presets to position'
                       : 'Drag pin to position · drag ring to resize',
                   style: const TextStyle(
-                    fontFamily: 'Manrope',
+                    fontFamily: 'Space Grotesk',
                     fontSize: 11,
                     color: Color(0xFF6B7490),
                   ),
@@ -254,26 +254,26 @@ class _GeofenceSetupScreenState extends State<GeofenceSetupScreen>
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFF1A2236),
+                color: const Color(0xFF0A1025),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF3A4460), width: 1),
+                border: Border.all(color: const Color(0xFF849495), width: 1),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
                     _showLiveMap ? Icons.grid_on_rounded : Icons.map_rounded,
-                    color: const Color(0xFF00C896),
+                    color: const Color(0xFF00F3FF),
                     size: 14,
                   ),
                   const SizedBox(width: 4),
                   Text(
                     _showLiveMap ? 'Grid' : 'Map',
                     style: const TextStyle(
-                      fontFamily: 'Manrope',
+                      fontFamily: 'Space Grotesk',
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF00C896),
+                      color: Color(0xFF00F3FF),
                     ),
                   ),
                 ],
@@ -296,7 +296,7 @@ class _GeofenceSetupScreenState extends State<GeofenceSetupScreen>
               child: const Text(
                 'Save',
                 style: TextStyle(
-                  fontFamily: 'Manrope',
+                  fontFamily: 'Space Grotesk',
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   color: Color(0xFF001A10),
@@ -344,9 +344,9 @@ class _GeofenceSetupScreenState extends State<GeofenceSetupScreen>
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: const Color(0xFF0F1520).withAlpha(220),
+              color: const Color(0xFF0A1025).withAlpha(220),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF3A4460), width: 1),
+              border: Border.all(color: const Color(0xFF849495), width: 1),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -355,19 +355,19 @@ class _GeofenceSetupScreenState extends State<GeofenceSetupScreen>
                 Text(
                   '${_lat.toStringAsFixed(5)}, ${_lng.toStringAsFixed(5)}',
                   style: const TextStyle(
-                    fontFamily: 'Manrope',
+                    fontFamily: 'Space Grotesk',
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFFE8EAF0),
+                    color: Color(0xFFdfe2f0),
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   'Radius: ${_radiusMeters}m',
                   style: const TextStyle(
-                    fontFamily: 'Manrope',
+                    fontFamily: 'Space Grotesk',
                     fontSize: 10,
-                    color: Color(0xFF00C896),
+                    color: Color(0xFF00F3FF),
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -463,7 +463,7 @@ class _GeofenceSetupScreenState extends State<GeofenceSetupScreen>
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0F1520).withAlpha(204),
+                      color: const Color(0xFF0A1025).withAlpha(204),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
                         color: AppTheme.primary.withAlpha(77),
@@ -473,10 +473,10 @@ class _GeofenceSetupScreenState extends State<GeofenceSetupScreen>
                     child: Text(
                       '${_radiusMeters}m',
                       style: const TextStyle(
-                        fontFamily: 'Manrope',
+                        fontFamily: 'Space Grotesk',
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF00C896),
+                        color: Color(0xFF00F3FF),
                       ),
                     ),
                   ),
@@ -514,8 +514,8 @@ class _GeofenceSetupScreenState extends State<GeofenceSetupScreen>
   Widget _buildBottomPanel(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
-        color: Color(0xFF0F1520),
-        border: Border(top: BorderSide(color: Color(0xFF252E45), width: 1)),
+        color: Color(0xFF0A1025),
+        border: Border(top: BorderSide(color: Color(0xFF3a494b), width: 1)),
       ),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
       child: Column(
@@ -555,7 +555,7 @@ class _GeofenceSetupScreenState extends State<GeofenceSetupScreen>
                   ),
                   child: const Icon(
                     Icons.check_rounded,
-                    color: Color(0xFF00C896),
+                    color: Color(0xFF00F3FF),
                     size: 20,
                   ),
                 ),
@@ -569,7 +569,7 @@ class _GeofenceSetupScreenState extends State<GeofenceSetupScreen>
               const Text(
                 'Radius',
                 style: TextStyle(
-                  fontFamily: 'Manrope',
+                  fontFamily: 'Space Grotesk',
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: Color(0xFFA8B0C8),
@@ -580,7 +580,7 @@ class _GeofenceSetupScreenState extends State<GeofenceSetupScreen>
                 child: SliderTheme(
                   data: SliderTheme.of(context).copyWith(
                     activeTrackColor: AppTheme.primary,
-                    inactiveTrackColor: const Color(0xFF252E45),
+                    inactiveTrackColor: const Color(0xFF3a494b),
                     thumbColor: AppTheme.primary,
                     overlayColor: AppTheme.primary.withAlpha(31),
                     trackHeight: 3,
@@ -603,10 +603,10 @@ class _GeofenceSetupScreenState extends State<GeofenceSetupScreen>
                 child: Text(
                   '${_radiusMeters}m',
                   style: const TextStyle(
-                    fontFamily: 'Manrope',
+                    fontFamily: 'Space Grotesk',
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF00C896),
+                    color: Color(0xFF00F3FF),
                     fontFeatures: [FontFeature.tabularFigures()],
                   ),
                   textAlign: TextAlign.right,
@@ -628,7 +628,7 @@ class _GeofenceSetupScreenState extends State<GeofenceSetupScreen>
                 child: Text(
                   'Session auto-starts when GPS enters this boundary',
                   style: const TextStyle(
-                    fontFamily: 'Manrope',
+                    fontFamily: 'Space Grotesk',
                     fontSize: 11,
                     color: Color(0xFF6B7490),
                   ),
@@ -660,12 +660,12 @@ class _GridPainter extends CustomPainter {
     // Dark base
     canvas.drawRect(
       Rect.fromLTWH(0, 0, size.width, size.height),
-      Paint()..color = const Color(0xFF0A0E1A),
+      Paint()..color = const Color(0xFF050811),
     );
 
     // Grid lines
     final gridPaint = Paint()
-      ..color = const Color(0xFF1C2438)
+      ..color = const Color(0xFF181B25)
       ..strokeWidth = 1;
 
     final spacing = 40.0 * scale;
@@ -698,7 +698,7 @@ class _GridPainter extends CustomPainter {
       text: const TextSpan(
         text: 'NATRAX',
         style: TextStyle(
-          fontFamily: 'Manrope',
+          fontFamily: 'Space Grotesk',
           fontSize: 10,
           color: Color(0xFF4A9EFF),
           fontWeight: FontWeight.w600,
@@ -735,7 +735,7 @@ class _GeofencePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     // Outer pulse ring
     final pulsePaint = Paint()
-      ..color = const Color(0xFF00C896).withAlpha((30 * pulse).toInt())
+      ..color = const Color(0xFF00F3FF).withAlpha((30 * pulse).toInt())
       ..style = PaintingStyle.fill;
     canvas.drawCircle(
       center,
@@ -745,15 +745,15 @@ class _GeofencePainter extends CustomPainter {
 
     // Fill
     final fillPaint = Paint()
-      ..color = const Color(0xFF00C896).withAlpha(draggingCenter ? 40 : 20)
+      ..color = const Color(0xFF00F3FF).withAlpha(draggingCenter ? 40 : 20)
       ..style = PaintingStyle.fill;
     canvas.drawCircle(center, radiusPx, fillPaint);
 
     // Border ring
     final borderPaint = Paint()
       ..color = draggingRadius
-          ? const Color(0xFF00C896)
-          : const Color(0xFF00C896).withAlpha(180)
+          ? const Color(0xFF00F3FF)
+          : const Color(0xFF00F3FF).withAlpha(180)
       ..style = PaintingStyle.stroke
       ..strokeWidth = draggingRadius ? 2.5 : 1.8
       ..strokeCap = StrokeCap.round;
@@ -763,7 +763,7 @@ class _GeofencePainter extends CustomPainter {
 
     // Cross-hair lines
     final crossPaint = Paint()
-      ..color = const Color(0xFF00C896).withAlpha(60)
+      ..color = const Color(0xFF00F3FF).withAlpha(60)
       ..strokeWidth = 1;
     canvas.drawLine(
       Offset(center.dx - radiusPx * 1.15, center.dy),
@@ -778,7 +778,7 @@ class _GeofencePainter extends CustomPainter {
 
     // Radius line to handle
     final linePaint = Paint()
-      ..color = const Color(0xFF00C896).withAlpha(120)
+      ..color = const Color(0xFF00F3FF).withAlpha(120)
       ..strokeWidth = 1.5
       ..strokeCap = StrokeCap.round;
     canvas.drawLine(center, center + Offset(radiusPx, 0), linePaint);
@@ -830,7 +830,7 @@ class _CenterPin extends StatelessWidget {
       decoration: BoxDecoration(
         color: active
             ? AppTheme.primary.withAlpha(51)
-            : const Color(0xFF131929).withAlpha(230),
+            : const Color(0xFF0A1025).withAlpha(230),
         shape: BoxShape.circle,
         border: Border.all(
           color: active ? AppTheme.primary : AppTheme.primary.withAlpha(180),
@@ -846,7 +846,7 @@ class _CenterPin extends StatelessWidget {
               ]
             : [],
       ),
-      child: const Icon(Icons.location_pin, color: Color(0xFF00C896), size: 22),
+      child: const Icon(Icons.location_pin, color: Color(0xFF00F3FF), size: 22),
     );
   }
 }
@@ -864,7 +864,7 @@ class _RadiusHandle extends StatelessWidget {
       decoration: BoxDecoration(
         color: active
             ? AppTheme.primary
-            : const Color(0xFF131929).withAlpha(230),
+            : const Color(0xFF0A1025).withAlpha(230),
         shape: BoxShape.circle,
         border: Border.all(color: AppTheme.primary, width: active ? 0 : 2),
         boxShadow: active
@@ -901,17 +901,17 @@ class _ZoomControls extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF0F1520).withAlpha(230),
+        color: const Color(0xFF0A1025).withAlpha(230),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF252E45), width: 1),
+        border: Border.all(color: const Color(0xFF3a494b), width: 1),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           _ZoomBtn(icon: Icons.add_rounded, onTap: onZoomIn),
-          Container(height: 1, color: const Color(0xFF252E45)),
+          Container(height: 1, color: const Color(0xFF3a494b)),
           _ZoomBtn(icon: Icons.remove_rounded, onTap: onZoomOut),
-          Container(height: 1, color: const Color(0xFF252E45)),
+          Container(height: 1, color: const Color(0xFF3a494b)),
           _ZoomBtn(icon: Icons.center_focus_strong_rounded, onTap: onReset),
         ],
       ),
@@ -960,17 +960,17 @@ class _PresetStrip extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: const Color(0xFF0F1520).withAlpha(230),
+                color: const Color(0xFF0A1025).withAlpha(230),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFF3A4460), width: 1),
+                border: Border.all(color: const Color(0xFF849495), width: 1),
               ),
               child: Text(
                 p['name'] as String,
                 style: const TextStyle(
-                  fontFamily: 'Manrope',
+                  fontFamily: 'Space Grotesk',
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFFCDD0E0),
+                  color: Color(0xFFb9cacb),
                 ),
               ),
             ),
@@ -1000,7 +1000,7 @@ class _CoordField extends StatelessWidget {
         Text(
           label,
           style: const TextStyle(
-            fontFamily: 'Manrope',
+            fontFamily: 'Space Grotesk',
             fontSize: 10,
             fontWeight: FontWeight.w600,
             color: Color(0xFF6B7490),
@@ -1011,18 +1011,18 @@ class _CoordField extends StatelessWidget {
         Container(
           height: 40,
           decoration: BoxDecoration(
-            color: const Color(0xFF1A2236),
+            color: const Color(0xFF0A1025),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFF3A4460), width: 1),
+            border: Border.all(color: const Color(0xFF849495), width: 1),
           ),
           child: TextField(
             controller: controller,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             style: const TextStyle(
-              fontFamily: 'Manrope',
+              fontFamily: 'Space Grotesk',
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: Color(0xFFE8EAF0),
+              color: Color(0xFFdfe2f0),
               fontFeatures: [FontFeature.tabularFigures()],
             ),
             decoration: const InputDecoration(

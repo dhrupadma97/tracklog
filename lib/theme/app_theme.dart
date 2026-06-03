@@ -6,20 +6,20 @@ import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
   // Primary palette — NATRAX TrackLog
-  static const Color primary = Color(0xFF00C896); // teal-green — active/running
-  static const Color primaryContainer = Color(0xFF003D2E);
-  static const Color secondary = Color(0xFFFF6B4A); // coral-red — cost/alert
-  static const Color secondaryContainer = Color(0xFF3D1A10);
+  static const Color primary = Color(0xFF00F3FF); // teal-green — active/running
+  static const Color primaryContainer = Color(0xFF00373A);
+  static const Color secondary = Color(0xFF7000FF); // coral-red — cost/alert
+  static const Color secondaryContainer = Color(0xFF23005B);
   static const Color accent = Color(0xFFFFB547); // amber — warning
 
   // Dark surfaces
-  static const Color backgroundDark = Color(0xFF0A0E1A);
-  static const Color surfaceDark = Color(0xFF131929);
-  static const Color surfaceVariantDark = Color(0xFF1C2438);
-  static const Color cardDark = Color(0xFF1A2236);
+  static const Color backgroundDark = Color(0xFF050811);
+  static const Color surfaceDark = Color(0xFF0A1025);
+  static const Color surfaceVariantDark = Color(0xFF181B25);
+  static const Color cardDark = Color(0xFF0A1025);
 
   // Semantic
-  static const Color success = Color(0xFF00C896);
+  static const Color success = Color(0xFF00F3FF);
   static const Color warning = Color(0xFFFFB547);
   static const Color error = Color(0xFFFF4D6A);
   static const Color info = Color(0xFF4A9EFF);
@@ -41,75 +41,75 @@ class AppTheme {
       secondaryContainer: secondaryContainer,
       onSecondaryContainer: Color(0xFFFFCCBB),
       surface: surfaceDark,
-      onSurface: Color(0xFFE8EAF0),
+      onSurface: Color(0xFFdfe2f0),
       surfaceContainerHighest: surfaceVariantDark,
       onSurfaceVariant: Color(0xFFA8B0C8),
       error: error,
       onError: Colors.white,
-      outline: Color(0xFF3A4460),
-      outlineVariant: Color(0xFF252E45),
-      inverseSurface: Color(0xFFE8EAF0),
-      onInverseSurface: Color(0xFF0A0E1A),
+      outline: Color(0xFF849495),
+      outlineVariant: Color(0xFF3a494b),
+      inverseSurface: Color(0xFFdfe2f0),
+      onInverseSurface: Color(0xFF050811),
       tertiary: accent,
       onTertiary: Color(0xFF1A0D00),
     ),
     scaffoldBackgroundColor: backgroundDark,
-    textTheme: GoogleFonts.manropeTextTheme(
+    textTheme: GoogleFonts.spaceGroteskTextTheme(
       const TextTheme(
         displayLarge: TextStyle(
           fontSize: 48,
           fontWeight: FontWeight.w800,
-          color: Color(0xFFE8EAF0),
+          color: Color(0xFFdfe2f0),
         ),
         displayMedium: TextStyle(
           fontSize: 36,
           fontWeight: FontWeight.w700,
-          color: Color(0xFFE8EAF0),
+          color: Color(0xFFdfe2f0),
         ),
         displaySmall: TextStyle(
           fontSize: 28,
           fontWeight: FontWeight.w700,
-          color: Color(0xFFE8EAF0),
+          color: Color(0xFFdfe2f0),
         ),
         headlineLarge: TextStyle(
           fontSize: 24,
           fontWeight: FontWeight.w700,
-          color: Color(0xFFE8EAF0),
+          color: Color(0xFFdfe2f0),
         ),
         headlineMedium: TextStyle(
           fontSize: 20,
           fontWeight: FontWeight.w600,
-          color: Color(0xFFE8EAF0),
+          color: Color(0xFFdfe2f0),
         ),
         headlineSmall: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.w600,
-          color: Color(0xFFE8EAF0),
+          color: Color(0xFFdfe2f0),
         ),
         titleLarge: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w600,
-          color: Color(0xFFE8EAF0),
+          color: Color(0xFFdfe2f0),
         ),
         titleMedium: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w600,
-          color: Color(0xFFE8EAF0),
+          color: Color(0xFFdfe2f0),
         ),
         titleSmall: TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w500,
-          color: Color(0xFFE8EAF0),
+          color: Color(0xFFdfe2f0),
         ),
         bodyLarge: TextStyle(
           fontSize: 15,
           fontWeight: FontWeight.w400,
-          color: Color(0xFFE8EAF0),
+          color: Color(0xFFdfe2f0),
         ),
         bodyMedium: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w400,
-          color: Color(0xFFCDD0E0),
+          color: Color(0xFFb9cacb),
         ),
         bodySmall: TextStyle(
           fontSize: 12,
@@ -120,7 +120,7 @@ class AppTheme {
           fontSize: 13,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.3,
-          color: Color(0xFFE8EAF0),
+          color: Color(0xFFdfe2f0),
         ),
         labelMedium: TextStyle(
           fontSize: 11,
@@ -142,12 +142,12 @@ class AppTheme {
       scrolledUnderElevation: 0,
       centerTitle: true,
       titleTextStyle: TextStyle(
-        fontFamily: 'Manrope',
+        fontFamily: 'Space Grotesk',
         fontSize: 16,
         fontWeight: FontWeight.w600,
-        color: Color(0xFFE8EAF0),
+        color: Color(0xFFdfe2f0),
       ),
-      iconTheme: IconThemeData(color: Color(0xFFE8EAF0)),
+      iconTheme: IconThemeData(color: Color(0xFFdfe2f0)),
     ),
     cardTheme: CardThemeData(
       color: cardDark,
@@ -160,11 +160,11 @@ class AppTheme {
       fillColor: surfaceVariantDark,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: Color(0xFF3A4460)),
+        borderSide: const BorderSide(color: Color(0xFF849495)),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: Color(0xFF3A4460)),
+        borderSide: const BorderSide(color: Color(0xFF849495)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
@@ -186,7 +186,7 @@ class AppTheme {
       elevation: 8,
     ),
     dividerTheme: const DividerThemeData(
-      color: Color(0xFF252E45),
+      color: Color(0xFF3a494b),
       thickness: 1,
       space: 0,
     ),
@@ -200,7 +200,7 @@ class AppTheme {
       trackColor: WidgetStateProperty.resolveWith(
         (s) => s.contains(WidgetState.selected)
             ? primaryContainer
-            : const Color(0xFF252E45),
+            : const Color(0xFF3a494b),
       ),
     ),
   );
@@ -220,6 +220,6 @@ class AppTheme {
       onError: Colors.white,
     ),
     scaffoldBackgroundColor: backgroundLight,
-    textTheme: GoogleFonts.manropeTextTheme(),
+    textTheme: GoogleFonts.spaceGroteskTextTheme(),
   );
 }

@@ -66,8 +66,8 @@ class _GateCardWidgetState extends State<GateCardWidget>
 
   static const Map<String, Color> _trackTypeColors = {
     'HST': Color(0xFF4A9EFF),
-    'DYN': Color(0xFF00C896),
-    'BRK': Color(0xFFFF6B4A),
+    'DYN': Color(0xFF00F3FF),
+    'BRK': Color(0xFF7000FF),
     'HC': Color(0xFFFFB547),
     'WSP': Color(0xFF9B7FFF),
     'GEN': Color(0xFF6B7490),
@@ -114,7 +114,7 @@ class _GateCardWidgetState extends State<GateCardWidget>
                 Text(
                   'Delete',
                   style: TextStyle(
-                    fontFamily: 'Manrope',
+                    fontFamily: 'Space Grotesk',
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.error,
@@ -127,7 +127,7 @@ class _GateCardWidgetState extends State<GateCardWidget>
             return await showDialog<bool>(
               context: context,
               builder: (ctx) => AlertDialog(
-                backgroundColor: const Color(0xFF1A2236),
+                backgroundColor: const Color(0xFF0A1025),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
                 ),
@@ -142,7 +142,7 @@ class _GateCardWidgetState extends State<GateCardWidget>
                     child: Text(
                       'Cancel',
                       style: TextStyle(
-                        fontFamily: 'Manrope',
+                        fontFamily: 'Space Grotesk',
                         color: const Color(0xFFA8B0C8),
                       ),
                     ),
@@ -152,7 +152,7 @@ class _GateCardWidgetState extends State<GateCardWidget>
                     child: Text(
                       'Delete',
                       style: TextStyle(
-                        fontFamily: 'Manrope',
+                        fontFamily: 'Space Grotesk',
                         color: AppTheme.error,
                         fontWeight: FontWeight.w700,
                       ),
@@ -166,13 +166,13 @@ class _GateCardWidgetState extends State<GateCardWidget>
           child: Container(
             decoration: BoxDecoration(
               color: isActive
-                  ? const Color(0xFF131929)
-                  : const Color(0xFF0F1520),
+                  ? const Color(0xFF0A1025)
+                  : const Color(0xFF0A1025),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: isActive
                     ? typeColor.withAlpha(51)
-                    : const Color(0xFF252E45),
+                    : const Color(0xFF3a494b),
                 width: 1,
               ),
             ),
@@ -223,7 +223,7 @@ class _GateCardWidgetState extends State<GateCardWidget>
                           child: Text(
                             trackType,
                             style: TextStyle(
-                              fontFamily: 'Manrope',
+                              fontFamily: 'Space Grotesk',
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
                               color: typeColor,
@@ -242,12 +242,12 @@ class _GateCardWidgetState extends State<GateCardWidget>
                             decoration: BoxDecoration(
                               color: isActive
                                   ? AppTheme.primary.withAlpha(51)
-                                  : const Color(0xFF252E45),
+                                  : const Color(0xFF3a494b),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
                                 color: isActive
                                     ? AppTheme.primary.withAlpha(128)
-                                    : const Color(0xFF3A4460),
+                                    : const Color(0xFF849495),
                                 width: 1,
                               ),
                             ),
@@ -281,7 +281,7 @@ class _GateCardWidgetState extends State<GateCardWidget>
                       g['name'] as String,
                       style: theme.textTheme.titleSmall?.copyWith(
                         color: isActive
-                            ? const Color(0xFFE8EAF0)
+                            ? const Color(0xFFdfe2f0)
                             : const Color(0xFF6B7490),
                         fontWeight: FontWeight.w700,
                       ),
@@ -296,10 +296,10 @@ class _GateCardWidgetState extends State<GateCardWidget>
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF0A0E1A),
+                        color: const Color(0xFF050811),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: const Color(0xFF252E45),
+                          color: const Color(0xFF3a494b),
                           width: 1,
                         ),
                       ),
@@ -314,7 +314,7 @@ class _GateCardWidgetState extends State<GateCardWidget>
                           Text(
                             '$lat° N, $lng° E',
                             style: const TextStyle(
-                              fontFamily: 'Manrope',
+                              fontFamily: 'Space Grotesk',
                               fontSize: 11,
                               fontWeight: FontWeight.w500,
                               color: Color(0xFFA8B0C8),
@@ -325,7 +325,7 @@ class _GateCardWidgetState extends State<GateCardWidget>
                           Container(
                             width: 1,
                             height: 12,
-                            color: const Color(0xFF3A4460),
+                            color: const Color(0xFF849495),
                           ),
                           const SizedBox(width: 8),
                           CustomIconWidget(
@@ -337,7 +337,7 @@ class _GateCardWidgetState extends State<GateCardWidget>
                           Text(
                             '${radius}m',
                             style: const TextStyle(
-                              fontFamily: 'Manrope',
+                              fontFamily: 'Space Grotesk',
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
                               color: Color(0xFFA8B0C8),
@@ -371,7 +371,7 @@ class _GateCardWidgetState extends State<GateCardWidget>
                           Text(
                             '${rate.toStringAsFixed(0)}/hr',
                             style: TextStyle(
-                              fontFamily: 'Manrope',
+                              fontFamily: 'Space Grotesk',
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
                               color: AppTheme.secondary,
@@ -385,13 +385,13 @@ class _GateCardWidgetState extends State<GateCardWidget>
                             vertical: 3,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF1A2236),
+                            color: const Color(0xFF0A1025),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
                             '${g['totalSessionsThisMonth']} sessions',
                             style: theme.textTheme.labelSmall?.copyWith(
-                              color: const Color(0xFFE8EAF0),
+                              color: const Color(0xFFdfe2f0),
                             ),
                           ),
                         ),
@@ -442,7 +442,7 @@ class _GateCardWidgetState extends State<GateCardWidget>
                             const Text(
                               'Set Geofence Boundary',
                               style: TextStyle(
-                                fontFamily: 'Manrope',
+                                fontFamily: 'Space Grotesk',
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
                                 color: Color(0xFF4A9EFF),

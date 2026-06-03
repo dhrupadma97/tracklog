@@ -42,7 +42,7 @@ class StatusBadgeWidget extends StatelessWidget {
           Text(
             customLabel ?? config.label,
             style: TextStyle(
-              fontFamily: 'Manrope',
+              fontFamily: 'Space Grotesk',
               fontSize: compact ? 10 : 11,
               fontWeight: FontWeight.w700,
               color: config.text,
@@ -57,10 +57,10 @@ class StatusBadgeWidget extends StatelessWidget {
   static final Map<SessionStatus, _BadgeConfig> _statusConfig = {
     SessionStatus.active: _BadgeConfig(
       label: 'ACTIVE',
-      bg: const Color(0xFF00C896).withAlpha(38),
-      border: const Color(0xFF00C896).withAlpha(102),
-      dot: const Color(0xFF00C896),
-      text: const Color(0xFF00C896),
+      bg: const Color(0xFF00F3FF).withAlpha(38),
+      border: const Color(0xFF00F3FF).withAlpha(102),
+      dot: const Color(0xFF00F3FF),
+      text: const Color(0xFF00F3FF),
     ),
     SessionStatus.idle: _BadgeConfig(
       label: 'IDLE',
@@ -85,10 +85,10 @@ class StatusBadgeWidget extends StatelessWidget {
     ),
     SessionStatus.paused: _BadgeConfig(
       label: 'PAUSED',
-      bg: const Color(0xFFFF6B4A).withAlpha(38),
-      border: const Color(0xFFFF6B4A).withAlpha(102),
-      dot: const Color(0xFFFF6B4A),
-      text: const Color(0xFFFF6B4A),
+      bg: const Color(0xFF7000FF).withAlpha(38),
+      border: const Color(0xFF7000FF).withAlpha(102),
+      dot: const Color(0xFF7000FF),
+      text: const Color(0xFF7000FF),
     ),
   };
 }

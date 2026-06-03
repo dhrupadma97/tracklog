@@ -107,7 +107,7 @@ class _SessionControlWidgetState extends State<SessionControlWidget>
                                 ? 'Stop Session'
                                 : 'Start Session',
                             style: TextStyle(
-                              fontFamily: 'Manrope',
+                              fontFamily: 'Space Grotesk',
                               fontSize: 15,
                               fontWeight: FontWeight.w700,
                               color: widget.sessionActive

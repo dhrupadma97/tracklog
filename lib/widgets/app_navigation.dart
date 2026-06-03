@@ -128,14 +128,14 @@ class _AppNavigationState extends State<AppNavigation>
         child: ClipRRect(
           borderRadius: BorderRadius.circular(36),
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+            filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
             child: Container(
               height: 64,
               decoration: BoxDecoration(
-                color: const Color(0xFF1A2236).withAlpha(217),
+                color: const Color(0xFF0A1025).withAlpha(153),
                 borderRadius: BorderRadius.circular(36),
                 border: Border.all(
-                  color: const Color(0xFF3A4460).withAlpha(153),
+                  color: const Color(0xFF849495).withAlpha(50),
                   width: 1,
                 ),
                 boxShadow: [
@@ -192,7 +192,7 @@ class _AppNavigationState extends State<AppNavigation>
                             AnimatedDefaultTextStyle(
                               duration: const Duration(milliseconds: 200),
                               style: TextStyle(
-                                fontFamily: 'Manrope',
+                                fontFamily: 'Space Grotesk',
                                 fontSize: 10,
                                 fontWeight: isActive
                                     ? FontWeight.w700

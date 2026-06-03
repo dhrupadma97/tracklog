@@ -231,15 +231,15 @@ class _AdminScreenState extends State<AdminScreen> {
           children: [
             Text(
               'Admin Control Center',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.spaceGrotesk(
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
-                color: const Color(0xFFE8EAF0),
+                color: const Color(0xFFdfe2f0),
               ),
             ),
             Text(
               'System management, track rates & bulk imports',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.spaceGrotesk(
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
                 color: const Color(0xFF6B7490),
@@ -259,25 +259,25 @@ class _AdminScreenState extends State<AdminScreen> {
         child: Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: const Color(0xFF1A2236).withAlpha(200),
+            color: const Color(0xFF0A1025).withAlpha(200),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFF3A4460).withAlpha(120)),
+            border: Border.all(color: const Color(0xFF849495).withAlpha(120)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 'Spreadsheet Billing Data Import',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
-                  color: const Color(0xFFE8EAF0),
+                  color: const Color(0xFFdfe2f0),
                 ),
               ),
               const SizedBox(height: 8),
               Text(
                 'Upload a NATRAX Comprehensive Billing Excel sheet (.xlsx/.xlsm) to import raw sessions from the Detailed Utilisation tab.',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   fontSize: 12,
                   color: const Color(0xFF9098B0),
                 ),
@@ -288,13 +288,13 @@ class _AdminScreenState extends State<AdminScreen> {
                   padding: const EdgeInsets.all(12),
                   width: double.infinity,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0F1520),
+                    color: const Color(0xFF0A1025),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFF3A4460).withAlpha(80)),
+                    border: Border.all(color: const Color(0xFF849495).withAlpha(80)),
                   ),
                   child: Text(
                     _statusMessage,
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.spaceGrotesk(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: AppTheme.primary,
@@ -326,7 +326,7 @@ class _AdminScreenState extends State<AdminScreen> {
                       : const Icon(Icons.upload_file_rounded),
                   label: Text(
                     _isProcessing ? 'Processing...' : 'Upload Excel Sheet',
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.spaceGrotesk(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                     ),
@@ -348,19 +348,19 @@ class _AdminScreenState extends State<AdminScreen> {
         child: Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: const Color(0xFF1A2236).withAlpha(200),
+            color: const Color(0xFF0A1025).withAlpha(200),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFF3A4460).withAlpha(120)),
+            border: Border.all(color: const Color(0xFF849495).withAlpha(120)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 'Track Rate Management',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.spaceGrotesk(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
-                  color: const Color(0xFFE8EAF0),
+                  color: const Color(0xFFdfe2f0),
                 ),
               ),
               const SizedBox(height: 16),
@@ -369,7 +369,7 @@ class _AdminScreenState extends State<AdminScreen> {
               else if (_rates.isEmpty)
                 Text(
                   'No rates configured. Run migrations or add rates first.',
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.spaceGrotesk(
                     fontSize: 13,
                     color: const Color(0xFF6B7490),
                   ),
@@ -379,7 +379,7 @@ class _AdminScreenState extends State<AdminScreen> {
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: _rates.length,
-                  separatorBuilder: (_, __) => const Divider(color: Color(0xFF3A4460)),
+                  separatorBuilder: (_, __) => const Divider(color: Color(0xFF849495)),
                   itemBuilder: (context, idx) {
                     final rate = _rates[idx];
                     return Padding(
@@ -392,15 +392,15 @@ class _AdminScreenState extends State<AdminScreen> {
                               children: [
                                 Text(
                                   '${rate.trackCode} — ${rate.trackName}',
-                                  style: GoogleFonts.manrope(
+                                  style: GoogleFonts.spaceGrotesk(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700,
-                                    color: const Color(0xFFE8EAF0),
+                                    color: const Color(0xFFdfe2f0),
                                   ),
                                 ),
                                 Text(
                                   'Min billing: ${rate.minHoursPerDay} hrs/day',
-                                  style: GoogleFonts.manrope(
+                                  style: GoogleFonts.spaceGrotesk(
                                     fontSize: 11,
                                     color: const Color(0xFF6B7490),
                                   ),
@@ -410,7 +410,7 @@ class _AdminScreenState extends State<AdminScreen> {
                           ),
                           Text(
                             '₹${rate.rateBelow3_5t.toStringAsFixed(0)}/hr',
-                            style: GoogleFonts.manrope(
+                            style: GoogleFonts.spaceGrotesk(
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
                               color: AppTheme.primary,

@@ -22,7 +22,7 @@ class AppScaffold extends StatelessWidget {
 
     return Scaffold(
       extendBody: true,
-      backgroundColor: const Color(0xFF0A0E1A),
+      backgroundColor: const Color(0xFF050811),
       body: Stack(
         children: [
           // Goodyear background image with dark overlay — applied globally
@@ -34,7 +34,7 @@ class AppScaffold extends StatelessWidget {
             ),
           ),
           Positioned.fill(
-            child: Container(color: const Color(0xFF0A0E1A).withAlpha(215)),
+            child: Container(color: const Color(0xFF050811).withAlpha(215)),
           ),
           navigationShell,
         ],
@@ -131,7 +131,7 @@ class _WideScaffoldState extends State<_WideScaffold> {
     final items = _getItems();
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0E1A),
+      backgroundColor: const Color(0xFF050811),
       body: Stack(
         children: [
           Positioned.fill(
@@ -142,21 +142,21 @@ class _WideScaffoldState extends State<_WideScaffold> {
             ),
           ),
           Positioned.fill(
-            child: Container(color: const Color(0xFF0A0E1A).withAlpha(215)),
+            child: Container(color: const Color(0xFF050811).withAlpha(215)),
           ),
           Row(
             children: [
               // Left rail
               ClipRect(
                 child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                  filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
                   child: Container(
                     width: 220,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0F1520).withAlpha(230),
+                      color: const Color(0xFF0A1025).withAlpha(153),
                       border: Border(
                         right: BorderSide(
-                          color: const Color(0xFF3A4460).withAlpha(120),
+                          color: const Color(0xFF849495).withAlpha(50),
                           width: 1,
                         ),
                       ),
@@ -175,18 +175,18 @@ class _WideScaffoldState extends State<_WideScaffold> {
                                   height: 32,
                                   decoration: BoxDecoration(
                                     color: const Color(
-                                      0xFF00C896,
+                                      0xFF00F3FF,
                                     ).withAlpha(30),
                                     borderRadius: BorderRadius.circular(8),
                                     border: Border.all(
                                       color: const Color(
-                                        0xFF00C896,
+                                        0xFF00F3FF,
                                       ).withAlpha(80),
                                     ),
                                   ),
                                   child: const Icon(
                                     Icons.track_changes,
-                                    color: Color(0xFF00C896),
+                                    color: Color(0xFF00F3FF),
                                     size: 18,
                                   ),
                                 ),
@@ -194,10 +194,10 @@ class _WideScaffoldState extends State<_WideScaffold> {
                                 const Text(
                                   'TrackLog',
                                   style: TextStyle(
-                                    fontFamily: 'Manrope',
+                                    fontFamily: 'Space Grotesk',
                                     fontSize: 16,
                                     fontWeight: FontWeight.w800,
-                                    color: Color(0xFFE8EAF0),
+                                    color: Color(0xFFdfe2f0),
                                     letterSpacing: 0.5,
                                   ),
                                 ),
@@ -249,10 +249,10 @@ class _WideScaffoldState extends State<_WideScaffold> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       margin: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF131929).withAlpha(150),
+        color: const Color(0xFF0A1025).withAlpha(150),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: const Color(0xFF3A4460).withAlpha(60),
+          color: const Color(0xFF849495).withAlpha(60),
         ),
       ),
       child: Column(
@@ -264,10 +264,10 @@ class _WideScaffoldState extends State<_WideScaffold> {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF00C896).withAlpha(30),
+                  color: const Color(0xFF00F3FF).withAlpha(30),
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: const Color(0xFF00C896).withAlpha(85),
+                    color: const Color(0xFF00F3FF).withAlpha(85),
                     width: 1.5,
                   ),
                 ),
@@ -275,10 +275,10 @@ class _WideScaffoldState extends State<_WideScaffold> {
                   child: Text(
                     initials,
                     style: const TextStyle(
-                      fontFamily: 'Manrope',
+                      fontFamily: 'Space Grotesk',
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF00C896),
+                      color: Color(0xFF00F3FF),
                     ),
                   ),
                 ),
@@ -292,10 +292,10 @@ class _WideScaffoldState extends State<_WideScaffold> {
                     Text(
                       name,
                       style: const TextStyle(
-                        fontFamily: 'Manrope',
+                        fontFamily: 'Space Grotesk',
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFFE8EAF0),
+                        color: Color(0xFFdfe2f0),
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -303,7 +303,7 @@ class _WideScaffoldState extends State<_WideScaffold> {
                     Text(
                       role,
                       style: const TextStyle(
-                        fontFamily: 'Manrope',
+                        fontFamily: 'Space Grotesk',
                         fontSize: 10,
                         fontWeight: FontWeight.w500,
                         color: Color(0xFF6B7490),
@@ -317,7 +317,7 @@ class _WideScaffoldState extends State<_WideScaffold> {
             ],
           ),
           const SizedBox(height: 12),
-          const Divider(color: Color(0xFF252E45)),
+          const Divider(color: Color(0xFF3a494b)),
           const SizedBox(height: 8),
           InkWell(
             onTap: () async {
@@ -333,17 +333,17 @@ class _WideScaffoldState extends State<_WideScaffold> {
                 children: [
                   Icon(
                     Icons.logout_rounded,
-                    color: Color(0xFFFF6B4A),
+                    color: Color(0xFFFFB4AB),
                     size: 16,
                   ),
                   SizedBox(width: 8),
                   Text(
                     'Logout',
                     style: TextStyle(
-                      fontFamily: 'Manrope',
+                      fontFamily: 'Space Grotesk',
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFFFF6B4A),
+                      color: Color(0xFFFFB4AB),
                     ),
                   ),
                 ],
@@ -378,11 +378,11 @@ class _RailItem extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: isActive
-              ? const Color(0xFF00C896).withAlpha(30)
+              ? const Color(0xFF00F3FF).withAlpha(30)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
           border: isActive
-              ? Border.all(color: const Color(0xFF00C896).withAlpha(80))
+              ? Border.all(color: const Color(0xFF00F3FF).withAlpha(80))
               : null,
         ),
         child: Row(
@@ -390,7 +390,7 @@ class _RailItem extends StatelessWidget {
             Icon(
               isActive ? item.activeIcon : item.icon,
               color: isActive
-                  ? const Color(0xFF00C896)
+                  ? const Color(0xFF00F3FF)
                   : const Color(0xFF6B7490),
               size: 20,
             ),
@@ -398,11 +398,11 @@ class _RailItem extends StatelessWidget {
             Text(
               item.label,
               style: TextStyle(
-                fontFamily: 'Manrope',
+                fontFamily: 'Space Grotesk',
                 fontSize: 13,
                 fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
                 color: isActive
-                    ? const Color(0xFF00C896)
+                    ? const Color(0xFF00F3FF)
                     : const Color(0xFF6B7490),
               ),
             ),

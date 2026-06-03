@@ -29,10 +29,10 @@ class HeroMetricWidget extends StatelessWidget {
                 Text(
                   '${totalHours.toStringAsFixed(1)} hrs',
                   style: const TextStyle(
-                    fontFamily: 'Manrope',
+                    fontFamily: 'Space Grotesk',
                     fontSize: 42,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFFE8EAF0),
+                    color: Color(0xFFdfe2f0),
                     fontFeatures: [FontFeature.tabularFigures()],
                     height: 1.1,
                   ),
@@ -102,7 +102,7 @@ class _HeroChip extends StatelessWidget {
       child: Text(
         label,
         style: TextStyle(
-          fontFamily: 'Manrope',
+          fontFamily: 'Space Grotesk',
           fontSize: 11,
           fontWeight: FontWeight.w600,
           color: color,
