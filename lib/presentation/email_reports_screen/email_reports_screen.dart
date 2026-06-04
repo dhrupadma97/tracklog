@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../core/app_export.dart';
 import '../../services/email_report_service.dart';
 import '../../services/supabase_service.dart';
+import '../../services/project_manager.dart';
 
 class EmailReportsScreen extends StatefulWidget {
   const EmailReportsScreen({super.key});
@@ -69,6 +70,9 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
 
   Future<Map<String, dynamic>> _fetchPoAndSessionData(String reportType) async {
     final client = SupabaseService.instance.client;
+    final pm = ProjectManager.instance;
+    final activeProjName = pm.activeProject;
+    final isMahindraEV = activeProjName.toLowerCase() == 'mahindra ev poc';
 
     // PO data
     final poData = await client
@@ -85,12 +89,25 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
     final sessionsData = await client
         .from('engineer_sessions')
         .select(
-          'track_name, duration_minutes, total_cost, session_status, started_at',
+          'id, track_name, duration_minutes, total_cost, session_status, started_at, project_name',
         )
         .eq('session_status', 'completed')
         .order('started_at', ascending: false);
 
+    // Additional services
+    final servicesData = await client
+        .from('session_additional_services')
+        .select('session_id, total_cost');
+
+    final Map<String, double> svcCostMap = {};
+    for (final s in servicesData as List) {
+      final sid = s['session_id'] as String;
+      final cost = (s['total_cost'] as num?)?.toDouble() ?? 0.0;
+      svcCostMap[sid] = (svcCostMap[sid] ?? 0.0) + cost;
+    }
+
     double trackTotal = 0;
+    double servicesTotal = 0;
     int sessionCount = 0;
     final List<Map<String, dynamic>> sessionList = [];
 
@@ -100,31 +117,47 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
         : DateTime(now.year, 1, 1);
 
     for (final s in sessionsData as List) {
-      final cost = (s['total_cost'] as num?)?.toDouble() ?? 0;
-      trackTotal += cost;
+      final rawProj = (s['project_name'] as String?)?.trim() ?? '';
+      if (!pm.sessionBelongsToProject(rawProj)) continue;
+
+      final sid = s['id'] as String;
+      final track = (s['total_cost'] as num?)?.toDouble() ?? 0.0;
+      final svc = svcCostMap[sid] ?? 0.0;
+      final startedAt = DateTime.tryParse(s['started_at'] as String? ?? '');
+
       sessionCount++;
 
-      final startedAt = DateTime.tryParse(s['started_at'] as String? ?? '');
-      if (startedAt != null && startedAt.isAfter(cutoff)) {
-        sessionList.add({
-          'trackName': s['track_name'],
-          'durationMinutes': s['duration_minutes'],
-          'totalCost': cost,
-          'sessionStatus': s['session_status'],
-        });
+      if (startedAt != null) {
+        final isHistorical = isMahindraEV &&
+            startedAt.year == 2026 &&
+            (startedAt.month == 3 || startedAt.month == 4 || startedAt.month == 5);
+        if (!isHistorical) {
+          trackTotal += track;
+          servicesTotal += svc;
+        }
+
+        if (startedAt.isAfter(cutoff)) {
+          sessionList.add({
+            'trackName': s['track_name'],
+            'durationMinutes': s['duration_minutes'],
+            'totalCost': track,
+            'sessionStatus': s['session_status'],
+          });
+        }
+      } else {
+        trackTotal += track;
+        servicesTotal += svc;
       }
     }
 
-    // Additional services
-    final servicesData = await client
-        .from('session_additional_services')
-        .select('total_cost');
-    double servicesTotal = 0;
-    for (final s in servicesData as List) {
-      servicesTotal += (s['total_cost'] as num?)?.toDouble() ?? 0;
+    double workshopSpend = 0.0;
+    if (isMahindraEV) {
+      // Add historical overrides (Track = 1,263,500, Accessories = 215,219, Workshop = 245,000)
+      trackTotal += 1263500.0;
+      servicesTotal += 215219.0;
+      workshopSpend = 245000.0;
     }
 
-    const workshopSpend = 100000.0;
     final totalSpend = trackTotal + servicesTotal + workshopSpend;
 
     return {
@@ -326,7 +359,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                 ),
               ),
               Text(
-                'PO Spend & Session Summaries',
+                'PO Spend & Session Summaries — ${ProjectManager.instance.activeProject}',
                 style: GoogleFonts.spaceGrotesk(
                   color: const Color(0xFF6B7490),
                   fontSize: 12,
