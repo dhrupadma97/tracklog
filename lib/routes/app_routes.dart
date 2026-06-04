@@ -10,6 +10,7 @@ import '../presentation/manual_entry_screen/manual_entry_screen.dart';
 import '../presentation/po_tracker_screen/po_tracker_screen.dart';
 import '../presentation/privacy_policy_screen/privacy_policy_screen.dart';
 import '../presentation/session_history_screen/session_history_screen.dart';
+import '../presentation/session_history_screen/project_selection_screen.dart';
 import '../presentation/settings_screen/settings_screen.dart';
 import '../presentation/splash_screen/splash_screen.dart';
 import '../services/engineer_auth_service.dart';
@@ -21,6 +22,7 @@ class AppRoutes {
   static const String initial = '/';
   static const String splash = '/';
   static const String login = '/login';
+  static const String projectSelection = '/project-selection';
   static const String activeSession = '/active-session-screen';
   static const String sessionHistory = '/session-history-screen';
   static const String gateManagement = '/gate-management-screen';
@@ -49,7 +51,7 @@ final GoRouter appRouter = GoRouter(
 
     // If logged in and on login, redirect to app
     if (isLoggedIn && isLogin) {
-      return kIsWeb ? AppRoutes.sessionHistory : AppRoutes.activeSession;
+      return kIsWeb ? AppRoutes.projectSelection : AppRoutes.activeSession;
     }
 
     return null;
@@ -90,6 +92,18 @@ final GoRouter appRouter = GoRouter(
         transitionDuration: const Duration(milliseconds: 280),
         transitionsBuilder: (context, animation, _, child) => FadeTransition(
           opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+          child: child,
+        ),
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.projectSelection,
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const ProjectSelectionScreen(),
+        transitionDuration: const Duration(milliseconds: 400),
+        transitionsBuilder: (context, animation, _, child) => FadeTransition(
+          opacity: CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
           child: child,
         ),
       ),

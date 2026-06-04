@@ -59,9 +59,9 @@ class _AppNavigationState extends State<AppNavigation>
         branchIndex: 3,
       ),
       const _TabSpec(
-        icon: 'receipt_long',
-        selectedIcon: 'receipt_long',
-        label: 'Invoices',
+        icon: 'analytics',
+        selectedIcon: 'analytics',
+        label: 'Analyser',
         branchIndex: 4,
       ),
       const _TabSpec(

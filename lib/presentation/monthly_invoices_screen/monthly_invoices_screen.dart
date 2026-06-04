@@ -1,132 +1,227 @@
-import 'dart:convert';
-import 'package:flutter/foundation.dart';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:universal_html/html.dart' as html;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../services/engineer_auth_service.dart';
+import '../../services/project_manager.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/custom_icon_widget.dart';
 
+// ─── Data models ──────────────────────────────────────────────────────────────
+class _Session {
+  final String id;
+  final String trackName;
+  final String trackCode;
+  final DateTime date;
+  final int durationMinutes;
+  final double trackCostExcl;
+  final double svcCostExcl;
+  final String? projectName;
+  final String? notes;
+
+  double get subtotalExcl => trackCostExcl + svcCostExcl;
+  double get gst => subtotalExcl * 0.18;
+  double get totalIncl => subtotalExcl * 1.18;
+
+  const _Session({
+    required this.id,
+    required this.trackName,
+    required this.trackCode,
+    required this.date,
+    required this.durationMinutes,
+    required this.trackCostExcl,
+    required this.svcCostExcl,
+    this.projectName,
+    this.notes,
+  });
+}
+
+class _MonthGroup {
+  final String monthKey; // 'YYYY-MM'
+  final String label;    // 'April 2026'
+  final List<_Session> sessions;
+  final double workshopRental;
+  final double? overriddenTrack;
+  final double? overriddenAccessories;
+
+  double get trackCost =>
+      overriddenTrack ?? sessions.fold(0.0, (s, e) => s + e.trackCostExcl);
+  double get accessoriesCost =>
+      overriddenAccessories ?? sessions.fold(0.0, (s, e) => s + e.svcCostExcl);
+
+  double get trackAcc => trackCost + accessoriesCost;
+  double get subtotalExcl => trackAcc + workshopRental;
+  double get gst => subtotalExcl * 0.18;
+  double get totalIncl => subtotalExcl * 1.18;
+  int get totalMinutes =>
+      sessions.fold(0, (s, e) => s + e.durationMinutes);
+
+  _MonthGroup({
+    required this.monthKey,
+    required this.label,
+    required this.sessions,
+    required this.workshopRental,
+    this.overriddenTrack,
+    this.overriddenAccessories,
+  });
+}
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
 class MonthlyInvoicesScreen extends StatefulWidget {
   const MonthlyInvoicesScreen({super.key});
-
   @override
   State<MonthlyInvoicesScreen> createState() => _MonthlyInvoicesScreenState();
 }
 
-class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
+class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen>
+    with TickerProviderStateMixin {
   bool _isLoading = true;
-  List<_InvoiceMonth> _invoiceMonths = [];
-  List<_InvoiceLineItem> _allItems = [];
-  List<String> _availableProjects = ['All Projects'];
-  String _selectedProject = 'All Projects';
-  int _selectedMonthIndex = 0;
-  final _currencyFmt = NumberFormat.compactCurrency(
-    locale: 'en_IN',
-    symbol: '₹',
-    decimalDigits: 1,
-  );
+  List<_MonthGroup> _months = [];
+  int _selectedMonthIdx = 0;
+  String _activeProject = '';
+
+  late TabController _tabController;
+
+  // Formatters
+  final _inr = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+  final _usd = NumberFormat.currency(locale: 'en_US', symbol: '\$', decimalDigits: 0);
+  final _compact = NumberFormat.compactCurrency(locale: 'en_IN', symbol: '₹', decimalDigits: 1);
+
+  String _fmtUsd(double inr) => _usd.format(inr / 83.0);
+
+  // Workshop rental breakdown (from excel_data.json)
+  static const _workshopByMonth = {
+    '2026-03': 55000.0,
+    '2026-04': 150000.0,
+    '2026-05': 40000.0,
+  };
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    _activeProject = ProjectManager.instance.activeProject;
+    ProjectManager.instance.addListener(_onProjectChanged);
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    ProjectManager.instance.removeListener(_onProjectChanged);
+    super.dispose();
+  }
+
+  void _onProjectChanged() {
+    if (mounted && _activeProject != ProjectManager.instance.activeProject) {
+      setState(() {
+        _activeProject = ProjectManager.instance.activeProject;
+        _selectedMonthIdx = 0;
+      });
+      _loadData();
+    }
   }
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      final uid = EngineerAuthService.instance.currentUser?.id;
-      if (uid == null) return;
-
       final client = Supabase.instance.client;
+
       final sessionsRaw = await client
           .from('engineer_sessions')
-          .select('id, track_name, track_code, started_at, ended_at, duration_minutes, total_cost, session_status, project_name')
-          .eq('engineer_id', uid)
+          .select(
+              'id, track_name, track_code, started_at, duration_minutes, total_cost, session_status, project_name, notes')
           .eq('session_status', 'completed')
           .order('started_at', ascending: false);
 
       final sessionIds = (sessionsRaw as List).map((s) => s['id'] as String).toList();
-      List<dynamic> servicesRaw = [];
+      List<dynamic> svcsRaw = [];
       if (sessionIds.isNotEmpty) {
-        servicesRaw = await client
+        svcsRaw = await client
             .from('session_additional_services')
-            .select('session_id, service_name, quantity, rate, total_cost')
+            .select('session_id, total_cost')
             .inFilter('session_id', sessionIds);
       }
 
-      final Map<String, List<Map<String, dynamic>>> servicesBySession = {};
-      for (final svc in servicesRaw) {
+      final Map<String, double> svcMap = {};
+      for (final svc in svcsRaw) {
         final sid = svc['session_id'] as String;
-        servicesBySession.putIfAbsent(sid, () => []).add(Map<String, dynamic>.from(svc));
+        final c = (svc['total_cost'] as num?)?.toDouble() ?? 0.0;
+        svcMap[sid] = (svcMap[sid] ?? 0) + c;
       }
 
-      final List<_InvoiceLineItem> allItems = [];
-      final Set<String> projects = {'All Projects'};
-
+      // Map raw session to _Session
+      final allSessions = <_Session>[];
       for (final s in sessionsRaw) {
-        final sessionId = s['id'] as String;
-        final startedAt = DateTime.tryParse(s['started_at'] as String? ?? '') ?? DateTime.now();
-        final durationMin = (s['duration_minutes'] as int?) ?? 0;
-        final sessionCost = (s['total_cost'] as num?)?.toDouble() ?? 0.0;
-        final trackName = s['track_name'] as String? ?? '';
-        final projectName = s['project_name'] as String? ?? 'General';
+        final rawProj = (s['project_name'] as String?)?.trim() ?? '';
+        final projName = (rawProj.isEmpty || rawProj.toLowerCase() == 'general')
+            ? 'Mahindra EV PoC'
+            : rawProj;
 
-        projects.add(projectName);
+        // Filter by active project
+        final pm = ProjectManager.instance;
+        if (!pm.sessionBelongsToProject(rawProj)) continue;
 
-        allItems.add(_InvoiceLineItem(
-          date: startedAt,
-          category: 'Session',
-          description: trackName,
-          projectName: projectName,
-          quantity: durationMin / 60.0,
-          unit: 'hrs',
-          rate: sessionCost > 0 && durationMin > 0 ? sessionCost / (durationMin / 60.0) : 0,
-          amount: sessionCost,
+        final date = DateTime.tryParse(s['started_at'] as String? ?? '') ?? DateTime.now();
+        allSessions.add(_Session(
+          id: s['id'] as String,
+          trackName: s['track_name'] as String? ?? '—',
+          trackCode: s['track_code'] as String? ?? '',
+          date: date,
+          durationMinutes: s['duration_minutes'] as int? ?? 0,
+          trackCostExcl: (s['total_cost'] as num?)?.toDouble() ?? 0.0,
+          svcCostExcl: svcMap[s['id'] as String] ?? 0.0,
+          projectName: projName,
+          notes: s['notes'] as String?,
         ));
-
-        final svcs = servicesBySession[sessionId] ?? [];
-        for (final svc in svcs) {
-          final svcName = svc['service_name'] as String? ?? '';
-          final qty = (svc['quantity'] as num?)?.toDouble() ?? 0;
-          final rate = (svc['rate'] as num?)?.toDouble() ?? 0;
-          final total = (svc['total_cost'] as num?)?.toDouble() ?? (qty * rate);
-
-          String category = 'Additional';
-          if (svcName.toLowerCase().contains('ev') || svcName.toLowerCase().contains('charger')) {
-            category = 'EV kWh';
-          } else if (svcName.toLowerCase().contains('sand')) {
-            category = 'Sand Bags';
-          } else if (svcName.toLowerCase().contains('rental') || svcName.toLowerCase().contains('instrument')) {
-            category = 'Rental Instruments';
-          }
-
-          allItems.add(_InvoiceLineItem(
-            date: startedAt,
-            category: category,
-            description: svcName,
-            projectName: projectName,
-            quantity: qty,
-            unit: 'unit',
-            rate: rate,
-            amount: total,
-          ));
-        }
       }
+
+      // Group by month
+      final Map<String, List<_Session>> byMonth = {};
+      for (final s in allSessions) {
+        final mk = s.date.toIso8601String().substring(0, 7);
+        byMonth.putIfAbsent(mk, () => []).add(s);
+      }
+
+      final monthGroups = byMonth.entries.map((e) {
+        final dt = DateTime.parse('${e.key}-01');
+        final label = DateFormat('MMMM yyyy').format(dt);
+        // Only attach workshop rental to Mahindra EV PoC
+        final isMahindraEV = _activeProject.toLowerCase() == 'mahindra ev poc';
+        final rental = isMahindraEV
+            ? (_workshopByMonth[e.key] ?? 0.0)
+            : 0.0;
+            
+        // Separate overrides for Track and Accessories from Excel sheet for Mahindra EV PoC
+        const historicalTrack = {
+          '2026-03': 133000.0,
+          '2026-04': 966000.0,
+          '2026-05': 164500.0,
+        };
+        const historicalAccessories = {
+          '2026-03': 5605.0,
+          '2026-04': 36375.0,
+          '2026-05': 173239.0,
+        };
+        final double? overriddenTrack = isMahindraEV ? historicalTrack[e.key] : null;
+        final double? overriddenAccessories = isMahindraEV ? historicalAccessories[e.key] : null;
+
+        return _MonthGroup(
+          monthKey: e.key,
+          label: label,
+          sessions: e.value..sort((a, b) => a.date.compareTo(b.date)),
+          workshopRental: rental,
+          overriddenTrack: overriddenTrack,
+          overriddenAccessories: overriddenAccessories,
+        );
+      }).toList()
+        ..sort((a, b) => b.monthKey.compareTo(a.monthKey));
 
       if (mounted) {
         setState(() {
-          _allItems = allItems;
-          _availableProjects = projects.toList()..sort();
-          if (!_availableProjects.contains(_selectedProject)) {
-            _selectedProject = 'All Projects';
-          }
-          _updateMonths();
+          _months = monthGroups;
+          _selectedMonthIdx = 0;
           _isLoading = false;
         });
       }
@@ -135,540 +230,205 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
     }
   }
 
-  void _updateMonths() {
-    final Map<String, List<_InvoiceLineItem>> byMonth = {};
-    for (final item in _allItems) {
-      if (_selectedProject != 'All Projects' && item.projectName != _selectedProject) {
-        continue;
-      }
-      final key = DateFormat('MMMM yyyy').format(item.date);
-      byMonth.putIfAbsent(key, () => []).add(item);
-    }
+  _MonthGroup? get _selected =>
+      _months.isEmpty ? null : _months[_selectedMonthIdx];
 
-    final months = byMonth.entries.map((e) {
-      final items = e.value;
-      items.sort((a, b) => b.date.compareTo(a.date));
-      return _InvoiceMonth(label: e.key, items: items);
-    }).toList();
+  double get _grandTotalIncl =>
+      _months.fold(0.0, (s, m) => s + m.totalIncl);
+  double get _grandTotalExcl =>
+      _months.fold(0.0, (s, m) => s + m.subtotalExcl);
+  int get _totalSessions =>
+      _months.fold(0, (s, m) => s + m.sessions.length);
 
-    months.sort((a, b) {
-      final da = DateFormat('MMMM yyyy').parse(a.label);
-      final db = DateFormat('MMMM yyyy').parse(b.label);
-      return db.compareTo(da);
-    });
-
-    _invoiceMonths = months;
-    if (_selectedMonthIndex >= _invoiceMonths.length) {
-      _selectedMonthIndex = 0;
-    }
-  }
-
-  void _exportCSV() {
-    if (_invoiceMonths.isEmpty) return;
-    final month = _invoiceMonths[_selectedMonthIndex];
-    final sb = StringBuffer();
-    sb.writeln('Monthly Invoice - ${month.label}');
-    sb.writeln('Date,Category,Description,Quantity,Unit,Rate (INR),Amount (INR)');
-    for (final item in month.items) {
-      sb.writeln('${DateFormat('dd/MM/yyyy').format(item.date)},${item.category},"${item.description}",${item.quantity},${item.unit},${item.rate},${item.amount}');
-    }
-    sb.writeln(',,,,,,');
-    sb.writeln('Subtotal,,,,,,"${month.subtotal}"');
-    sb.writeln('GST (18%),,,,,,"${month.gst}"');
-    sb.writeln('Total,,,,,,"${month.total}"');
-
-    if (kIsWeb) {
-      final bytes = utf8.encode(sb.toString());
-      final blob = html.Blob([bytes], 'text/csv');
-      final url = html.Url.createObjectUrlFromBlob(blob);
-      html.AnchorElement(href: url)
-        ..setAttribute('download', 'invoice_${month.label}.csv')
-        ..click();
-      html.Url.revokeObjectUrl(url);
-    }
-  }
+  // ─── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final isDesktop = MediaQuery.of(context).size.width >= 1024;
     return Scaffold(
-      backgroundColor: const Color(0xFF050811),
-      body: SafeArea(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
-            : Padding(
-                padding: const EdgeInsets.all(32.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildHeader(),
-                    const SizedBox(height: 32),
-                    if (_invoiceMonths.isEmpty)
-                      _buildEmptyState()
-                    else
-                      Expanded(
-                        child: isDesktop ? _buildDesktopLayout() : _buildMobileLayout(),
-                      ),
-                  ],
-                ),
+      backgroundColor: const Color(0xFF030712),
+      body: Stack(
+        children: [
+          // Ambient glows
+          Positioned(
+            top: -120, left: -100,
+            child: Container(
+              width: 480, height: 380,
+              decoration: BoxDecoration(
+                gradient: RadialGradient(colors: [
+                  AppTheme.primary.withOpacity(0.07),
+                  Colors.transparent,
+                ]),
               ),
+            ),
+          ),
+          Positioned(
+            bottom: -80, right: -60,
+            child: Container(
+              width: 360, height: 300,
+              decoration: BoxDecoration(
+                gradient: RadialGradient(colors: [
+                  const Color(0xFF4A9EFF).withOpacity(0.06),
+                  Colors.transparent,
+                ]),
+              ),
+            ),
+          ),
+          SafeArea(
+            bottom: false,
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(
+                        color: AppTheme.primary, strokeWidth: 1.5))
+                : Column(
+                    children: [
+                      _buildHeader(),
+                      _buildKpiSummaryRow(),
+                      _buildMonthTabs(),
+                      Expanded(
+                        child: TabBarView(
+                          controller: _tabController,
+                          children: [
+                            _buildBreakdownTab(),
+                            _buildSessionHistoryTab(),
+                            _buildChartTab(),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+        ],
       ),
-    );
-  }
-
-  Widget _buildDesktopLayout() {
-    final currentMonth = _invoiceMonths[_selectedMonthIndex];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _buildMetricsRow(currentMonth),
-        const SizedBox(height: 24),
-        Expanded(
-          flex: 4,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(flex: 6, child: _buildRevenueChart()),
-              const SizedBox(width: 24),
-              Expanded(flex: 4, child: _buildCategoryChart(currentMonth)),
-            ],
-          ),
-        ),
-        const SizedBox(height: 24),
-        _buildMonthSelector(),
-        const SizedBox(height: 16),
-        Expanded(
-          flex: 5,
-          child: _buildDataTable(currentMonth),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMobileLayout() {
-    final currentMonth = _invoiceMonths[_selectedMonthIndex];
-    return CustomScrollView(
-      slivers: [
-        SliverToBoxAdapter(
-          child: Column(
-            children: [
-              _buildMetricsRow(currentMonth, isMobile: true),
-              const SizedBox(height: 24),
-              SizedBox(height: 300, child: _buildRevenueChart()),
-              const SizedBox(height: 24),
-              SizedBox(height: 300, child: _buildCategoryChart(currentMonth)),
-              const SizedBox(height: 24),
-              _buildMonthSelector(),
-              const SizedBox(height: 16),
-            ],
-          ),
-        ),
-        SliverFillRemaining(
-          hasScrollBody: true,
-          child: _buildDataTable(currentMonth),
-        ),
-      ],
     );
   }
 
   Widget _buildHeader() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Financial Management',
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFFdfe2f0),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Billing & Invoices',
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 14,
-                color: const Color(0xFFA8B0C8),
-              ),
-            ),
-          ],
-        ),
-
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0A1025).withAlpha(150),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withAlpha(25)),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _selectedProject,
-                  dropdownColor: const Color(0xFF0A1025),
-                  icon: const Icon(Icons.keyboard_arrow_down, color: AppTheme.primary),
+    final pm = ProjectManager.instance;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.06))),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('EXPENSE ANALYSER',
                   style: GoogleFonts.spaceGrotesk(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFFdfe2f0),
-                  ),
-                  onChanged: (String? newValue) {
-                    if (newValue != null) {
-                      setState(() {
-                        _selectedProject = newValue;
-                        _updateMonths();
-                      });
-                    }
-                  },
-                  items: _availableProjects.map<DropdownMenuItem<String>>((String value) {
-                    return DropdownMenuItem<String>(
-                      value: value,
-                      child: Text(value),
-                    );
-                  }).toList(),
-                ),
+                      fontSize: 10, fontWeight: FontWeight.w700,
+                      color: AppTheme.primary, letterSpacing: 3)),
+              const SizedBox(height: 4),
+              Text(_activeProject,
+                  style: GoogleFonts.spaceGrotesk(
+                      fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
+              Text('NATRAX Proving Ground · All Sessions',
+                  style: GoogleFonts.spaceGrotesk(
+                      fontSize: 11, color: const Color(0xFF94A3B8))),
+            ]),
+          ),
+          // Project badge
+          GestureDetector(
+            onTap: () {},
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: AppTheme.primary.withOpacity(0.3)),
               ),
+              child: Row(children: [
+                Icon(Icons.layers_rounded, color: AppTheme.primary, size: 14),
+                const SizedBox(width: 6),
+                Text(_activeProject.split(' ').first,
+                    style: GoogleFonts.spaceGrotesk(
+                        fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.primary)),
+              ]),
             ),
-            const SizedBox(width: 16),
-            if (_invoiceMonths.isNotEmpty)
-              GestureDetector(
-                onTap: _exportCSV,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withAlpha(20),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.primary.withAlpha(60)),
-                  ),
-                  child: Row(
-                    children: [
-                      const CustomIconWidget(iconName: 'download', color: AppTheme.primary, size: 18),
-                      const SizedBox(width: 8),
-                      Text(
-                        'EXPORT CSV',
-                        style: GoogleFonts.spaceGrotesk(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.primary,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ],
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildMetricsRow(_InvoiceMonth month, {bool isMobile = false}) {
-    final widgets = [
-      Expanded(child: _buildMetricCard('Total Invoiced', _currencyFmt.format(month.total))),
-      SizedBox(width: isMobile ? 0 : 24, height: isMobile ? 16 : 0),
-      Expanded(child: _buildMetricCard('Outstanding', _currencyFmt.format(month.total * 0.3), isAlert: true)),
-      SizedBox(width: isMobile ? 0 : 24, height: isMobile ? 16 : 0),
-      Expanded(child: _buildMetricCard('Payments Received', _currencyFmt.format(month.total * 0.7), color: const Color(0xFF4A9EFF))),
-      SizedBox(width: isMobile ? 0 : 24, height: isMobile ? 16 : 0),
-      Expanded(child: _buildMetricCard('Projected (Next Month)', _currencyFmt.format(month.total * 1.1), color: const Color(0xFF7000FF))),
+  Widget _buildKpiSummaryRow() {
+    final kpis = [
+      _KpiData('TOTAL INCL. GST', _compact.format(_grandTotalIncl), AppTheme.primary,
+          sub: _fmtUsd(_grandTotalIncl)),
+      _KpiData('EXCL. GST', _compact.format(_grandTotalExcl), const Color(0xFF94A3B8)),
+      _KpiData('SESSIONS', '$_totalSessions', const Color(0xFF4A9EFF)),
+      _KpiData('MONTHS', '${_months.length}', const Color(0xFFA855F7)),
     ];
 
-    if (isMobile) {
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: widgets.where((w) => w is Expanded ? true : (w as SizedBox).height! > 0).map((w) => w is Expanded ? w.child : w).toList());
-    }
-    return Row(children: widgets);
-  }
-
-  Widget _buildMetricCard(String title, String value, {bool isAlert = false, Color? color}) {
-    final accentColor = isAlert ? const Color(0xFFFF4D6A) : (color ?? AppTheme.primary);
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       decoration: BoxDecoration(
-        color: const Color(0xFF0A1025).withAlpha(150),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withAlpha(25)),
+        color: const Color(0xFF0D1520).withOpacity(0.8),
+        border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.05))),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title.toUpperCase(),
-            style: GoogleFonts.spaceGrotesk(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFFA8B0C8),
-              letterSpacing: 1.5,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: GoogleFonts.spaceGrotesk(
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              color: const Color(0xFFdfe2f0),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            height: 2,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [accentColor.withAlpha(50), accentColor, accentColor.withAlpha(50)],
-              ),
-            ),
-          )
-        ],
+      child: Row(
+        children: kpis.map((k) => Expanded(child: _buildKpi(k))).toList(),
       ),
     );
   }
 
-  Widget _buildRevenueChart() {
-    // Mock chart data for all months
-    final data = _invoiceMonths.reversed.toList();
-    if (data.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0A1025).withAlpha(150),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withAlpha(25)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Revenue Trends',
-            style: GoogleFonts.spaceGrotesk(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFFdfe2f0),
-            ),
-          ),
-          const SizedBox(height: 24),
-          Expanded(
-            child: BarChart(
-              BarChartData(
-                alignment: BarChartAlignment.spaceAround,
-                maxY: data.fold<double>(0.0, (max, m) => m.total > max ? m.total : max) * 1.2,
-                barTouchData: BarTouchData(enabled: false),
-                titlesData: FlTitlesData(
-                  show: true,
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      getTitlesWidget: (value, meta) {
-                        if (value.toInt() >= 0 && value.toInt() < data.length) {
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Text(
-                              data[value.toInt()].label.split(' ')[0].substring(0, 3), // "Jan"
-                              style: GoogleFonts.spaceGrotesk(
-                                color: const Color(0xFFA8B0C8),
-                                fontSize: 12,
-                              ),
-                            ),
-                          );
-                        }
-                        return const SizedBox.shrink();
-                      },
-                    ),
-                  ),
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 60,
-                      getTitlesWidget: (value, meta) {
-                        return Text(
-                          _currencyFmt.format(value),
-                          style: GoogleFonts.spaceGrotesk(
-                            color: const Color(0xFFA8B0C8),
-                            fontSize: 10,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                ),
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  getDrawingHorizontalLine: (value) => FlLine(
-                    color: const Color(0xFF3a494b).withAlpha(100),
-                    strokeWidth: 1,
-                  ),
-                ),
-                borderData: FlBorderData(show: false),
-                barGroups: data.asMap().entries.map((entry) {
-                  return BarChartGroupData(
-                    x: entry.key,
-                    barRods: [
-                      BarChartRodData(
-                        toY: entry.value.total,
-                        color: AppTheme.primary,
-                        width: 16,
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
-                      )
-                    ],
-                  );
-                }).toList(),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCategoryChart(_InvoiceMonth month) {
-    double sessionTotal = 0;
-    double servicesTotal = 0;
-    for (final i in month.items) {
-      if (i.category == 'Session') sessionTotal += i.amount;
-      else servicesTotal += i.amount;
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0A1025).withAlpha(150),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withAlpha(25)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Cost Breakdown',
-            style: GoogleFonts.spaceGrotesk(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFFdfe2f0),
-            ),
-          ),
-          const SizedBox(height: 24),
-          Expanded(
-            child: Stack(
-              children: [
-                PieChart(
-                  PieChartData(
-                    sectionsSpace: 4,
-                    centerSpaceRadius: 60,
-                    sections: [
-                      PieChartSectionData(
-                        color: AppTheme.primary,
-                        value: sessionTotal,
-                        title: '',
-                        radius: 20,
-                      ),
-                      PieChartSectionData(
-                        color: const Color(0xFF7000FF),
-                        value: servicesTotal,
-                        title: '',
-                        radius: 20,
-                      ),
-                    ],
-                  ),
-                ),
-                Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Total',
-                        style: GoogleFonts.spaceGrotesk(
-                          fontSize: 12,
-                          color: const Color(0xFFA8B0C8),
-                        ),
-                      ),
-                      Text(
-                        _currencyFmt.format(month.total),
-                        style: GoogleFonts.spaceGrotesk(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFFdfe2f0),
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildLegendItem('Sessions', AppTheme.primary),
-              _buildLegendItem('Services', const Color(0xFF7000FF)),
-            ],
-          )
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLegendItem(String title, Color color) {
-    return Row(
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          title,
+  Widget _buildKpi(_KpiData k) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(k.label,
           style: GoogleFonts.spaceGrotesk(
-            fontSize: 12,
-            color: const Color(0xFFA8B0C8),
-          ),
-        ),
-      ],
-    );
+              fontSize: 8, fontWeight: FontWeight.w700,
+              color: k.color.withOpacity(0.7), letterSpacing: 1.5)),
+      const SizedBox(height: 3),
+      Text(k.value,
+          style: GoogleFonts.spaceGrotesk(
+              fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white)),
+      if (k.sub != null)
+        Text(k.sub!,
+            style: GoogleFonts.spaceGrotesk(
+                fontSize: 10, color: const Color(0xFF94A3B8))),
+    ]);
   }
 
-  Widget _buildMonthSelector() {
-    return SizedBox(
-      height: 44,
+  Widget _buildMonthTabs() {
+    return Container(
+      height: 50,
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.05))),
+      ),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
-        itemCount: _invoiceMonths.length,
-        itemBuilder: (context, i) {
-          final isSelected = i == _selectedMonthIndex;
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        itemCount: _months.length + 1,
+        itemBuilder: (_, i) {
+          if (i == _months.length) {
+            // "All" tab
+            final isSelected = false; // no-op for now
+            return const SizedBox.shrink();
+          }
+          final m = _months[i];
+          final isSelected = _selectedMonthIdx == i;
           return GestureDetector(
-            onTap: () => setState(() => _selectedMonthIndex = i),
+            onTap: () => setState(() => _selectedMonthIdx = i),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
-              margin: const EdgeInsets.only(right: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
               decoration: BoxDecoration(
-                color: isSelected ? AppTheme.primary.withAlpha(30) : const Color(0xFF0A1025).withAlpha(150),
-                borderRadius: BorderRadius.circular(22),
+                color: isSelected
+                    ? AppTheme.primary.withOpacity(0.15)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: isSelected ? AppTheme.primary.withAlpha(120) : Colors.white.withAlpha(25),
+                  color: isSelected
+                      ? AppTheme.primary.withOpacity(0.5)
+                      : Colors.white.withOpacity(0.1),
                 ),
               ),
-              child: Text(
-                _invoiceMonths[i].label,
-                style: GoogleFonts.spaceGrotesk(
-                  fontSize: 14,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                  color: isSelected ? AppTheme.primary : const Color(0xFFA8B0C8),
-                ),
-              ),
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Text(m.label,
+                    style: GoogleFonts.spaceGrotesk(
+                        fontSize: 11, fontWeight: FontWeight.w700,
+                        color: isSelected ? AppTheme.primary : const Color(0xFF94A3B8))),
+              ]),
             ),
           );
         },
@@ -676,162 +436,585 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
     );
   }
 
-  Widget _buildDataTable(_InvoiceMonth month) {
+  Widget _buildBreakdownTab() {
+    if (_selected == null || _months.isEmpty) {
+      return _emptyState('No data available for this project');
+    }
+    final m = _selected!;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
+      children: [
+        // Section tabs (overview | sessions | chart)
+        Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF0D1520).withOpacity(0.6),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withOpacity(0.05)),
+          ),
+          child: TabBar(
+            controller: _tabController,
+            labelColor: AppTheme.primary,
+            unselectedLabelColor: const Color(0xFF94A3B8),
+            indicatorColor: AppTheme.primary,
+            indicatorSize: TabBarIndicatorSize.label,
+            labelStyle: GoogleFonts.spaceGrotesk(fontSize: 11, fontWeight: FontWeight.w700),
+            tabs: const [
+              Tab(text: 'Breakdown'),
+              Tab(text: 'Sessions'),
+              Tab(text: 'Trend Chart'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        // Monthly summary card
+        _buildMonthSummaryCard(m),
+        const SizedBox(height: 16),
+        // Cost breakdown bars
+        _buildCostBreakdownBars(m),
+        const SizedBox(height: 16),
+        // Workshop rental card (if any)
+        if (m.workshopRental > 0) _buildWorkshopCard(m),
+      ],
+    );
+  }
+
+  Widget _buildMonthSummaryCard(_MonthGroup m) {
     return Container(
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF0A1025).withAlpha(150),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withAlpha(25)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+          colors: [
+            AppTheme.primary.withOpacity(0.08),
+            const Color(0xFF0D1520).withOpacity(0.9),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.primary.withOpacity(0.25)),
+        boxShadow: [BoxShadow(color: AppTheme.primary.withOpacity(0.06), blurRadius: 24)],
       ),
-      clipBehavior: Clip.antiAlias,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              'Recent Invoices',
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFFdfe2f0),
+          Row(children: [
+            Text(m.label,
+                style: GoogleFonts.spaceGrotesk(
+                    fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: AppTheme.primary.withOpacity(0.35)),
               ),
+              child: Text('${m.sessions.length} sessions',
+                  style: GoogleFonts.spaceGrotesk(
+                      fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.primary)),
             ),
-          ),
-          const Divider(height: 1, color: Color(0xFF3a494b)),
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: SingleChildScrollView(
-                child: DataTable(
-                  headingTextStyle: GoogleFonts.spaceGrotesk(
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFFA8B0C8),
-                  ),
-                  dataTextStyle: GoogleFonts.spaceGrotesk(
-                    fontWeight: FontWeight.w500,
-                    color: const Color(0xFFdfe2f0),
-                  ),
-                  dividerThickness: 1,
-                  columns: const [
-                    DataColumn(label: Text('DATE')),
-                    DataColumn(label: Text('PROJECT')),
-                    DataColumn(label: Text('CATEGORY')),
-                    DataColumn(label: Text('DESCRIPTION')),
-                    DataColumn(label: Text('QTY'), numeric: true),
-                    DataColumn(label: Text('AMOUNT'), numeric: true),
-                    DataColumn(label: Text('STATUS')),
-                  ],
-                  rows: month.items.map((item) {
-                    return DataRow(
-                      cells: [
-                        DataCell(Text(DateFormat('dd MMM yyyy').format(item.date))),
-                        DataCell(Text(item.projectName, style: const TextStyle(color: Color(0xFF849495)))),
-                        DataCell(
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: AppTheme.primary.withAlpha(20),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              item.category,
-                              style: TextStyle(color: AppTheme.primary, fontSize: 11, fontWeight: FontWeight.w600),
-                            ),
-                          ),
-                        ),
-                        DataCell(Text(item.description)),
-                        DataCell(Text('${item.quantity.toStringAsFixed(1)} ${item.unit}')),
-                        DataCell(Text(NumberFormat.currency(locale: 'en_IN', symbol: '₹').format(item.amount))),
-                        DataCell(
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF00F3FF).withAlpha(20), // "Paid" status assumed
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Text(
-                              'Paid',
-                              style: TextStyle(color: Color(0xFF00F3FF), fontSize: 11, fontWeight: FontWeight.w600),
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  }).toList(),
-                ),
-              ),
+          ]),
+          const SizedBox(height: 16),
+
+          // Main total (INR + USD)
+          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text(_compact.format(m.totalIncl),
+                style: GoogleFonts.spaceGrotesk(
+                    fontSize: 32, fontWeight: FontWeight.w800, color: AppTheme.primary)),
+            const SizedBox(width: 10),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 5),
+              child: Text('(${_fmtUsd(m.totalIncl)} USD)',
+                  style: GoogleFonts.spaceGrotesk(
+                      fontSize: 13, color: const Color(0xFF94A3B8))),
             ),
-          ),
+          ]),
+          const SizedBox(height: 4),
+          Text('Incl. 18% GST', style: GoogleFonts.spaceGrotesk(fontSize: 10, color: const Color(0xFF94A3B8))),
+
+          const SizedBox(height: 20),
+          _divider(),
+          const SizedBox(height: 16),
+
+          // Breakdown
+          _rowItem('Track Access', m.trackCost, m.trackCost * 1.18, AppTheme.primary),
+          const SizedBox(height: 8),
+          _rowItem('Accessories & Services', m.accessoriesCost, m.accessoriesCost * 1.18, const Color(0xFF10B981)),
+          const SizedBox(height: 8),
+          if (m.workshopRental > 0) ...[
+            _rowItem('Workshop Rental', m.workshopRental, m.workshopRental * 1.18, const Color(0xFFF59E0B)),
+            const SizedBox(height: 8),
+          ],
+          _rowItem('Subtotal (Excl. GST)', m.subtotalExcl, null, Colors.white),
+          _divider(),
+          const SizedBox(height: 8),
+          _rowItem('GST @ 18%', m.gst, null, const Color(0xFF94A3B8)),
+          const SizedBox(height: 8),
+          _rowItem('TOTAL PAYABLE', m.totalIncl, null, AppTheme.primary, bold: true),
         ],
       ),
     );
   }
 
-  Widget _buildEmptyState() {
-    return Expanded(
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+  Widget _rowItem(String label, double val, double? inclVal, Color color, {bool bold = false}) {
+    return Row(children: [
+      Text(label,
+          style: GoogleFonts.spaceGrotesk(
+              fontSize: 11, color: color.withOpacity(bold ? 1.0 : 0.8),
+              fontWeight: bold ? FontWeight.w700 : FontWeight.w500)),
+      const Spacer(),
+      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        Text(_inr.format(val),
+            style: GoogleFonts.spaceGrotesk(
+                fontSize: 12, color: color,
+                fontWeight: bold ? FontWeight.w800 : FontWeight.w600)),
+        if (inclVal != null)
+          Text('${_fmtUsd(inclVal)} incl.',
+              style: GoogleFonts.spaceGrotesk(fontSize: 9, color: const Color(0xFF6B7490))),
+      ]),
+    ]);
+  }
+
+  Widget _buildCostBreakdownBars(_MonthGroup m) {
+    final total = m.subtotalExcl;
+    if (total == 0) return const SizedBox.shrink();
+    final trackPct = (m.trackCost / total).clamp(0.0, 1.0);
+    final accPct = (m.accessoriesCost / total).clamp(0.0, 1.0);
+    final rentalPct = m.workshopRental > 0 ? (m.workshopRental / total).clamp(0.0, 1.0) : 0.0;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D1520).withOpacity(0.8),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.06)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('COST COMPOSITION',
+            style: GoogleFonts.spaceGrotesk(
+                fontSize: 10, fontWeight: FontWeight.w700,
+                color: const Color(0xFF94A3B8), letterSpacing: 1.5)),
+        const SizedBox(height: 16),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: Row(children: [
+            if (trackPct > 0)
+              Flexible(
+                flex: (trackPct * 100).round(),
+                child: Container(height: 10, color: AppTheme.primary),
+              ),
+            if (accPct > 0)
+              Flexible(
+                flex: (accPct * 100).round(),
+                child: Container(height: 10, color: const Color(0xFF10B981)),
+              ),
+            if (rentalPct > 0)
+              Flexible(
+                flex: (rentalPct * 100).round(),
+                child: Container(height: 10, color: const Color(0xFFF59E0B)),
+              ),
+          ]),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 16,
+          runSpacing: 8,
           children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0A1025).withAlpha(150),
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white.withAlpha(25)),
-              ),
-              child: const CustomIconWidget(
-                iconName: 'receipt_long',
-                color: Color(0xFF6B7490),
-                size: 36,
-              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _legendDot(AppTheme.primary),
+                const SizedBox(width: 6),
+                Text('Track Access  ${(trackPct * 100).toStringAsFixed(0)}%',
+                    style: GoogleFonts.spaceGrotesk(fontSize: 11, color: const Color(0xFF94A3B8))),
+              ],
             ),
-            const SizedBox(height: 24),
-            Text(
-              'No financial records found',
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFFdfe2f0),
-              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _legendDot(const Color(0xFF10B981)),
+                const SizedBox(width: 6),
+                Text('Accessories & Services  ${(accPct * 100).toStringAsFixed(0)}%',
+                    style: GoogleFonts.spaceGrotesk(fontSize: 11, color: const Color(0xFF94A3B8))),
+              ],
             ),
+            if (rentalPct > 0)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _legendDot(const Color(0xFFF59E0B)),
+                  const SizedBox(width: 6),
+                  Text('Workshop Rental  ${(rentalPct * 100).toStringAsFixed(0)}%',
+                      style: GoogleFonts.spaceGrotesk(fontSize: 11, color: const Color(0xFF94A3B8))),
+                ],
+              ),
           ],
         ),
+      ]),
+    );
+  }
+
+  Widget _legendDot(Color c) =>
+      Container(width: 10, height: 10, decoration: BoxDecoration(color: c, shape: BoxShape.circle));
+
+  Widget _buildWorkshopCard(_MonthGroup m) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF59E0B).withOpacity(0.04),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFF59E0B).withOpacity(0.25)),
       ),
+      child: Row(children: [
+        const Icon(Icons.warehouse_rounded, color: Color(0xFFF59E0B), size: 24),
+        const SizedBox(width: 14),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Workshop Rental',
+              style: GoogleFonts.spaceGrotesk(
+                  fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
+          Text('NATRAX Workshop Facility',
+              style: GoogleFonts.spaceGrotesk(fontSize: 10, color: const Color(0xFF94A3B8))),
+        ])),
+        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Text(_inr.format(m.workshopRental),
+              style: GoogleFonts.spaceGrotesk(
+                  fontSize: 14, fontWeight: FontWeight.w700, color: const Color(0xFFF59E0B))),
+          Text('Excl. GST',
+              style: GoogleFonts.spaceGrotesk(fontSize: 9, color: const Color(0xFF94A3B8))),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _buildSessionHistoryTab() {
+    if (_selected == null || _months.isEmpty) {
+      return _emptyState('No sessions found');
+    }
+    final sessions = _selected!.sessions;
+    if (sessions.isEmpty) return _emptyState('No sessions this month');
+
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
+      itemCount: sessions.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (_, i) {
+        final s = sessions[i];
+        final dayStr = DateFormat('d MMM').format(s.date);
+        final timeStr = DateFormat('HH:mm').format(s.date);
+        final hrs = s.durationMinutes ~/ 60;
+        final mins = s.durationMinutes % 60;
+        final durationLabel = hrs > 0 ? '${hrs}h ${mins}m' : '${mins}m';
+
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0D1520).withOpacity(0.8),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.white.withOpacity(0.06)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Date bubble
+              Container(
+                width: 46, height: 46,
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.primary.withOpacity(0.3)),
+                ),
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Text(dayStr.split(' ').first,
+                      style: GoogleFonts.spaceGrotesk(
+                          fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.primary)),
+                  Text(dayStr.split(' ').last,
+                      style: GoogleFonts.spaceGrotesk(
+                          fontSize: 8, fontWeight: FontWeight.w600, color: AppTheme.primary)),
+                ]),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Expanded(
+                      child: Text(s.trackName,
+                          style: GoogleFonts.spaceGrotesk(
+                              fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    Text(_inr.format(s.trackCostExcl * 1.18),
+                        style: GoogleFonts.spaceGrotesk(
+                            fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primary)),
+                  ]),
+                  const SizedBox(height: 4),
+                  Row(children: [
+                    _badge(s.trackCode.toUpperCase(), const Color(0xFF4A9EFF)),
+                    const SizedBox(width: 6),
+                    _badge('$timeStr · $durationLabel', const Color(0xFF94A3B8)),
+                  ]),
+                  if (s.notes != null && s.notes!.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(s.notes!,
+                        style: GoogleFonts.spaceGrotesk(
+                            fontSize: 10, color: const Color(0xFF6B7490)),
+                        maxLines: 2, overflow: TextOverflow.ellipsis),
+                  ],
+                  if (s.svcCostExcl > 0) ...[
+                    const SizedBox(height: 6),
+                    Text('+ ${_inr.format(s.svcCostExcl * 1.18)} accessories/services (incl. GST)',
+                        style: GoogleFonts.spaceGrotesk(
+                            fontSize: 10, color: const Color(0xFF10B981))),
+                  ],
+                ]),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildChartTab() {
+    if (_months.isEmpty) return _emptyState('No chart data');
+
+    // Reverse to show oldest → newest
+    final chartMonths = _months.reversed.toList();
+    final maxVal = chartMonths.fold(0.0, (m, g) => g.totalIncl > m ? g.totalIncl : m);
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(20),
+          height: 280,
+          decoration: BoxDecoration(
+            color: const Color(0xFF0D1520).withOpacity(0.8),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.06)),
+          ),
+          child: BarChart(
+            BarChartData(
+              maxY: maxVal * 1.15,
+              barGroups: chartMonths.asMap().entries.map((e) {
+                return BarChartGroupData(
+                  x: e.key,
+                  barRods: [
+                    BarChartRodData(
+                      toY: e.value.totalIncl,
+                      width: 28,
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                      rodStackItems: [
+                        BarChartRodStackItem(
+                          0,
+                          e.value.trackCost * 1.18,
+                          AppTheme.primary,
+                        ),
+                        BarChartRodStackItem(
+                          e.value.trackCost * 1.18,
+                          (e.value.trackCost + e.value.accessoriesCost) * 1.18,
+                          const Color(0xFF10B981),
+                        ),
+                        if (e.value.workshopRental > 0)
+                          BarChartRodStackItem(
+                            (e.value.trackCost + e.value.accessoriesCost) * 1.18,
+                            e.value.totalIncl,
+                            const Color(0xFFF59E0B),
+                          ),
+                      ],
+                    ),
+                  ],
+                );
+              }).toList(),
+              titlesData: FlTitlesData(
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    getTitlesWidget: (val, meta) {
+                      final idx = val.toInt();
+                      if (idx < 0 || idx >= chartMonths.length) return const SizedBox.shrink();
+                      final label = DateFormat('MMM').format(
+                        DateTime.parse('${chartMonths[idx].monthKey}-01'),
+                      );
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(label,
+                            style: GoogleFonts.spaceGrotesk(
+                                fontSize: 10, color: const Color(0xFF94A3B8))),
+                      );
+                    },
+                  ),
+                ),
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 60,
+                    getTitlesWidget: (val, meta) {
+                      if (val == 0) return const SizedBox.shrink();
+                      return Text(_compact.format(val),
+                          style: GoogleFonts.spaceGrotesk(
+                              fontSize: 9, color: const Color(0xFF6B7490)));
+                    },
+                  ),
+                ),
+                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              ),
+              gridData: FlGridData(
+                show: true,
+                drawVerticalLine: false,
+                getDrawingHorizontalLine: (_) =>
+                    FlLine(color: Colors.white.withOpacity(0.05), strokeWidth: 1),
+              ),
+              borderData: FlBorderData(show: false),
+              barTouchData: BarTouchData(
+                touchTooltipData: BarTouchTooltipData(
+                  getTooltipItem: (group, _, rod, __) {
+                    final m = chartMonths[group.x];
+                    return BarTooltipItem(
+                      '${m.label}\n',
+                      GoogleFonts.spaceGrotesk(
+                          fontSize: 10, color: Colors.white, fontWeight: FontWeight.w700),
+                      children: [
+                        TextSpan(
+                          text: 'Track: ${_inr.format(m.trackCost * 1.18)}\n',
+                          style: GoogleFonts.spaceGrotesk(
+                              fontSize: 9, color: AppTheme.primary, fontWeight: FontWeight.w600),
+                        ),
+                        TextSpan(
+                          text: 'Accessories: ${_inr.format(m.accessoriesCost * 1.18)}\n',
+                          style: GoogleFonts.spaceGrotesk(
+                              fontSize: 9, color: const Color(0xFF10B981), fontWeight: FontWeight.w600),
+                        ),
+                        if (m.workshopRental > 0)
+                          TextSpan(
+                            text: 'Workshop: ${_inr.format(m.workshopRental * 1.18)}\n',
+                            style: GoogleFonts.spaceGrotesk(
+                                fontSize: 9, color: const Color(0xFFF59E0B), fontWeight: FontWeight.w600),
+                          ),
+                        TextSpan(
+                          text: 'Total: ${_inr.format(m.totalIncl)}',
+                          style: GoogleFonts.spaceGrotesk(
+                              fontSize: 11, color: Colors.white, fontWeight: FontWeight.w800),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 20),
+
+        // Monthly summary table
+        Text('MONTHLY BREAKDOWN',
+            style: GoogleFonts.spaceGrotesk(
+                fontSize: 10, fontWeight: FontWeight.w700,
+                color: const Color(0xFF94A3B8), letterSpacing: 1.5)),
+        const SizedBox(height: 12),
+
+        ...chartMonths.asMap().entries.map((e) {
+          final m = e.value;
+          return Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0D1520).withOpacity(0.8),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: e.key == chartMonths.length - 1
+                    ? AppTheme.primary.withOpacity(0.3)
+                    : Colors.white.withOpacity(0.06),
+              ),
+            ),
+            child: Row(children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(m.label,
+                      style: GoogleFonts.spaceGrotesk(
+                          fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
+                  Text('${m.sessions.length} sessions · ${_compact.format(m.subtotalExcl)} excl.',
+                      style: GoogleFonts.spaceGrotesk(fontSize: 10, color: const Color(0xFF94A3B8))),
+                ]),
+              ),
+              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                Text(_compact.format(m.totalIncl),
+                    style: GoogleFonts.spaceGrotesk(
+                        fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.primary)),
+                Text(_fmtUsd(m.totalIncl),
+                    style: GoogleFonts.spaceGrotesk(
+                        fontSize: 10, color: const Color(0xFF6B7490))),
+              ]),
+            ]),
+          );
+        }),
+
+        // Grand total
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: [
+              AppTheme.primary.withOpacity(0.12),
+              AppTheme.primary.withOpacity(0.04),
+            ]),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppTheme.primary.withOpacity(0.4)),
+          ),
+          child: Row(children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('GRAND TOTAL — $_activeProject',
+                  style: GoogleFonts.spaceGrotesk(
+                      fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.primary, letterSpacing: 1)),
+              Text('All months · incl. 18% GST',
+                  style: GoogleFonts.spaceGrotesk(fontSize: 10, color: const Color(0xFF94A3B8))),
+            ])),
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Text(_compact.format(_grandTotalIncl),
+                  style: GoogleFonts.spaceGrotesk(
+                      fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.primary)),
+              Text(_fmtUsd(_grandTotalIncl),
+                  style: GoogleFonts.spaceGrotesk(fontSize: 12, color: const Color(0xFF94A3B8))),
+            ]),
+          ]),
+        ),
+      ],
+    );
+  }
+
+  Widget _badge(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Text(label,
+          style: GoogleFonts.spaceGrotesk(
+              fontSize: 9, fontWeight: FontWeight.w600, color: color)),
+    );
+  }
+
+  Widget _divider() =>
+      Container(height: 1, color: Colors.white.withOpacity(0.05), margin: const EdgeInsets.symmetric(vertical: 4));
+
+  Widget _emptyState(String msg) {
+    return Center(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.analytics_outlined, color: Colors.white.withOpacity(0.15), size: 48),
+        const SizedBox(height: 12),
+        Text(msg,
+            style: GoogleFonts.spaceGrotesk(fontSize: 13, color: const Color(0xFF6B7490))),
+      ]),
     );
   }
 }
 
-class _InvoiceLineItem {
-  final DateTime date;
-  final String category;
-  final String description;
-  final String projectName;
-  final double quantity;
-  final String unit;
-  final double rate;
-  final double amount;
-
-  const _InvoiceLineItem({
-    required this.date,
-    required this.category,
-    required this.description,
-    required this.projectName,
-    required this.quantity,
-    required this.unit,
-    required this.rate,
-    required this.amount,
-  });
-}
-
-class _InvoiceMonth {
+class _KpiData {
   final String label;
-  final List<_InvoiceLineItem> items;
-
-  _InvoiceMonth({required this.label, required this.items});
-
-  double get subtotal => items.fold(0.0, (s, i) => s + i.amount);
-  double get gst => subtotal * 0.18;
-  double get total => subtotal + gst;
+  final String value;
+  final Color color;
+  final String? sub;
+  const _KpiData(this.label, this.value, this.color, {this.sub});
 }

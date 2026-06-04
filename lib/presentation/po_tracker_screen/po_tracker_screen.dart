@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/app_export.dart';
 import '../../services/supabase_service.dart';
+import '../../services/project_manager.dart';
 
 class PoTrackerScreen extends StatefulWidget {
   const PoTrackerScreen({super.key});
@@ -70,32 +71,67 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
       // Load cumulative track session costs
       final sessionsData = await client
           .from('engineer_sessions')
-          .select('total_cost, session_status')
+          .select('id, total_cost, session_status, project_name, started_at')
           .eq('session_status', 'completed');
-
-      double trackTotal = 0;
-      int sessionCount = 0;
-      for (final s in sessionsData as List) {
-        trackTotal += (s['total_cost'] as num?)?.toDouble() ?? 0;
-        sessionCount++;
-      }
-      _trackSessionsSpend = trackTotal;
-      _totalSessions = sessionCount;
 
       // Load additional services spend
       final servicesData = await client
           .from('session_additional_services')
-          .select('total_cost');
+          .select('session_id, total_cost');
 
-      double servicesTotal = 0;
+      final Map<String, double> svcCostMap = {};
       for (final s in servicesData as List) {
-        servicesTotal += (s['total_cost'] as num?)?.toDouble() ?? 0;
+        final sid = s['session_id'] as String;
+        final cost = (s['total_cost'] as num?)?.toDouble() ?? 0.0;
+        svcCostMap[sid] = (svcCostMap[sid] ?? 0.0) + cost;
       }
-      _additionalServicesSpend = servicesTotal;
 
-      // Workshop monthly cost — from monthly_invoices or fixed
-      // Use 2 months (March + April) × ₹50,000
-      _workshopSpend = 100000.0;
+      final pm = ProjectManager.instance;
+      final activeProjName = pm.activeProject;
+      final isMahindraEV = activeProjName.toLowerCase() == 'mahindra ev poc';
+
+      double trackTotal = 0;
+      double servicesTotal = 0;
+      int sessionCount = 0;
+
+      for (final s in sessionsData as List) {
+        final rawProj = (s['project_name'] as String?)?.trim() ?? '';
+        if (!pm.sessionBelongsToProject(rawProj)) continue;
+
+        final sid = s['id'] as String;
+        final track = (s['total_cost'] as num?)?.toDouble() ?? 0.0;
+        final svc = svcCostMap[sid] ?? 0.0;
+        final startStr = s['started_at'] as String? ?? '';
+        final startDt = DateTime.tryParse(startStr);
+
+        sessionCount++;
+
+        if (startDt != null) {
+          final isHistorical = isMahindraEV &&
+              startDt.year == 2026 &&
+              (startDt.month == 3 || startDt.month == 4 || startDt.month == 5);
+          if (!isHistorical) {
+            trackTotal += track;
+            servicesTotal += svc;
+          }
+        } else {
+          trackTotal += track;
+          servicesTotal += svc;
+        }
+      }
+
+      if (isMahindraEV) {
+        // Add historical overrides (Track = 1,263,500, Accessories = 215,219, Workshop = 245,000)
+        trackTotal += 1263500.0;
+        servicesTotal += 215219.0;
+        _workshopSpend = 245000.0;
+      } else {
+        _workshopSpend = 0.0;
+      }
+
+      _trackSessionsSpend = trackTotal;
+      _additionalServicesSpend = servicesTotal;
+      _totalSessions = sessionCount;
 
       setState(() => _loading = false);
       _animController.forward();
@@ -364,7 +400,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                 ),
               ),
               Text(
-                'Purchase Order Utilisation',
+                'Purchase Order Utilisation — ${ProjectManager.instance.activeProject}',
                 style: GoogleFonts.spaceGrotesk(
                   color: const Color(0xFF6B7490),
                   fontSize: 12,
