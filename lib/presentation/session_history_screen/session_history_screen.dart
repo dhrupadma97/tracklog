@@ -1,5 +1,9 @@
+import 'package:flutter/foundation.dart';
+import 'package:go_router/go_router.dart';
+
 import '../../core/app_export.dart';
 import '../../services/engineer_auth_service.dart';
+import '../../services/project_manager.dart';
 import './widgets/hero_metric_widget.dart';
 import './widgets/monthly_summary_card_widget.dart';
 import './widgets/session_chart_widget.dart';
@@ -19,18 +23,36 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
 
   List<Map<String, dynamic>> _sessionMaps = [];
   bool _isLoading = true;
+  String _activeProject = '';
 
   @override
   void initState() {
     super.initState();
+    _activeProject = ProjectManager.instance.activeProject;
+    ProjectManager.instance.addListener(_onProjectChanged);
     _loadSessions();
+  }
+
+  @override
+  void dispose() {
+    ProjectManager.instance.removeListener(_onProjectChanged);
+    super.dispose();
+  }
+
+  void _onProjectChanged() {
+    if (mounted && _activeProject != ProjectManager.instance.activeProject) {
+      setState(() => _activeProject = ProjectManager.instance.activeProject);
+      _loadSessions();
+    }
   }
 
   Future<void> _loadSessions() async {
     setState(() => _isLoading = true);
     try {
       final sessions = await EngineerAuthService.instance.getMySessionHistory();
-      final mapped = sessions
+      final pm = ProjectManager.instance;
+      final filtered = sessions.where((s) => pm.sessionBelongsToProject(s.projectName)).toList();
+      final mapped = filtered
           .map(
             (s) => {
               'id': s.id,
@@ -94,7 +116,6 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
       backgroundColor: AppTheme.backgroundDark,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
-          // TODO: Implement export — share_plus or universal_html download
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
@@ -224,27 +245,71 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
   Widget _buildHeader(ThemeData theme) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Session History', style: theme.textTheme.headlineMedium),
-                Text(
-                  'NATRAX Proving Ground · May 2026',
-                  style: theme.textTheme.bodySmall,
+          // Back to projects (web only)
+          if (kIsWeb)
+            GestureDetector(
+              onTap: () => context.go('/project-selection'),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.arrow_back_ios_rounded,
+                      color: Color(0xFF94A3B8), size: 14),
+                  const SizedBox(width: 4),
+                  Text('All Projects',
+                      style: TextStyle(
+                        fontFamily: 'Space Grotesk',
+                        fontSize: 12,
+                        color: const Color(0xFF94A3B8),
+                      )),
+                ],
+              ),
+            ),
+          if (kIsWeb) const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Session History', style: theme.textTheme.headlineMedium),
+                    Row(children: [
+                      Text(
+                        'NATRAX Proving Ground · ',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primary.withAlpha(30),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppTheme.primary.withAlpha(80)),
+                        ),
+                        child: Text(
+                          _activeProject,
+                          style: TextStyle(
+                            fontFamily: 'Space Grotesk',
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.primary,
+                          ),
+                        ),
+                      ),
+                    ]),
+                  ],
                 ),
-              ],
-            ),
-          ),
-          IconButton(
-            onPressed: () {},
-            icon: CustomIconWidget(
-              iconName: 'tune',
-              color: const Color(0xFFA8B0C8),
-              size: 22,
-            ),
+              ),
+              IconButton(
+                onPressed: () {},
+                icon: CustomIconWidget(
+                  iconName: 'tune',
+                  color: const Color(0xFFA8B0C8),
+                  size: 22,
+                ),
+              ),
+            ],
           ),
         ],
       ),

@@ -59,4 +59,34 @@ node_modules/
 *.xlsx
 /natrax_usage_sheets/
 /reconciliation_reports/
-scratch/  
+scratch/
+
+# Sensitive billing documents
+"NATRAX Invoices/"
+"NATRAX PO/"
+NATRAX\ Invoices/
+NATRAX\ PO/
+
+# Utility/debug scripts (not part of app)
+fix_*.js
+check_*.js
+inspect_*.js
+pixel_inspector.js
+remove_*.js
+replace_*.js
+update_*.js
+extract_*.js
+find_*.js
+visualize_*.js
+blf_to_mat.py
+scripts/
+
+# Backup files
+*.bak
+
+# Design system exports
+"stitch_tracklog_design_system (4)/"
+
+# Temporary images used during development
+CLIENT_Page3-fold1-price-banner.png
+Desert_Myst_588x330.webp

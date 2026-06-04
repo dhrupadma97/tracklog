@@ -1,0 +1,519 @@
+{
+  "monthly": [
+    {
+      "month": "2026-03-01",
+      "trackAcc": 138605,
+      "workshopRental": 55000,
+      "subtotalExclGst": 193605,
+      "gst": 34848.9,
+      "totalInclGst": 228453.9
+    },
+    {
+      "month": "2026-04-01",
+      "trackAcc": 1002375,
+      "workshopRental": 150000,
+      "subtotalExclGst": 1152375,
+      "gst": 207427.5,
+      "totalInclGst": 1359802.5
+    },
+    {
+      "month": "2026-05-01",
+      "trackAcc": 337739,
+      "workshopRental": 40000,
+      "subtotalExclGst": 377739,
+      "gst": 67993.02,
+      "totalInclGst": 445732.02
+    }
+  ],
+  "daily": [
+    {
+      "date": "2026-03-24",
+      "trackBilling": 76000,
+      "accessories": 3479.9999999999995,
+      "totalTrackAcc": 79480
+    },
+    {
+      "date": "2026-03-25",
+      "trackBilling": 57000,
+      "accessories": 2125,
+      "totalTrackAcc": 59125
+    },
+    {
+      "date": "2026-04-07",
+      "trackBilling": 61000,
+      "accessories": 8725,
+      "totalTrackAcc": 69725
+    },
+    {
+      "date": "2026-04-08",
+      "trackBilling": 137000,
+      "accessories": 675,
+      "totalTrackAcc": 137675
+    },
+    {
+      "date": "2026-04-09",
+      "trackBilling": 145000,
+      "accessories": 675,
+      "totalTrackAcc": 145675
+    },
+    {
+      "date": "2026-04-10",
+      "trackBilling": 144000,
+      "accessories": 675,
+      "totalTrackAcc": 144675
+    },
+    {
+      "date": "2026-04-14",
+      "trackBilling": 105000,
+      "accessories": 0,
+      "totalTrackAcc": 105000
+    },
+    {
+      "date": "2026-04-15",
+      "trackBilling": 63000,
+      "accessories": 750,
+      "totalTrackAcc": 63750
+    },
+    {
+      "date": "2026-04-17",
+      "trackBilling": 80000,
+      "accessories": 10000,
+      "totalTrackAcc": 90000
+    },
+    {
+      "date": "2026-04-26",
+      "trackBilling": 105000,
+      "accessories": 1625,
+      "totalTrackAcc": 106625
+    },
+    {
+      "date": "2026-04-27",
+      "trackBilling": 42000,
+      "accessories": 1125,
+      "totalTrackAcc": 43125
+    },
+    {
+      "date": "2026-04-28",
+      "trackBilling": 84000,
+      "accessories": 12125,
+      "totalTrackAcc": 96125
+    },
+    {
+      "date": "2026-05-19",
+      "trackBilling": 15000,
+      "accessories": 9125,
+      "totalTrackAcc": 24125
+    },
+    {
+      "date": "2026-05-20",
+      "trackBilling": 15000,
+      "accessories": 163101,
+      "totalTrackAcc": 178101
+    },
+    {
+      "date": "2026-05-22",
+      "trackBilling": 40000,
+      "accessories": 1013.0000000000001,
+      "totalTrackAcc": 41013
+    },
+    {
+      "date": "2026-05-23",
+      "trackBilling": 52500,
+      "accessories": 0,
+      "totalTrackAcc": 52500
+    },
+    {
+      "date": "2026-05-25",
+      "trackBilling": 42000,
+      "accessories": 0,
+      "totalTrackAcc": 42000
+    }
+  ],
+  "services": [
+    {
+      "date": "2026-03-25",
+      "category": "Refreshment/Lunch (Per Nos)",
+      "qty": 17,
+      "rate": 125,
+      "total": 2125
+    },
+    {
+      "date": "2026-03-24",
+      "category": "Universal EV Charger (Per Unit)",
+      "qty": 139.2,
+      "rate": 25,
+      "total": 3479.9999999999995
+    },
+    {
+      "date": "2026-04-07",
+      "category": "Universal EV Charger (Per Unit)",
+      "qty": 45,
+      "rate": 25,
+      "total": 1125
+    },
+    {
+      "date": "2026-04-07",
+      "category": "Sand bags 20/50kg (Per Nos/Day)",
+      "qty": 36,
+      "rate": 150,
+      "total": 5400
+    },
+    {
+      "date": "2026-04-07",
+      "category": "Unskilled Labour (Per Day)",
+      "qty": 2,
+      "rate": 1100,
+      "total": 2200
+    },
+    {
+      "date": "2026-04-08",
+      "category": "Electricity Charges (Per Unit)",
+      "qty": 45,
+      "rate": 15,
+      "total": 675
+    },
+    {
+      "date": "2026-04-09",
+      "category": "Electricity Charges (Per Unit)",
+      "qty": 45,
+      "rate": 15,
+      "total": 675
+    },
+    {
+      "date": "2026-04-10",
+      "category": "Electricity Charges (Per Unit)",
+      "qty": 45,
+      "rate": 15,
+      "total": 675
+    },
+    {
+      "date": "2026-04-15",
+      "category": "Electricity Charges (Per Unit)",
+      "qty": 50,
+      "rate": 15,
+      "total": 750
+    },
+    {
+      "date": "2026-04-17",
+      "category": "Electricity Charges (Per Unit)",
+      "qty": 30,
+      "rate": 15,
+      "total": 450
+    },
+    {
+      "date": "2026-04-17",
+      "category": "Sand bags 20/50kg (Per Nos/Day)",
+      "qty": 39,
+      "rate": 150,
+      "total": 5850
+    },
+    {
+      "date": "2026-04-17",
+      "category": "Unskilled Labour (Per Day)",
+      "qty": 2,
+      "rate": 1100,
+      "total": 2200
+    },
+    {
+      "date": "2026-04-17",
+      "category": "Universal EV Charger (Per Unit)",
+      "qty": 20,
+      "rate": 25,
+      "total": 500
+    },
+    {
+      "date": "2026-04-17",
+      "category": "Universal EV Charger (Per Unit)",
+      "qty": 40,
+      "rate": 25,
+      "total": 1000
+    },
+    {
+      "date": "2026-04-26",
+      "category": "Universal EV Charger (Per Unit)",
+      "qty": 20,
+      "rate": 25,
+      "total": 500
+    },
+    {
+      "date": "2026-04-26",
+      "category": "Universal EV Charger (Per Unit)",
+      "qty": 45,
+      "rate": 25,
+      "total": 1125
+    },
+    {
+      "date": "2026-04-27",
+      "category": "Universal EV Charger (Per Unit)",
+      "qty": 45,
+      "rate": 25,
+      "total": 1125
+    },
+    {
+      "date": "2026-04-28",
+      "category": "Universal EV Charger (Per Unit)",
+      "qty": 45,
+      "rate": 25,
+      "total": 1125
+    },
+    {
+      "date": "2026-04-28",
+      "category": "Big Conference Hall (Per Day)",
+      "qty": 1,
+      "rate": 11000,
+      "total": 11000
+    },
+    {
+      "date": "2026-05-19",
+      "category": "Universal EV Charger (Per Unit)",
+      "qty": 45,
+      "rate": 25,
+      "total": 1125
+    },
+    {
+      "date": "2026-05-20",
+      "category": "Universal EV Charger (Per Unit)",
+      "qty": 44.04,
+      "rate": 25,
+      "total": 1101
+    },
+    {
+      "date": "2026-05-22",
+      "category": "Universal EV Charger (Per Unit)",
+      "qty": 40.52,
+      "rate": 25,
+      "total": 1013.0000000000001
+    },
+    {
+      "date": "2026-05-19",
+      "category": "Instrumental Hiring - Vbox battery/day",
+      "qty": 8,
+      "rate": 1000,
+      "total": 8000
+    },
+    {
+      "date": "2026-05-20",
+      "category": "Vbox 3i Hiring /day",
+      "qty": 6,
+      "rate": 27000,
+      "total": 162000
+    }
+  ],
+  "servicesByCategory": {
+    "Refreshment/Lunch (Per Nos)": {
+      "total": 2125,
+      "entries": [
+        {
+          "date": "2026-03-25",
+          "category": "Refreshment/Lunch (Per Nos)",
+          "qty": 17,
+          "rate": 125,
+          "total": 2125
+        }
+      ]
+    },
+    "Universal EV Charger (Per Unit)": {
+      "total": 13219,
+      "entries": [
+        {
+          "date": "2026-03-24",
+          "category": "Universal EV Charger (Per Unit)",
+          "qty": 139.2,
+          "rate": 25,
+          "total": 3479.9999999999995
+        },
+        {
+          "date": "2026-04-07",
+          "category": "Universal EV Charger (Per Unit)",
+          "qty": 45,
+          "rate": 25,
+          "total": 1125
+        },
+        {
+          "date": "2026-04-17",
+          "category": "Universal EV Charger (Per Unit)",
+          "qty": 20,
+          "rate": 25,
+          "total": 500
+        },
+        {
+          "date": "2026-04-17",
+          "category": "Universal EV Charger (Per Unit)",
+          "qty": 40,
+          "rate": 25,
+          "total": 1000
+        },
+        {
+          "date": "2026-04-26",
+          "category": "Universal EV Charger (Per Unit)",
+          "qty": 20,
+          "rate": 25,
+          "total": 500
+        },
+        {
+          "date": "2026-04-26",
+          "category": "Universal EV Charger (Per Unit)",
+          "qty": 45,
+          "rate": 25,
+          "total": 1125
+        },
+        {
+          "date": "2026-04-27",
+          "category": "Universal EV Charger (Per Unit)",
+          "qty": 45,
+          "rate": 25,
+          "total": 1125
+        },
+        {
+          "date": "2026-04-28",
+          "category": "Universal EV Charger (Per Unit)",
+          "qty": 45,
+          "rate": 25,
+          "total": 1125
+        },
+        {
+          "date": "2026-05-19",
+          "category": "Universal EV Charger (Per Unit)",
+          "qty": 45,
+          "rate": 25,
+          "total": 1125
+        },
+        {
+          "date": "2026-05-20",
+          "category": "Universal EV Charger (Per Unit)",
+          "qty": 44.04,
+          "rate": 25,
+          "total": 1101
+        },
+        {
+          "date": "2026-05-22",
+          "category": "Universal EV Charger (Per Unit)",
+          "qty": 40.52,
+          "rate": 25,
+          "total": 1013.0000000000001
+        }
+      ]
+    },
+    "Sand bags 20/50kg (Per Nos/Day)": {
+      "total": 11250,
+      "entries": [
+        {
+          "date": "2026-04-07",
+          "category": "Sand bags 20/50kg (Per Nos/Day)",
+          "qty": 36,
+          "rate": 150,
+          "total": 5400
+        },
+        {
+          "date": "2026-04-17",
+          "category": "Sand bags 20/50kg (Per Nos/Day)",
+          "qty": 39,
+          "rate": 150,
+          "total": 5850
+        }
+      ]
+    },
+    "Unskilled Labour (Per Day)": {
+      "total": 4400,
+      "entries": [
+        {
+          "date": "2026-04-07",
+          "category": "Unskilled Labour (Per Day)",
+          "qty": 2,
+          "rate": 1100,
+          "total": 2200
+        },
+        {
+          "date": "2026-04-17",
+          "category": "Unskilled Labour (Per Day)",
+          "qty": 2,
+          "rate": 1100,
+          "total": 2200
+        }
+      ]
+    },
+    "Electricity Charges (Per Unit)": {
+      "total": 3225,
+      "entries": [
+        {
+          "date": "2026-04-08",
+          "category": "Electricity Charges (Per Unit)",
+          "qty": 45,
+          "rate": 15,
+          "total": 675
+        },
+        {
+          "date": "2026-04-09",
+          "category": "Electricity Charges (Per Unit)",
+          "qty": 45,
+          "rate": 15,
+          "total": 675
+        },
+        {
+          "date": "2026-04-10",
+          "category": "Electricity Charges (Per Unit)",
+          "qty": 45,
+          "rate": 15,
+          "total": 675
+        },
+        {
+          "date": "2026-04-15",
+          "category": "Electricity Charges (Per Unit)",
+          "qty": 50,
+          "rate": 15,
+          "total": 750
+        },
+        {
+          "date": "2026-04-17",
+          "category": "Electricity Charges (Per Unit)",
+          "qty": 30,
+          "rate": 15,
+          "total": 450
+        }
+      ]
+    },
+    "Big Conference Hall (Per Day)": {
+      "total": 11000,
+      "entries": [
+        {
+          "date": "2026-04-28",
+          "category": "Big Conference Hall (Per Day)",
+          "qty": 1,
+          "rate": 11000,
+          "total": 11000
+        }
+      ]
+    },
+    "Instrumental Hiring - Vbox battery/day": {
+      "total": 8000,
+      "entries": [
+        {
+          "date": "2026-05-19",
+          "category": "Instrumental Hiring - Vbox battery/day",
+          "qty": 8,
+          "rate": 1000,
+          "total": 8000
+        }
+      ]
+    },
+    "Vbox 3i Hiring /day": {
+      "total": 162000,
+      "entries": [
+        {
+          "date": "2026-05-20",
+          "category": "Vbox 3i Hiring /day",
+          "qty": 6,
+          "rate": 27000,
+          "total": 162000
+        }
+      ]
+    }
+  },
+  "grandTotals": {
+    "trackAcc": 1478719,
+    "workshopRental": 245000,
+    "subtotalExclGst": 1723719,
+    "gst": 310269.42,
+    "totalInclGst": 2033988.42
+  }
+}

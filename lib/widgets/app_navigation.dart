@@ -59,9 +59,9 @@ class _AppNavigationState extends State<AppNavigation>
         branchIndex: 3,
       ),
       const _TabSpec(
-        icon: 'receipt_long',
-        selectedIcon: 'receipt_long',
-        label: 'Invoices',
+        icon: 'analytics',
+        selectedIcon: 'analytics',
+        label: 'Analyser',
         branchIndex: 4,
       ),
       const _TabSpec(
@@ -72,7 +72,7 @@ class _AppNavigationState extends State<AppNavigation>
       ),
     ]);
 
-    if (!_isManager) {
+    if (_isManager) {
       list.add(const _TabSpec(
         icon: 'admin_panel_settings',
         selectedIcon: 'admin_panel_settings',

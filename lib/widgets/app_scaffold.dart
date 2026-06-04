@@ -109,9 +109,9 @@ class _WideScaffoldState extends State<_WideScaffold> {
         branch: 3,
       ),
       const _NavItem(
-        icon: Icons.receipt_long_outlined,
-        activeIcon: Icons.receipt_long,
-        label: 'Invoices',
+        icon: Icons.analytics_outlined,
+        activeIcon: Icons.analytics_rounded,
+        label: 'Analyser',
         branch: 4,
       ),
       const _NavItem(
@@ -122,7 +122,7 @@ class _WideScaffoldState extends State<_WideScaffold> {
       ),
     ]);
 
-    if (!_isManager) {
+    if (_isManager) {
       items.add(const _NavItem(
         icon: Icons.admin_panel_settings_outlined,
         activeIcon: Icons.admin_panel_settings_rounded,

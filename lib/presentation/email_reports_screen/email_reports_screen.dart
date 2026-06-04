@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 
 import '../../core/app_export.dart';
 import '../../services/email_report_service.dart';
@@ -248,6 +249,8 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                               const SizedBox(height: 20),
                               _buildSendNowCard(),
                               const SizedBox(height: 16),
+                              _buildNatraxReportCard(),
+                              const SizedBox(height: 16),
                               _buildSubscribersSection(),
                               const SizedBox(height: 16),
                               _buildRecentLogsSection(),
@@ -351,6 +354,114 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
           ),
         ),
       ],
+    );
+  }
+
+  // ── NATRAX VBA-style Expense Report Card ─────────────────────────────────
+
+  Widget _buildNatraxReportCard() {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0A1025).withAlpha(200),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFFFB547).withAlpha(100)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Container(
+                  width: 32, height: 32,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFB547).withAlpha(30),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFFFB547).withAlpha(80)),
+                  ),
+                  child: const Icon(Icons.receipt_long_rounded, color: Color(0xFFFFB547), size: 16),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('NATRAX Expense Update',
+                        style: GoogleFonts.spaceGrotesk(
+                            color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800)),
+                    Text('Weekly / Monthly — mirrors VBA macro format',
+                        style: GoogleFonts.spaceGrotesk(
+                            color: const Color(0xFF6B7490), fontSize: 11)),
+                  ]),
+                ),
+              ]),
+              const SizedBox(height: 14),
+              // Recipient preview
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0D1421),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFF2A3450)),
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  _recipientRow('To', 'Harsh · praharshithkumar_komaragiri@goodyear.com'),
+                  const SizedBox(height: 4),
+                  _recipientRow('CC', 'v_vimal, ashish_pandit, yeswanth_golla, niranjan_poloju'),
+                ]),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                height: 46,
+                child: ElevatedButton.icon(
+                  onPressed: () => _showNatraxComposeSheet(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFFB547),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: const Icon(Icons.send_rounded, color: Color(0xFF0F172A), size: 18),
+                  label: Text('Compose & Send Report',
+                      style: GoogleFonts.spaceGrotesk(
+                          color: const Color(0xFF0F172A), fontSize: 13, fontWeight: FontWeight.w800)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _recipientRow(String label, String value) {
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SizedBox(
+        width: 24,
+        child: Text(label,
+            style: GoogleFonts.spaceGrotesk(
+                color: const Color(0xFF6B7490), fontSize: 10, fontWeight: FontWeight.w700)),
+      ),
+      const SizedBox(width: 6),
+      Expanded(
+        child: Text(value,
+            style: GoogleFonts.spaceGrotesk(
+                color: const Color(0xFF8A94B0), fontSize: 10)),
+      ),
+    ]);
+  }
+
+  void _showNatraxComposeSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _NatraxComposeSheet(
+        onSent: () {
+          Navigator.pop(context);
+          _loadData();
+        },
+      ),
     );
   }
 
@@ -954,6 +1065,368 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
       'Dec',
     ];
     return months[m - 1];
+  }
+}
+
+// ── NATRAX Compose Sheet ──────────────────────────────────────────────────────
+
+class _NatraxComposeSheet extends StatefulWidget {
+  final VoidCallback onSent;
+  const _NatraxComposeSheet({required this.onSent});
+
+  @override
+  State<_NatraxComposeSheet> createState() => _NatraxComposeSheetState();
+}
+
+class _NatraxComposeSheetState extends State<_NatraxComposeSheet> {
+  String _reportType = 'monthly'; // 'weekly' | 'monthly'
+  final _vehicleCtrl = TextEditingController(text: 'Mahindra XEV 9e');
+  bool _sending = false;
+  bool _previewing = false;
+  String? _error;
+  String? _previewHtml;
+
+  DateTime _periodStart = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  DateTime _periodEnd = DateTime(DateTime.now().year, DateTime.now().month + 1, 0);
+  final DateTime _overallStart = DateTime(2026, 3, 22);
+
+  final _inrFmt = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+
+  @override
+  void dispose() {
+    _vehicleCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onTypeChanged(String type) {
+    setState(() {
+      _reportType = type;
+      final now = DateTime.now();
+      if (type == 'weekly') {
+        final weekday = now.weekday;
+        _periodStart = now.subtract(Duration(days: weekday - 1));
+        _periodEnd = now;
+      } else {
+        _periodStart = DateTime(now.year, now.month, 1);
+        _periodEnd = DateTime(now.year, now.month + 1, 0);
+      }
+      _previewHtml = null;
+    });
+  }
+
+  Future<void> _send() async {
+    if (_vehicleCtrl.text.trim().isEmpty) {
+      setState(() => _error = 'Please enter a vehicle name');
+      return;
+    }
+    setState(() { _sending = true; _error = null; });
+    try {
+      final result = await EmailReportService.instance.sendNatraxExpenseReport(
+        reportType: _reportType,
+        vehicleName: _vehicleCtrl.text.trim(),
+        periodStart: _periodStart,
+        periodEnd: _periodEnd,
+        overallStart: _overallStart,
+        overallEnd: _periodEnd,
+      );
+      if (result['success'] == true) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('✓ Report sent to Harsh', style: GoogleFonts.spaceGrotesk(color: Colors.white)),
+            backgroundColor: const Color(0xFF4CAF50).withAlpha(220),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ));
+          widget.onSent();
+        }
+      } else {
+        setState(() => _error = result['error']?.toString() ?? 'Send failed');
+      }
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _preview() async {
+    if (_vehicleCtrl.text.trim().isEmpty) {
+      setState(() => _error = 'Please enter a vehicle name');
+      return;
+    }
+    setState(() { _previewing = true; _error = null; _previewHtml = null; });
+    try {
+      final result = await EmailReportService.instance.sendNatraxExpenseReport(
+        reportType: _reportType,
+        vehicleName: _vehicleCtrl.text.trim(),
+        periodStart: _periodStart,
+        periodEnd: _periodEnd,
+        overallStart: _overallStart,
+        overallEnd: _periodEnd,
+      );
+      // Don't actually send — show the HTML preview
+      setState(() => _previewHtml = result['html'] as String? ?? '');
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _previewing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dateFmt = DateFormat('dd MMM yyyy');
+    return DraggableScrollableSheet(
+      initialChildSize: 0.85,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      builder: (_, ctrl) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            color: const Color(0xFF0A1025),
+            child: ListView(
+              controller: ctrl,
+              padding: EdgeInsets.fromLTRB(24, 0, 24,
+                  MediaQuery.of(context).viewInsets.bottom + 32),
+              children: [
+                const SizedBox(height: 12),
+                Center(child: Container(
+                  width: 40, height: 4,
+                  decoration: BoxDecoration(
+                      color: const Color(0xFF849495),
+                      borderRadius: BorderRadius.circular(2)),
+                )),
+                const SizedBox(height: 20),
+                Text('Compose NATRAX Report',
+                    style: GoogleFonts.spaceGrotesk(
+                        color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 4),
+                Text('Mirrors VBA SendExpenseUpdateEmail macro',
+                    style: GoogleFonts.spaceGrotesk(
+                        color: const Color(0xFF6B7490), fontSize: 12)),
+                const SizedBox(height: 20),
+
+                // Report type
+                Text('Report Type', style: _labelStyle()),
+                const SizedBox(height: 8),
+                Row(children: [
+                  _typeChip('weekly', 'Weekly', const Color(0xFF4A9EFF)),
+                  const SizedBox(width: 8),
+                  _typeChip('monthly', 'Monthly', const Color(0xFFFFB547)),
+                ]),
+                const SizedBox(height: 16),
+
+                // Vehicle name
+                Text('Vehicle Name / Model', style: _labelStyle()),
+                const SizedBox(height: 6),
+                _field(controller: _vehicleCtrl, hint: 'e.g. Mahindra XEV 9e',
+                    icon: Icons.directions_car_outlined),
+                const SizedBox(height: 16),
+
+                // Date range display
+                Text('Period', style: _labelStyle()),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0D1421),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF2A3450)),
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.date_range_outlined, color: Color(0xFF4A5470), size: 18),
+                    const SizedBox(width: 10),
+                    Text('${dateFmt.format(_periodStart)}  →  ${dateFmt.format(_periodEnd)}',
+                        style: GoogleFonts.spaceGrotesk(color: Colors.white70, fontSize: 13)),
+                  ]),
+                ),
+                const SizedBox(height: 4),
+                Text('Overall project start: ${dateFmt.format(_overallStart)}',
+                    style: GoogleFonts.spaceGrotesk(color: const Color(0xFF4A5470), fontSize: 11)),
+                const SizedBox(height: 16),
+
+                // Recipients
+                Text('Recipients', style: _labelStyle()),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0D1421),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF2A3450)),
+                  ),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    _recipientLine('To', 'praharshithkumar_komaragiri@goodyear.com'),
+                    const SizedBox(height: 6),
+                    _recipientLine('CC', 'v_vimal · ashish_pandit · yeswanth_golla · niranjan_poloju'),
+                  ]),
+                ),
+                const SizedBox(height: 16),
+
+                // Workshop rate info
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFB547).withAlpha(15),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFFFB547).withAlpha(40)),
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.info_outline, color: Color(0xFFFFB547), size: 14),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(
+                      'Workshop rental: ₹5,000/operational day (as per macro). '
+                      'Track costs and accessories pulled live from Supabase.',
+                      style: GoogleFonts.spaceGrotesk(
+                          color: const Color(0xFF8A94B0), fontSize: 11, height: 1.5),
+                    )),
+                  ]),
+                ),
+
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent.withAlpha(26),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.redAccent.withAlpha(80)),
+                    ),
+                    child: Text(_error!,
+                        style: GoogleFonts.spaceGrotesk(
+                            color: Colors.redAccent, fontSize: 12)),
+                  ),
+                ],
+
+                // HTML Preview (truncated)
+                if (_previewHtml != null) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0D1421),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFF2A3450)),
+                    ),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('EMAIL PREVIEW (HTML)',
+                          style: GoogleFonts.spaceGrotesk(
+                              color: const Color(0xFF4A9EFF), fontSize: 10,
+                              fontWeight: FontWeight.w700, letterSpacing: 1.5)),
+                      const SizedBox(height: 8),
+                      Text(
+                        _previewHtml!.replaceAll(RegExp(r'<[^>]*>'), '').substring(
+                            0, _previewHtml!.length > 500 ? 500 : _previewHtml!.length) + '…',
+                        style: GoogleFonts.spaceGrotesk(
+                            color: const Color(0xFF6B7490), fontSize: 11, height: 1.5),
+                      ),
+                    ]),
+                  ),
+                ],
+
+                const SizedBox(height: 24),
+                Row(children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _previewing ? null : _preview,
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFF4A9EFF)),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      icon: _previewing
+                          ? const SizedBox(width: 14, height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF4A9EFF)))
+                          : const Icon(Icons.preview_rounded, color: Color(0xFF4A9EFF), size: 16),
+                      label: Text('Preview',
+                          style: GoogleFonts.spaceGrotesk(
+                              color: const Color(0xFF4A9EFF), fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: ElevatedButton.icon(
+                      onPressed: _sending ? null : _send,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFFB547),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      icon: _sending
+                          ? const SizedBox(width: 16, height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0F172A)))
+                          : const Icon(Icons.send_rounded, color: Color(0xFF0F172A), size: 16),
+                      label: Text(_sending ? 'Sending…' : 'Send to Harsh',
+                          style: GoogleFonts.spaceGrotesk(
+                              color: const Color(0xFF0F172A), fontWeight: FontWeight.w800)),
+                    ),
+                  ),
+                ]),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  TextStyle _labelStyle() => GoogleFonts.spaceGrotesk(
+      color: const Color(0xFF8A94B0), fontSize: 12, fontWeight: FontWeight.w600);
+
+  Widget _typeChip(String value, String label, Color color) {
+    final sel = _reportType == value;
+    return GestureDetector(
+      onTap: () => _onTypeChanged(value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        decoration: BoxDecoration(
+          color: sel ? color.withAlpha(40) : const Color(0xFF0D1421),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: sel ? color : const Color(0xFF2A3450),
+              width: sel ? 1.5 : 1),
+        ),
+        child: Text(label, style: GoogleFonts.spaceGrotesk(
+            color: sel ? color : const Color(0xFF6B7490),
+            fontSize: 13, fontWeight: sel ? FontWeight.w700 : FontWeight.w500)),
+      ),
+    );
+  }
+
+  Widget _field({required TextEditingController controller,
+      required String hint, required IconData icon}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D1421),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF2A3450)),
+      ),
+      child: TextField(
+        controller: controller,
+        style: GoogleFonts.spaceGrotesk(color: Colors.white, fontSize: 14),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: GoogleFonts.spaceGrotesk(color: const Color(0xFF4A5470), fontSize: 13),
+          prefixIcon: Icon(icon, color: const Color(0xFF4A5470), size: 18),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        ),
+      ),
+    );
+  }
+
+  Widget _recipientLine(String label, String value) {
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SizedBox(width: 24,
+          child: Text(label, style: GoogleFonts.spaceGrotesk(
+              color: const Color(0xFF6B7490), fontSize: 10, fontWeight: FontWeight.w700))),
+      const SizedBox(width: 6),
+      Expanded(child: Text(value, style: GoogleFonts.spaceGrotesk(
+          color: const Color(0xFF8A94B0), fontSize: 10))),
+    ]);
   }
 }
 

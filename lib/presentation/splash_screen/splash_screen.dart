@@ -41,7 +41,7 @@ class _SplashScreenState extends State<SplashScreen>
       if (mounted) {
         if (EngineerAuthService.instance.isSignedIn) {
           if (kIsWeb) {
-            context.go('/session-history-screen');
+            context.go('/project-selection');
           } else {
             context.go('/active-session-screen');
           }
