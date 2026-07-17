@@ -7,3 +7,4 @@ export '../widgets/custom_image_widget.dart';
 export '../widgets/status_badge_widget.dart';
 export '../widgets/empty_state_widget.dart';
 export '../widgets/loading_skeleton_widget.dart';
+export 'app_version.dart';

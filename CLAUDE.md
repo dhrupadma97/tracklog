@@ -5,7 +5,7 @@
 
 ## This is a standalone project
 - **GitHub**: `https://github.com/dhrupadma97/tracklog.git` (separate from AntiGravity)
-- **Firebase Hosting**: `claude-app-da71e.web.app`
+- **Firebase Hosting**: `sightlinevalidation.web.app`
 - **Supabase**: `qmcsxfqizvjbzffbrakp.supabase.co` (shared infra — TrackLog uses these tables: `engineer_sessions`, `engineer_profiles`, `track_rates`, `po_trackers`, `email_report_subscriptions`, `email_send_log`, `session_additional_services`)
 - **Flutter SDK**: Must be added to PATH before rebuilding (`flutter build web --release`)
 

@@ -9,6 +9,12 @@ import 'dart:math' as math;
 import '../../services/project_manager.dart';
 
 // ─── Project metadata registry ────────────────────────────────────────────────
+class _CarDetail {
+  final String name;
+  final IconData icon;
+  const _CarDetail(this.name, this.icon);
+}
+
 class _ProjectMeta {
   final String displayName;
   final String vehicle;
@@ -18,6 +24,7 @@ class _ProjectMeta {
   final Color accentColor;
   final Color glowColor;
   final List<String> specs;
+  final List<_CarDetail> details;
   const _ProjectMeta({
     required this.displayName,
     required this.vehicle,
@@ -27,6 +34,7 @@ class _ProjectMeta {
     required this.accentColor,
     required this.glowColor,
     this.specs = const [],
+    this.details = const [],
   });
 }
 
@@ -42,6 +50,13 @@ const _knownProjects = {
     accentColor: Color(0xFFE8002D),
     glowColor: Color(0xFFE8002D),
     specs: ['INGLO Architecture', '79 kWh Battery', 'AWD · 285 kW'],
+    details: [
+      _CarDetail('Approved OEM Size: 235/55 R19', Icons.circle_outlined),
+      _CarDetail('INGLO EV Architecture Platform', Icons.layers_rounded),
+      _CarDetail('79 kWh LFP Battery (175 kW DC Fast)', Icons.battery_charging_full_rounded),
+      _CarDetail('Dual-Motor AWD · 285 kW (382 hp)', Icons.bolt_rounded),
+      _CarDetail('MIDC Certified Range: 560 km', Icons.map_rounded),
+    ],
   ),
   'mahindra ice poc': _ProjectMeta(
     displayName: 'Mahindra ICE PoC',
@@ -50,10 +65,17 @@ const _knownProjects = {
     description: 'SightLine sensor fusion and friction estimation benchmarking on the Mahindra XUV 7XO ICE platform. '
         'Validating pressure & load sensing, predictive maintenance alerts, and tire wear state '
         'measurement across dynamic handling tracks.',
-    imagePath: 'assets/images/mahindra_7xo.png',
+    imagePath: 'assets/images/mahindra_7xo.webp',
     accentColor: Color(0xFF4A9EFF),
     glowColor: Color(0xFF4A9EFF),
     specs: ['mStallion 3.0 Turbo', 'AdrenoX 5.0', '4WD · 206 kW'],
+    details: [
+      _CarDetail('Approved OEM Size: 235/60 R18', Icons.circle_outlined),
+      _CarDetail('mStallion 2.0L TGDi Turbo Petrol', Icons.settings_suggest_rounded),
+      _CarDetail('Output: 200 hp @ 380 Nm Torque', Icons.speed_rounded),
+      _CarDetail('Transmission: 6-Speed AT / 4WD', Icons.settings_input_component_rounded),
+      _CarDetail('Frequency Selective Damping (FSD)', Icons.build_circle_rounded),
+    ],
   ),
   'hyundai poc': _ProjectMeta(
     displayName: 'Hyundai PoC',
@@ -66,6 +88,13 @@ const _knownProjects = {
     accentColor: Color(0xFF00F3FF),
     glowColor: Color(0xFF00B4D8),
     specs: ['51.4 kWh Battery', 'Smart Regen', 'ADAS Level 2+'],
+    details: [
+      _CarDetail('Approved OEM Size: 215/60 R17', Icons.circle_outlined),
+      _CarDetail('51.4 kWh High-Density LFP Battery', Icons.battery_charging_full_rounded),
+      _CarDetail('Motor: 138 hp (102 kW) / 255 Nm', Icons.bolt_rounded),
+      _CarDetail('Platform: e-GMP derived K2 Platform', Icons.layers_rounded),
+      _CarDetail('Features: Smart Regen & V2L Power Output', Icons.settings_backup_restore_rounded),
+    ],
   ),
 };
 
@@ -180,34 +209,43 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
         );
       }
 
-      // Add workshop rentals from excel_data.json grand total:
-      // Grand total from excel = 20,33,988.42. Track acc alone = 14,78,719
-      // Workshop rental = 2,45,000. Both excl GST. Total incl GST = 20,33,988.42
-      // We attach workshop rental to Mahindra EV PoC only (245000 * 1.18 = 289100)
-      const workshopRentalExcl = 245000.0;
+      // ── Canonical totals from NATRAX_Comprehensive_Billing_Final_V15 ──────
+      // Grand Total Incl 18% GST = ₹20,33,988.42
+      // Track+Acc (excl) = ₹14,78,719 | Workshop (excl) = ₹2,45,000
+      // Subtotal excl = ₹17,23,719 | GST = ₹3,10,269.42
+      const double mahindraEvSubtotalExcl = 1723719.0;
+      const double mahindraEvTotalInclGst = 2033988.42;
 
+      // For non-EV projects, still compute from Supabase (future PoCs)
       for (final s in sessionsRaw) {
         final rawName = (s['project_name'] as String?)?.trim() ?? '';
-        // Map empty/General to Mahindra EV PoC
         final projName = (rawName.isEmpty || rawName.toLowerCase() == 'general')
             ? 'Mahindra EV PoC'
             : rawName;
         final key = projName.toLowerCase();
-
-        // Only process known projects
         if (!cardMap.containsKey(key)) continue;
+        // Skip Mahindra EV PoC — we use hardcoded Excel total below
+        if (key == 'mahindra ev poc') {
+          // Still count sessions and track last activity date
+          cardMap[key]!.sessions += 1;
+          final startDt = DateTime.tryParse(s['started_at'] as String? ?? '');
+          if (startDt != null) {
+            if (cardMap[key]!.lastActivity == null ||
+                startDt.isAfter(cardMap[key]!.lastActivity!)) {
+              cardMap[key]!.lastActivity = startDt;
+            }
+          }
+          continue;
+        }
 
         final sid = s['id'] as String;
         final track = (s['total_cost'] as num?)?.toDouble() ?? 0.0;
         final svc = svcCostMap[sid] ?? 0.0;
         final excl = track + svc;
-
         cardMap[key]!.subtotalExcl += excl;
         cardMap[key]!.totalInclGst += excl * 1.18;
         cardMap[key]!.sessions += 1;
-
-        final startStr = s['started_at'] as String? ?? '';
-        final startDt = DateTime.tryParse(startStr);
+        final startDt = DateTime.tryParse(s['started_at'] as String? ?? '');
         if (startDt != null) {
           if (cardMap[key]!.lastActivity == null ||
               startDt.isAfter(cardMap[key]!.lastActivity!)) {
@@ -216,11 +254,11 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
         }
       }
 
-      // Add workshop rental to Mahindra EV PoC
+      // Set Mahindra EV PoC to exact Excel grand total
       final evCard = cardMap['mahindra ev poc'];
       if (evCard != null) {
-        evCard.subtotalExcl += workshopRentalExcl;
-        evCard.totalInclGst += workshopRentalExcl * 1.18;
+        evCard.subtotalExcl = mahindraEvSubtotalExcl;
+        evCard.totalInclGst = mahindraEvTotalInclGst;
       }
 
       // Maintain fixed order
@@ -244,7 +282,7 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
 
   void _selectProject(_ProjectCard p) {
     ProjectManager.instance.setProject(p.displayName);
-    context.push('/session-history-screen', extra: p.displayName);
+    context.push('/monthly-invoices-screen', extra: p.displayName);
   }
 
   // ─── Build ─────────────────────────────────────────────────────────────────
@@ -346,7 +384,7 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
                         fontSize: 10, fontWeight: FontWeight.w700,
                         color: const Color(0xFF00F3FF), letterSpacing: 3)),
                 const SizedBox(height: 3),
-                Text('Tire Intelligence R&D Suite',
+                Text('Vehicle Validation Team',
                     style: GoogleFonts.spaceGrotesk(
                         fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white)),
               ]),
@@ -410,76 +448,108 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
   }
 
   Widget _buildHeroHeadline() {
+    // Compute totals across all loaded projects
+    final totalSessions = _projects.fold(0, (s, p) => s + p.sessions);
+    final totalSpendInclGst = _projects.fold(0.0, (s, p) => s + p.totalInclGst);
+    final activeCount = _projects.where((p) => p.sessions > 0).length;
+
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('SELECT PROJECT',
-          style: GoogleFonts.spaceGrotesk(
-              fontSize: 10, fontWeight: FontWeight.w700,
-              color: const Color(0xFF00F3FF), letterSpacing: 3)),
-      const SizedBox(height: 8),
+      // Label
+      Row(children: [
+        Container(
+          width: 6, height: 6,
+          decoration: const BoxDecoration(
+            color: Color(0xFF00F3FF),
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text('ACTIVE PROJECTS',
+            style: GoogleFonts.spaceGrotesk(
+                fontSize: 10, fontWeight: FontWeight.w700,
+                color: const Color(0xFF00F3FF), letterSpacing: 3)),
+      ]),
+      const SizedBox(height: 10),
+
+      // Main headline
       RichText(
         text: TextSpan(children: [
           TextSpan(
-            text: 'Choose your\n',
-            style: GoogleFonts.spaceGrotesk(fontSize: 32, fontWeight: FontWeight.w800, color: Colors.white, height: 1.2),
+            text: 'Select your\n',
+            style: GoogleFonts.spaceGrotesk(
+                fontSize: 34, fontWeight: FontWeight.w800,
+                color: Colors.white, height: 1.15),
           ),
           TextSpan(
-            text: 'R&D Platform',
+            text: 'Project',
             style: GoogleFonts.spaceGrotesk(
-              fontSize: 32, fontWeight: FontWeight.w800, height: 1.2,
+              fontSize: 34, fontWeight: FontWeight.w800, height: 1.15,
               foreground: Paint()..shader = const LinearGradient(
                 colors: [Color(0xFF00F3FF), Color(0xFF4A9EFF)],
-              ).createShader(const Rect.fromLTWH(0, 0, 300, 40)),
+              ).createShader(const Rect.fromLTWH(0, 0, 260, 42)),
             ),
           ),
         ]),
       ),
-      const SizedBox(height: 12),
-      Text('Goodyear SightLine tire intelligence — validated across Mahindra & Hyundai PoC platforms',
-          style: GoogleFonts.spaceGrotesk(fontSize: 14, color: const Color(0xFF94A3B8))),
+      const SizedBox(height: 10),
+      Text(
+        'Goodyear SightLine PoC validation · NATRAX Proving Ground, Indore',
+        style: GoogleFonts.spaceGrotesk(
+            fontSize: 13, color: const Color(0xFF94A3B8)),
+      ),
 
-      const SizedBox(height: 16),
-      // SightLine technology brief card
+      const SizedBox(height: 20),
+
+      // Live stats strip
       Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft, end: Alignment.bottomRight,
             colors: [
-              const Color(0xFF00F3FF).withOpacity(0.06),
+              const Color(0xFF00F3FF).withOpacity(0.07),
               const Color(0xFF4A9EFF).withOpacity(0.03),
             ],
           ),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFF00F3FF).withOpacity(0.18)),
+          border: Border.all(color: const Color(0xFF00F3FF).withOpacity(0.2)),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // Stats row
           Row(children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: const Color(0xFF00F3FF).withOpacity(0.12),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text('GOODYEAR SIGHTLINE™',
-                  style: GoogleFonts.spaceGrotesk(
-                      fontSize: 8, fontWeight: FontWeight.w800,
-                      color: const Color(0xFF00F3FF), letterSpacing: 1.5)),
+            _statItem(
+              label: 'ACTIVE PoCs',
+              value: '$activeCount / ${_projects.length}',
+              color: const Color(0xFF00F3FF),
+              icon: Icons.science_rounded,
             ),
-            const SizedBox(width: 8),
-            Text('Tire Intelligence Suite',
-                style: GoogleFonts.spaceGrotesk(
-                    fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white70)),
+            _statDivider(),
+            _statItem(
+              label: 'TOTAL SESSIONS',
+              value: '$totalSessions',
+              color: const Color(0xFF4A9EFF),
+              icon: Icons.directions_car_rounded,
+            ),
+            _statDivider(),
+            _statItem(
+              label: 'TOTAL SPEND',
+              value: _inrCompact.format(totalSpendInclGst),
+              color: const Color(0xFFE8002D),
+              icon: Icons.currency_rupee_rounded,
+            ),
+            _statDivider(),
+            _statItem(
+              label: 'LOCATION',
+              value: 'NATRAX',
+              color: const Color(0xFFF59E0B),
+              icon: Icons.location_on_rounded,
+            ),
           ]),
-          const SizedBox(height: 10),
-          Text(
-            'SightLine transforms tires into active data sources using embedded sensors, AI '
-            'and proprietary algorithms — delivering real-time friction estimation, aquaplaning '
-            'detection, tire health monitoring and predictive maintenance insights directly to '
-            'vehicle control systems and fleet operators.',
-            style: GoogleFonts.spaceGrotesk(
-                fontSize: 11, color: const Color(0xFF94A3B8), height: 1.6),
-          ),
+
+          const SizedBox(height: 14),
+          Container(height: 1, color: Colors.white.withOpacity(0.06)),
           const SizedBox(height: 12),
+
           // Feature pills
           Wrap(
             spacing: 6, runSpacing: 6,
@@ -488,7 +558,7 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
               decoration: BoxDecoration(
                 color: const Color(0xFF00F3FF).withOpacity(0.07),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFF00F3FF).withOpacity(0.2)),
+                border: Border.all(color: const Color(0xFF00F3FF).withOpacity(0.18)),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(f.icon, color: const Color(0xFF00F3FF), size: 11),
@@ -504,6 +574,35 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
       ),
     ]);
   }
+
+  Widget _statItem({
+    required String label,
+    required String value,
+    required Color color,
+    required IconData icon,
+  }) {
+    return Expanded(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(icon, color: color, size: 12),
+          const SizedBox(width: 4),
+          Text(label,
+              style: GoogleFonts.spaceGrotesk(
+                  fontSize: 8, fontWeight: FontWeight.w700,
+                  color: color.withOpacity(0.7), letterSpacing: 1.2)),
+        ]),
+        const SizedBox(height: 4),
+        Text(value,
+            style: GoogleFonts.spaceGrotesk(
+                fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
+      ]),
+    );
+  }
+
+  Widget _statDivider() => Container(
+        width: 1, height: 36, color: Colors.white.withOpacity(0.08),
+        margin: const EdgeInsets.symmetric(horizontal: 12),
+      );
 
   Widget _buildThreeColumnGrid(double totalWidth) {
     final cardWidth = (totalWidth - 48) / 3;
@@ -617,15 +716,26 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
                         ),
 
                         const SizedBox(height: 14),
-                        // Tire intelligence pills
-                        ...(_tireFeatures.map((f) => Padding(
-                          padding: const EdgeInsets.only(bottom: 5),
+                        // Vehicle details
+                        ...(meta.details.map((d) => Container(
+                          margin: const EdgeInsets.only(bottom: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: accent.withOpacity(0.04),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: accent.withOpacity(0.12),
+                              width: 0.8,
+                            ),
+                          ),
                           child: Row(children: [
-                            Icon(f.icon, color: accent.withOpacity(0.7), size: 12),
-                            const SizedBox(width: 6),
-                            Text(f.name,
-                                style: GoogleFonts.spaceGrotesk(
-                                    fontSize: 10, color: const Color(0xFF94A3B8))),
+                            Icon(d.icon, color: accent, size: 12),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(d.name,
+                                  style: GoogleFonts.spaceGrotesk(
+                                      fontSize: 10, color: const Color(0xFFDFE2F0))),
+                            ),
                           ]),
                         ))),
 
@@ -815,7 +925,7 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
 
   Widget _buildAllProjectsButton() {
     return GestureDetector(
-      onTap: () => context.push('/session-history-screen', extra: null),
+      onTap: () => context.push('/monthly-invoices-screen', extra: null),
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         child: Container(
@@ -889,8 +999,17 @@ class _SpacePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     // Background base
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height),
-      Paint()..color = const Color(0xFF030712));
+    final bgPaint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Color(0xFF042024),
+          Color(0xFF030712),
+        ],
+        stops: [0.0, 0.7],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bgPaint);
 
     // Cyan glow — top-left
     canvas.drawCircle(

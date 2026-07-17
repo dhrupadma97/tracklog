@@ -55,8 +55,8 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
   Duration _elapsed = Duration.zero;
   Timer? _sessionTimer;
   Timer? _anomalyTimer;
-  String _currentGate = 'High Speed Track';
-  final String _currentTrackType = 'T1';
+  String _currentGate = 'Active Session';
+  final String _currentTrackType = 'GEN';
   String _currentEngineer = '';
   bool _isManagerRole = false;
   final double _hourlyRate = 25000.0;
@@ -286,36 +286,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                   ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0A1025),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.location_on_rounded,
-                        color: AppTheme.primary,
-                        size: 14,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        _currentGate,
-                        style: GoogleFonts.spaceGrotesk(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.primary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+
                 const SizedBox(height: 16),
                 _buildTextField('Project Name (e.g. Mahindra EV PoC)', _projectController),
                 const SizedBox(height: 12),
@@ -578,7 +549,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppTheme.primary),
+          borderSide: BorderSide(color: AppTheme.primary),
         ),
       ),
     );
@@ -590,7 +561,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
     final isTablet = MediaQuery.of(context).size.width >= 600;
 
     return Scaffold(
-      backgroundColor: AppTheme.backgroundDark,
+      backgroundColor: Colors.transparent,
       body: Stack(
         children: [
           // Goodyear background image with dark overlay
@@ -608,10 +579,10 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    const Color(0xFF050811).withAlpha(230),
-                    const Color(0xFF050811).withAlpha(210),
-                    const Color(0xFF050811).withAlpha(240),
+                    const Color(0xFF042024).withAlpha(225),
+                    const Color(0xFF030712).withAlpha(245),
                   ],
+                  stops: const [0.0, 0.7],
                 ),
               ),
             ),
@@ -846,13 +817,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
           const SizedBox(height: 16),
           // Anomaly test strip — visible only during active session
           if (_sessionActive) _buildAnomalyTestStrip(theme),
-          const SizedBox(height: 24),
-          RecentGateStripWidget(
-            currentGate: _currentGate,
-            onGateTap: (gate) {
-              setState(() => _currentGate = gate);
-            },
-          ),
+
         ],
       ),
     );
@@ -1579,10 +1544,58 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                 const SizedBox(width: 8),
                 Expanded(
                   child: _AnomalyButton(
-                    label: 'Gate Exit',
+                    label: 'Unexpected Exit',
                     icon: Icons.logout_rounded,
-                    color: const Color(0xFFFFB300),
+                    color: const Color(0xFFFF3D00),
                     onTap: _handleUnexpectedGeofenceExit,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: _AnomalyButton(
+                    label: 'Gate Entry',
+                    icon: Icons.login_rounded,
+                    color: const Color(0xFF00F3FF),
+                    onTap: () {
+                      _notificationService.onGateEntry(
+                        gateName: _currentGate.isNotEmpty ? _currentGate : 'High Speed Track',
+                        engineerName: _currentEngineer.isNotEmpty ? _currentEngineer : 'Engineer',
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _AnomalyButton(
+                    label: 'Gate Exit (End)',
+                    icon: Icons.done_all_rounded,
+                    color: const Color(0xFFE040FB),
+                    onTap: () {
+                      _notificationService.onGateExit(
+                        gateName: _currentGate.isNotEmpty ? _currentGate : 'High Speed Track',
+                        sessionDuration: const Duration(hours: 1, minutes: 24, seconds: 15),
+                        cost: 4200.0,
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _AnomalyButton(
+                    label: 'Reminders',
+                    icon: Icons.notifications_paused_rounded,
+                    color: const Color(0xFFFFB547),
+                    onTap: () {
+                      _notificationService.alertPendingReturns(
+                        sandBagCount: 3,
+                        instrumentCount: 1,
+                        totalRunningCost: 1450.0,
+                      );
+                    },
                   ),
                 ),
               ],

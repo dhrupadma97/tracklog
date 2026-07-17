@@ -76,10 +76,6 @@ class EmailReportService {
 
   SupabaseClient get _client => SupabaseService.instance.client;
 
-  static const String _supabaseUrl = String.fromEnvironment(
-    'SUPABASE_URL',
-    defaultValue: '',
-  );
 
   // ── Subscriptions ─────────────────────────────────────────────────────────
 
@@ -216,6 +212,102 @@ class EmailReportService {
 
   // ── NATRAX VBA-style Expense Report ─────────────────────────────────────
 
+  /// Generate the HTML + computed data WITHOUT sending.
+  /// Use this for preview. Call [sendNatraxExpenseReport] to actually send.
+  Future<Map<String, dynamic>> generateNatraxReportData({
+    required String reportType,
+    required String vehicleName,
+    required DateTime periodStart,
+    required DateTime periodEnd,
+    required DateTime overallStart,
+    required DateTime overallEnd,
+  }) async {
+    final client = SupabaseService.instance.client;
+
+    final sessionsRaw = await client
+        .from('engineer_sessions')
+        .select('id, track_code, track_name, started_at, duration_minutes, total_cost')
+        .eq('session_status', 'completed')
+        .order('started_at');
+
+    final Map<String, double> svcMap = {};
+
+    double pTrack = 0, pAcc = 0;
+    final Map<String, double> periodTrackHrs = {};
+    final int periodDays = periodEnd.difference(periodStart).inDays + 1;
+
+    for (final s in sessionsRaw as List) {
+      final dt = DateTime.tryParse(s['started_at'] as String? ?? '');
+      if (dt == null) continue;
+      final cost = (s['total_cost'] as num?)?.toDouble() ?? 0;
+      final id = s['id'] as String? ?? '';
+      final trackCode = s['track_code'] as String? ?? 'Unknown';
+      final durationHrs = ((s['duration_minutes'] as int? ?? 0) / 60.0);
+
+      if (!dt.isBefore(periodStart) && !dt.isAfter(periodEnd)) {
+        pTrack += cost;
+        pAcc += svcMap[id] ?? 0;
+        periodTrackHrs[trackCode] = (periodTrackHrs[trackCode] ?? 0) + durationHrs;
+      }
+    }
+
+    final double pWork = periodDays * 5000.0;
+    final double pSub = pTrack + pAcc + pWork;
+    final double pTotal = pSub * 1.18;
+
+    double oTrack = 0, oAcc = 0;
+    final Set<String> activeDaySet = {};
+    final int overallDays = overallEnd.difference(overallStart).inDays + 1;
+
+    for (final s in sessionsRaw) {
+      final dt = DateTime.tryParse(s['started_at'] as String? ?? '');
+      if (dt == null) continue;
+      if (!dt.isBefore(overallStart) && !dt.isAfter(overallEnd)) {
+        oTrack += (s['total_cost'] as num?)?.toDouble() ?? 0;
+        activeDaySet.add('${dt.year}-${dt.month}-${dt.day}');
+      }
+    }
+    final int activeDays = activeDaySet.length;
+    final double oWork = overallDays * 5000.0;
+    final double oSub = oTrack + oAcc + oWork;
+    final double oTotal = oSub * 1.18;
+
+    String trackRows = periodTrackHrs.isEmpty
+        ? 'No track data logged for this period'
+        : periodTrackHrs.entries.map((e) =>
+            '• ${e.key}: <b>${e.value.toStringAsFixed(1)} Hrs</b><br>').join();
+
+    String periodLabel = reportType == 'weekly'
+        ? 'WEEKLY UPDATE (${_fmtDate(periodStart)} to ${_fmtDate(periodEnd)})'
+        : 'MONTHLY UPDATE — ${_monthYear(periodStart)}';
+
+    String subject = reportType == 'weekly'
+        ? 'Weekly Test track costs - $vehicleName (${_fmtDate(periodStart)} to ${_fmtDate(periodEnd)})'
+        : 'Monthly Test track costs - $vehicleName (${_monthYear(periodStart)})';
+
+    final html = _buildNatraxHtml(
+      periodLabel: periodLabel,
+      vehicleName: vehicleName,
+      trackRows: trackRows,
+      pTrack: pTrack, pAcc: pAcc, pWork: pWork,
+      periodDays: periodDays, pSub: pSub, pTotal: pTotal,
+      overallStart: overallStart, overallEnd: overallEnd,
+      activeDays: activeDays, oTrack: oTrack, oAcc: oAcc,
+      oWork: oWork, overallDays: overallDays, oSub: oSub, oTotal: oTotal,
+    );
+
+    return {
+      'html': html,
+      'subject': subject,
+      'periodLabel': periodLabel,
+      'pTotal': pTotal, 'pSub': pSub, 'pTrack': pTrack, 'pAcc': pAcc,
+      'pWork': pWork, 'periodDays': periodDays, 'trackRows': trackRows,
+      'oTotal': oTotal, 'oSub': oSub, 'oTrack': oTrack, 'oAcc': oAcc,
+      'oWork': oWork, 'overallDays': overallDays, 'activeDays': activeDays,
+      'vehicleName': vehicleName, 'reportType': reportType,
+    };
+  }
+
   /// Mirrors the VBA SendExpenseUpdateEmail macro.
   /// Builds a dual-table HTML body and sends via the edge function.
   Future<Map<String, dynamic>> sendNatraxExpenseReport({
@@ -225,6 +317,9 @@ class EmailReportService {
     required DateTime periodEnd,
     required DateTime overallStart,
     required DateTime overallEnd,
+    String? customToEmail,
+    List<String>? customCcEmails,
+    String? customHtmlBody,
   }) async {
     try {
       final client = SupabaseService.instance.client;
@@ -316,7 +411,7 @@ class EmailReportService {
       }
 
       // --- Build HTML matching VBA exactly ---
-      final html = _buildNatraxHtml(
+      final html = customHtmlBody ?? _buildNatraxHtml(
         periodLabel: periodLabel,
         vehicleName: vehicleName,
         trackRows: trackRows,
@@ -327,14 +422,17 @@ class EmailReportService {
         oWork: oWork, overallDays: overallDays, oSub: oSub, oTotal: oTotal,
       );
 
+      final toEmail = customToEmail ?? 'praharshithkumar_komaragiri@goodyear.com';
+      final ccEmails = customCcEmails ?? ['v_vimal@goodyear.com', 'ashish_pandit@goodyear.com',
+                   'yeswanth_golla@goodyear.com', 'niranjan_poloju@goodyear.com'];
+
       // --- Call edge function ---
       final response = await _client.functions.invoke(
         'send-report-email',
         body: {
-          'recipientEmail': 'praharshithkumar_komaragiri@goodyear.com',
+          'recipientEmail': toEmail,
           'recipientName': 'Harsh',
-          'ccEmails': ['v_vimal@goodyear.com', 'ashish_pandit@goodyear.com',
-                       'yeswanth_golla@goodyear.com', 'niranjan_poloju@goodyear.com'],
+          'ccEmails': ccEmails,
           'subject': reportType == 'weekly'
               ? 'Weekly Test track costs - $vehicleName (${_fmtDate(periodStart)} to ${_fmtDate(periodEnd)})'
               : 'Monthly Test track costs - $vehicleName (${_monthYear(periodStart)})',
@@ -350,7 +448,7 @@ class EmailReportService {
       final success = data?['success'] == true;
 
       await _client.from('email_send_log').insert({
-        'recipient_email': 'praharshithkumar_komaragiri@goodyear.com',
+        'recipient_email': toEmail,
         'report_type': reportType,
         'status': success ? 'sent' : 'failed',
         'error_message': success ? null : (data?['error'] as String?),

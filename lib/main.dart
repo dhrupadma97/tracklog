@@ -9,6 +9,7 @@ import './widgets/custom_error_widget.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await AppVersion.initialize();
 
   // Dynamically inject Google Maps JavaScript SDK script tag on Web
   if (kIsWeb) {

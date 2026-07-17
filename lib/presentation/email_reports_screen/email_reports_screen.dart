@@ -1114,10 +1114,13 @@ class _NatraxComposeSheet extends StatefulWidget {
 class _NatraxComposeSheetState extends State<_NatraxComposeSheet> {
   String _reportType = 'monthly'; // 'weekly' | 'monthly'
   final _vehicleCtrl = TextEditingController(text: 'Mahindra XEV 9e');
+  final _toCtrl = TextEditingController(text: 'praharshithkumar_komaragiri@goodyear.com');
+  final _ccCtrl = TextEditingController(text: 'v_vimal@goodyear.com, ashish_pandit@goodyear.com, yeswanth_golla@goodyear.com, niranjan_poloju@goodyear.com');
+  final _bodyCtrl = TextEditingController();
   bool _sending = false;
   bool _previewing = false;
+  bool _loadingBody = false;
   String? _error;
-  String? _previewHtml;
 
   DateTime _periodStart = DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime _periodEnd = DateTime(DateTime.now().year, DateTime.now().month + 1, 0);
@@ -1126,9 +1129,68 @@ class _NatraxComposeSheetState extends State<_NatraxComposeSheet> {
   final _inrFmt = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
 
   @override
+  void initState() {
+    super.initState();
+    _loadDefaultBody();
+  }
+
+  @override
   void dispose() {
     _vehicleCtrl.dispose();
+    _toCtrl.dispose();
+    _ccCtrl.dispose();
+    _bodyCtrl.dispose();
     super.dispose();
+  }
+
+  String _fmtDate(DateTime d) => DateFormat('dd-MMM-yy').format(d);
+  String _monthYear(DateTime d) => DateFormat('MMMM yyyy').format(d).toUpperCase();
+
+  Future<void> _loadDefaultBody() async {
+    if (_vehicleCtrl.text.trim().isEmpty) return;
+    setState(() {
+      _loadingBody = true;
+      _error = null;
+    });
+    try {
+      final data = await EmailReportService.instance.generateNatraxReportData(
+        reportType: _reportType,
+        vehicleName: _vehicleCtrl.text.trim(),
+        periodStart: _periodStart,
+        periodEnd: _periodEnd,
+        overallStart: _overallStart,
+        overallEnd: _periodEnd,
+      );
+      final rawHtml = data['html'] as String? ?? '';
+      // Strip HTML tags for clean text editing
+      final cleanText = rawHtml
+          .replaceAll('<br>', '\n')
+          .replaceAll('<br/>', '\n')
+          .replaceAll('<br />', '\n')
+          .replaceAll('<b>', '')
+          .replaceAll('</b>', '')
+          .replaceAll(RegExp(r'<table[^>]*>'), '\n')
+          .replaceAll(RegExp(r'</table[^>]*>'), '\n')
+          .replaceAll(RegExp(r'<tr[^>]*>'), '')
+          .replaceAll(RegExp(r'</tr[^>]*>'), '\n')
+          .replaceAll(RegExp(r'<td[^>]*>'), ' | ')
+          .replaceAll(RegExp(r'</td[^>]*>'), '')
+          .replaceAll(RegExp(r'<th[^>]*>'), ' | ')
+          .replaceAll(RegExp(r'</th[^>]*>'), '')
+          .replaceAll(RegExp(r'<p[^>]*>'), '\n')
+          .replaceAll(RegExp(r'</p[^>]*>'), '\n')
+          .replaceAll(RegExp(r'<[^>]*>'), '');
+
+      setState(() {
+        _bodyCtrl.text = cleanText.trim();
+        _loadingBody = false;
+      });
+    } catch (e) {
+      setState(() {
+        _loadingBody = false;
+        _error = 'Failed to generate default report content: $e';
+      });
+    }
   }
 
   void _onTypeChanged(String type) {
@@ -1143,8 +1205,8 @@ class _NatraxComposeSheetState extends State<_NatraxComposeSheet> {
         _periodStart = DateTime(now.year, now.month, 1);
         _periodEnd = DateTime(now.year, now.month + 1, 0);
       }
-      _previewHtml = null;
     });
+    _loadDefaultBody();
   }
 
   Future<void> _send() async {
@@ -1154,6 +1216,14 @@ class _NatraxComposeSheetState extends State<_NatraxComposeSheet> {
     }
     setState(() { _sending = true; _error = null; });
     try {
+      final ccList = _ccCtrl.text.split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+
+      // Convert edit body newlines to HTML breaks for email delivery
+      final bodyHtml = _bodyCtrl.text.trim().replaceAll('\n', '<br>');
+
       final result = await EmailReportService.instance.sendNatraxExpenseReport(
         reportType: _reportType,
         vehicleName: _vehicleCtrl.text.trim(),
@@ -1161,11 +1231,14 @@ class _NatraxComposeSheetState extends State<_NatraxComposeSheet> {
         periodEnd: _periodEnd,
         overallStart: _overallStart,
         overallEnd: _periodEnd,
+        customToEmail: _toCtrl.text.trim(),
+        customCcEmails: ccList,
+        customHtmlBody: bodyHtml,
       );
       if (result['success'] == true) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('✓ Report sent to Harsh', style: GoogleFonts.spaceGrotesk(color: Colors.white)),
+            content: Text('✓ Report sent successfully', style: GoogleFonts.spaceGrotesk(color: Colors.white)),
             backgroundColor: const Color(0xFF4CAF50).withAlpha(220),
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1187,23 +1260,31 @@ class _NatraxComposeSheetState extends State<_NatraxComposeSheet> {
       setState(() => _error = 'Please enter a vehicle name');
       return;
     }
-    setState(() { _previewing = true; _error = null; _previewHtml = null; });
-    try {
-      final result = await EmailReportService.instance.sendNatraxExpenseReport(
-        reportType: _reportType,
-        vehicleName: _vehicleCtrl.text.trim(),
-        periodStart: _periodStart,
-        periodEnd: _periodEnd,
-        overallStart: _overallStart,
-        overallEnd: _periodEnd,
-      );
-      // Don't actually send — show the HTML preview
-      setState(() => _previewHtml = result['html'] as String? ?? '');
-    } catch (e) {
-      setState(() => _error = e.toString());
-    } finally {
-      if (mounted) setState(() => _previewing = false);
-    }
+
+    final previewData = {
+      'subject': _reportType == 'weekly'
+          ? 'Weekly Test track costs - ${_vehicleCtrl.text.trim()} (${_fmtDate(_periodStart)} to ${_fmtDate(_periodEnd)})'
+          : 'Monthly Test track costs - ${_vehicleCtrl.text.trim()} (${_monthYear(_periodStart)})',
+      'vehicleName': _vehicleCtrl.text.trim(),
+      'periodLabel': _reportType == 'weekly'
+          ? 'WEEKLY UPDATE (${_fmtDate(_periodStart)} to ${_fmtDate(_periodEnd)})'
+          : 'MONTHLY UPDATE — ${_monthYear(_periodStart)}',
+      'toEmail': _toCtrl.text.trim(),
+      'ccEmails': _ccCtrl.text.trim(),
+      'body': _bodyCtrl.text.trim(),
+    };
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withAlpha(190),
+      builder: (_) => _NatraxEmailPreviewDialog(
+        data: previewData,
+        onSend: () {
+          Navigator.pop(context);
+          _send();
+        },
+      ),
+    );
   }
 
   @override
@@ -1236,7 +1317,7 @@ class _NatraxComposeSheetState extends State<_NatraxComposeSheet> {
                     style: GoogleFonts.spaceGrotesk(
                         color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 4),
-                Text('Mirrors VBA SendExpenseUpdateEmail macro',
+                Text('Edit details, recipients and body content before sending',
                     style: GoogleFonts.spaceGrotesk(
                         color: const Color(0xFF6B7490), fontSize: 12)),
                 const SizedBox(height: 20),
@@ -1256,6 +1337,31 @@ class _NatraxComposeSheetState extends State<_NatraxComposeSheet> {
                 const SizedBox(height: 6),
                 _field(controller: _vehicleCtrl, hint: 'e.g. Mahindra XEV 9e',
                     icon: Icons.directions_car_outlined),
+                const SizedBox(height: 16),
+
+                // Recipients (Editable)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Recipients', style: _labelStyle()),
+                    Text(
+                      'Editable',
+                      style: GoogleFonts.spaceGrotesk(color: AppTheme.primary, fontSize: 10, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                _field(
+                  controller: _toCtrl,
+                  hint: 'To: manager@goodyear.com',
+                  icon: Icons.email_outlined,
+                ),
+                const SizedBox(height: 8),
+                _field(
+                  controller: _ccCtrl,
+                  hint: 'CC: email1@goodyear.com, email2@goodyear.com',
+                  icon: Icons.copy_all_outlined,
+                ),
                 const SizedBox(height: 16),
 
                 // Date range display
@@ -1280,25 +1386,45 @@ class _NatraxComposeSheetState extends State<_NatraxComposeSheet> {
                     style: GoogleFonts.spaceGrotesk(color: const Color(0xFF4A5470), fontSize: 11)),
                 const SizedBox(height: 16),
 
-                // Recipients
-                Text('Recipients', style: _labelStyle()),
-                const SizedBox(height: 8),
+                // Email Body
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Email Body', style: _labelStyle()),
+                    if (_loadingBody)
+                      const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: AppTheme.primary))
+                    else
+                      GestureDetector(
+                        onTap: _loadDefaultBody,
+                        child: Text(
+                          'Reset to Autogenerated',
+                          style: GoogleFonts.spaceGrotesk(color: AppTheme.primary, fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 6),
                 Container(
-                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: const Color(0xFF0D1421),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: const Color(0xFF2A3450)),
                   ),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    _recipientLine('To', 'praharshithkumar_komaragiri@goodyear.com'),
-                    const SizedBox(height: 6),
-                    _recipientLine('CC', 'v_vimal · ashish_pandit · yeswanth_golla · niranjan_poloju'),
-                  ]),
+                  child: TextField(
+                    controller: _bodyCtrl,
+                    maxLines: 8,
+                    style: GoogleFonts.spaceGrotesk(color: Colors.white, fontSize: 13, height: 1.4),
+                    decoration: InputDecoration(
+                      hintText: 'Email body content...',
+                      hintStyle: GoogleFonts.spaceGrotesk(color: const Color(0xFF4A5470), fontSize: 13),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.all(16),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 16),
 
-                // Workshop rate info
+                // Info warning
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
@@ -1310,8 +1436,8 @@ class _NatraxComposeSheetState extends State<_NatraxComposeSheet> {
                     const Icon(Icons.info_outline, color: Color(0xFFFFB547), size: 14),
                     const SizedBox(width: 8),
                     Expanded(child: Text(
-                      'Workshop rental: ₹5,000/operational day (as per macro). '
-                      'Track costs and accessories pulled live from Supabase.',
+                      'Workshop rental is pre-calculated at ₹5,000/day. '
+                      'Editing the body text allows overriding the final presentation before dispatch.',
                       style: GoogleFonts.spaceGrotesk(
                           color: const Color(0xFF8A94B0), fontSize: 11, height: 1.5),
                     )),
@@ -1330,32 +1456,6 @@ class _NatraxComposeSheetState extends State<_NatraxComposeSheet> {
                     child: Text(_error!,
                         style: GoogleFonts.spaceGrotesk(
                             color: Colors.redAccent, fontSize: 12)),
-                  ),
-                ],
-
-                // HTML Preview (truncated)
-                if (_previewHtml != null) ...[
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0D1421),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFF2A3450)),
-                    ),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('EMAIL PREVIEW (HTML)',
-                          style: GoogleFonts.spaceGrotesk(
-                              color: const Color(0xFF4A9EFF), fontSize: 10,
-                              fontWeight: FontWeight.w700, letterSpacing: 1.5)),
-                      const SizedBox(height: 8),
-                      Text(
-                        _previewHtml!.replaceAll(RegExp(r'<[^>]*>'), '').substring(
-                            0, _previewHtml!.length > 500 ? 500 : _previewHtml!.length) + '…',
-                        style: GoogleFonts.spaceGrotesk(
-                            color: const Color(0xFF6B7490), fontSize: 11, height: 1.5),
-                      ),
-                    ]),
                   ),
                 ],
 
@@ -1392,7 +1492,7 @@ class _NatraxComposeSheetState extends State<_NatraxComposeSheet> {
                           ? const SizedBox(width: 16, height: 16,
                               child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0F172A)))
                           : const Icon(Icons.send_rounded, color: Color(0xFF0F172A), size: 16),
-                      label: Text(_sending ? 'Sending…' : 'Send to Harsh',
+                      label: Text(_sending ? 'Sending…' : 'Send Report',
                           style: GoogleFonts.spaceGrotesk(
                               color: const Color(0xFF0F172A), fontWeight: FontWeight.w800)),
                     ),
@@ -1460,6 +1560,187 @@ class _NatraxComposeSheetState extends State<_NatraxComposeSheet> {
       Expanded(child: Text(value, style: GoogleFonts.spaceGrotesk(
           color: const Color(0xFF8A94B0), fontSize: 10))),
     ]);
+  }
+}
+
+// ── NATRAX Email Preview Dialog ───────────────────────────────────────────────
+
+class _NatraxEmailPreviewDialog extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final VoidCallback onSend;
+  const _NatraxEmailPreviewDialog({required this.data, required this.onSend});
+
+  static const _from = 'dhrupad_ma@goodyear.com';
+
+  @override
+  Widget build(BuildContext context) {
+    final subject  = data['subject']  as String? ?? '';
+    final toEmail  = data['toEmail']  as String? ?? '';
+    final ccEmails = data['ccEmails'] as String? ?? '';
+    final body     = data['body']     as String? ?? '';
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            width: 720,
+            constraints: const BoxConstraints(maxHeight: 740),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0A1025),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFFFB547).withAlpha(80)),
+            ),
+            child: Column(children: [
+              // ── Header ─────────────────────────────────────────────
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 18, 18, 14),
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: Colors.white.withAlpha(12))),
+                ),
+                child: Row(children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFB547).withAlpha(30),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.preview_rounded, color: Color(0xFFFFB547), size: 18),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Email Preview',
+                        style: GoogleFonts.spaceGrotesk(
+                            color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
+                    Text('Review before sending report',
+                        style: GoogleFonts.spaceGrotesk(color: const Color(0xFF6B7490), fontSize: 11)),
+                  ])),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Icon(Icons.close_rounded, color: Colors.white.withAlpha(100), size: 20),
+                  ),
+                ]),
+              ),
+
+              // ── Email metadata ──────────────────────────────────────
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
+                child: Column(children: [
+                  _meta('From',    _from,    const Color(0xFF94A3B8)),
+                  _meta('To',      toEmail,  AppTheme.primary),
+                  _meta('CC',      ccEmails, const Color(0xFF94A3B8)),
+                  _meta('Subject', subject,  Colors.white),
+                  const SizedBox(height: 10),
+                  Container(height: 1, color: Colors.white.withAlpha(8)),
+                ]),
+              ),
+
+              // ── Body preview ────────────────────────────────────────
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Email chrome header
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        margin: const EdgeInsets.only(bottom: 14),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                              colors: [Color(0xFF00416A), Color(0xFF003d5c)]),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(children: [
+                          Text('NATRAX TrackLog · Expense Update',
+                              style: GoogleFonts.spaceGrotesk(
+                                  color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
+                          const Spacer(),
+                          Text('dhrupad_ma@goodyear.com',
+                              style: GoogleFonts.spaceGrotesk(
+                                  color: Colors.white60, fontSize: 9)),
+                        ]),
+                      ),
+
+                      SelectableText(
+                        body,
+                        style: GoogleFonts.spaceGrotesk(
+                          color: Colors.white70,
+                          fontSize: 12,
+                          height: 1.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // ── Actions ─────────────────────────────────────────────
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
+                decoration: BoxDecoration(
+                    border: Border(top: BorderSide(color: Colors.white.withAlpha(8)))),
+                child: Row(children: [
+                  _channelChip(Icons.email_rounded, 'Email', AppTheme.primary),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: Text('Edit', style: GoogleFonts.spaceGrotesk(
+                        color: const Color(0xFF6B7490), fontWeight: FontWeight.w600)),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: onSend,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFFB547),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: const Icon(Icons.send_rounded, color: Color(0xFF0F172A), size: 15),
+                    label: Text('Confirm & Send',
+                        style: GoogleFonts.spaceGrotesk(
+                            color: const Color(0xFF0F172A), fontWeight: FontWeight.w800, fontSize: 13)),
+                  ),
+                ]),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _meta(String label, String value, Color col) => Padding(
+    padding: const EdgeInsets.only(bottom: 5),
+    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SizedBox(width: 56, child: Text(label,
+          style: GoogleFonts.spaceGrotesk(
+              color: const Color(0xFF4A5470), fontSize: 10, fontWeight: FontWeight.w600))),
+      const SizedBox(width: 6),
+      Expanded(child: Text(value,
+          style: GoogleFonts.spaceGrotesk(color: col, fontSize: 11),
+          overflow: TextOverflow.ellipsis, maxLines: 2)),
+    ]),
+  );
+
+  Widget _channelChip(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withAlpha(20),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withAlpha(60)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, color: color, size: 13),
+        const SizedBox(width: 5),
+        Text(label, style: GoogleFonts.spaceGrotesk(
+            color: color, fontSize: 11, fontWeight: FontWeight.w600)),
+      ]),
+    );
   }
 }
 

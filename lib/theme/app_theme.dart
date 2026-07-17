@@ -6,8 +6,9 @@ import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
   // Primary palette — NATRAX TrackLog
-  static const Color primary = Color(0xFF00F3FF); // teal-green — active/running
+  static const Color primary = Color(0xFF00F3FF);        // Teal/Cyan — fixed app-wide
   static const Color primaryContainer = Color(0xFF00373A);
+
   static const Color secondary = Color(0xFF7000FF); // coral-red — cost/alert
   static const Color secondaryContainer = Color(0xFF23005B);
   static const Color accent = Color(0xFFFFB547); // amber — warning
@@ -19,7 +20,7 @@ class AppTheme {
   static const Color cardDark = Color(0xFF0A1025);
 
   // Semantic
-  static const Color success = Color(0xFF00F3FF);
+  static const Color success = Color(0xFF00C97A);        // Green — semantic success
   static const Color warning = Color(0xFFFFB547);
   static const Color error = Color(0xFFFF4D6A);
   static const Color info = Color(0xFF4A9EFF);
@@ -31,27 +32,27 @@ class AppTheme {
   static ThemeData get darkTheme => ThemeData(
     useMaterial3: true,
     brightness: Brightness.dark,
-    colorScheme: const ColorScheme.dark(
+    colorScheme: ColorScheme.dark(
       primary: primary,
-      onPrimary: Color(0xFF001A10),
+      onPrimary: const Color(0xFF001A10),
       primaryContainer: primaryContainer,
-      onPrimaryContainer: Color(0xFF80FFD6),
+      onPrimaryContainer: const Color(0xFF80FFD6),
       secondary: secondary,
       onSecondary: Colors.white,
       secondaryContainer: secondaryContainer,
-      onSecondaryContainer: Color(0xFFFFCCBB),
+      onSecondaryContainer: const Color(0xFFFFCCBB),
       surface: surfaceDark,
-      onSurface: Color(0xFFdfe2f0),
+      onSurface: const Color(0xFFdfe2f0),
       surfaceContainerHighest: surfaceVariantDark,
-      onSurfaceVariant: Color(0xFFA8B0C8),
+      onSurfaceVariant: const Color(0xFFA8B0C8),
       error: error,
       onError: Colors.white,
-      outline: Color(0xFF849495),
-      outlineVariant: Color(0xFF3a494b),
-      inverseSurface: Color(0xFFdfe2f0),
-      onInverseSurface: Color(0xFF050811),
+      outline: const Color(0xFF849495),
+      outlineVariant: const Color(0xFF3a494b),
+      inverseSurface: const Color(0xFFdfe2f0),
+      onInverseSurface: const Color(0xFF050811),
       tertiary: accent,
-      onTertiary: Color(0xFF1A0D00),
+      onTertiary: const Color(0xFF1A0D00),
     ),
     scaffoldBackgroundColor: backgroundDark,
     textTheme: GoogleFonts.spaceGroteskTextTheme(
@@ -168,7 +169,7 @@ class AppTheme {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: primary, width: 1.5),
+        borderSide: BorderSide(color: primary, width: 1.5),
       ),
       labelStyle: const TextStyle(color: Color(0xFFA8B0C8), fontSize: 13),
       hintStyle: const TextStyle(color: Color(0xFF6B7490), fontSize: 13),
@@ -180,9 +181,9 @@ class AppTheme {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
     ),
-    floatingActionButtonTheme: const FloatingActionButtonThemeData(
+    floatingActionButtonTheme: FloatingActionButtonThemeData(
       backgroundColor: primary,
-      foregroundColor: Color(0xFF001A10),
+      foregroundColor: const Color(0xFF001A10),
       elevation: 8,
     ),
     dividerTheme: const DividerThemeData(

@@ -488,26 +488,34 @@ class _AdminScreenState extends State<AdminScreen> {
           ),
         ),
         const SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Admin Control Center',
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-                color: const Color(0xFFdfe2f0),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Admin Control Center',
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFFdfe2f0),
+                ),
               ),
-            ),
-            Text(
-              'System management, track rates & bulk imports',
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: const Color(0xFF6B7490),
+              Text(
+                'System management, track rates & bulk imports',
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: const Color(0xFF6B7490),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
+        ),
+        Image.asset(
+          'assets/images/goodyear_sightline_logo.png',
+          height: 18,
+          color: Colors.white70,
+          fit: BoxFit.contain,
         ),
       ],
     );

@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -9,7 +8,7 @@ import '../presentation/login_screen/login_screen.dart';
 import '../presentation/manual_entry_screen/manual_entry_screen.dart';
 import '../presentation/po_tracker_screen/po_tracker_screen.dart';
 import '../presentation/privacy_policy_screen/privacy_policy_screen.dart';
-import '../presentation/session_history_screen/session_history_screen.dart';
+import '../presentation/tracks_screen/tracks_screen.dart';
 import '../presentation/session_history_screen/project_selection_screen.dart';
 import '../presentation/settings_screen/settings_screen.dart';
 import '../presentation/splash_screen/splash_screen.dart';
@@ -17,6 +16,9 @@ import '../services/engineer_auth_service.dart';
 import '../widgets/app_scaffold.dart';
 import '../presentation/monthly_invoices_screen/monthly_invoices_screen.dart';
 import '../presentation/admin_screen/admin_screen.dart';
+import '../presentation/project_updates_screen/project_updates_screen.dart';
+import '../presentation/tyre_trends_screen/tyre_trends_screen.dart';
+import '../presentation/instrumentation_screen/instrumentation_screen.dart';
 
 class AppRoutes {
   static const String initial = '/';
@@ -33,6 +35,9 @@ class AppRoutes {
   static const String settings = '/settings-screen';
   static const String monthlyInvoices = '/monthly-invoices-screen';
   static const String admin = '/admin-screen';
+  static const String projectUpdates = '/project-updates-screen';
+  static const String tyreTrends = '/tyre-trends-screen';
+  static const String instrumentation = '/instrumentation-screen';
 }
 
 
@@ -50,9 +55,9 @@ final GoRouter appRouter = GoRouter(
     if (!isLoggedIn && !isLogin) return AppRoutes.login;
 
     // If logged in and on login, redirect to app
-    if (isLoggedIn && isLogin) {
-      return kIsWeb ? AppRoutes.projectSelection : AppRoutes.activeSession;
-    }
+    // if (isLoggedIn && isLogin) {
+    //   return kIsWeb ? AppRoutes.projectSelection : AppRoutes.activeSession;
+    // }
 
     return null;
   },
@@ -96,18 +101,7 @@ final GoRouter appRouter = GoRouter(
         ),
       ),
     ),
-    GoRoute(
-      path: AppRoutes.projectSelection,
-      pageBuilder: (context, state) => CustomTransitionPage(
-        key: state.pageKey,
-        child: const ProjectSelectionScreen(),
-        transitionDuration: const Duration(milliseconds: 400),
-        transitionsBuilder: (context, animation, _, child) => FadeTransition(
-          opacity: CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
-          child: child,
-        ),
-      ),
-    ),
+
     GoRoute(
       path: AppRoutes.poTracker,
       pageBuilder: (context, state) => CustomTransitionPage(
@@ -148,7 +142,7 @@ final GoRouter appRouter = GoRouter(
           routes: [
             GoRoute(
               path: AppRoutes.sessionHistory,
-              builder: (context, state) => const SessionHistoryScreen(),
+              builder: (context, state) => const TracksScreen(),
             ),
           ],
         ),
@@ -189,6 +183,40 @@ final GoRouter appRouter = GoRouter(
             GoRoute(
               path: AppRoutes.admin,
               builder: (context, state) => const AdminScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: AppRoutes.projectUpdates,
+              builder: (context, state) => const ProjectUpdatesScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: AppRoutes.tyreTrends,
+              builder: (context, state) => const TyreTrendsScreen(),
+            ),
+          ],
+        ),
+        // Branch 9: Instrumentation
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: AppRoutes.instrumentation,
+              builder: (context, state) => const InstrumentationScreen(),
+            ),
+          ],
+        ),
+        // Branch 10: Project Selection
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: AppRoutes.projectSelection,
+              builder: (context, state) => const ProjectSelectionScreen(),
             ),
           ],
         ),

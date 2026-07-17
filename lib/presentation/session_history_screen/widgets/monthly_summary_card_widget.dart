@@ -7,6 +7,7 @@ class MonthlySummaryCardWidget extends StatelessWidget {
   final int sessionCount;
   final int avgDurationMinutes;
   final bool vertical;
+  final bool isLastMonth;
 
   const MonthlySummaryCardWidget({
     super.key,
@@ -15,6 +16,7 @@ class MonthlySummaryCardWidget extends StatelessWidget {
     required this.sessionCount,
     required this.avgDurationMinutes,
     this.vertical = false,
+    this.isLastMonth = false,
   });
 
   String _formatAvgDuration(int minutes) {
@@ -34,7 +36,7 @@ class MonthlySummaryCardWidget extends StatelessWidget {
         value: '₹${(totalCost / 1000).toStringAsFixed(1)}K',
         iconName: 'currency_rupee',
         color: AppTheme.secondary,
-        subtitle: 'May 2026',
+        subtitle: isLastMonth ? 'April 2026' : 'May 2026',
       ),
       _SummaryData(
         label: 'Track Hours',

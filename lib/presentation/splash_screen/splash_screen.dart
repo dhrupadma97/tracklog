@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../theme/app_theme.dart';
 import '../../services/engineer_auth_service.dart';
+import '../../core/app_version.dart';
+import '../../services/biometric_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -37,13 +39,28 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller.forward();
 
-    Timer(const Duration(milliseconds: 2400), () {
+    Timer(const Duration(milliseconds: 2400), () async {
       if (mounted) {
         if (EngineerAuthService.instance.isSignedIn) {
           if (kIsWeb) {
             context.go('/project-selection');
           } else {
-            context.go('/active-session-screen');
+            // Check if biometric lock is set up and enabled on mobile
+            final available = await BiometricService.instance.canAuthenticate();
+            final enabled = await BiometricService.instance.isEnabled();
+            if (available && enabled) {
+              final authenticated = await BiometricService.instance.authenticate(
+                reason: 'Scan fingerprint to unlock TrackLog',
+              );
+              if (authenticated && mounted) {
+                context.go('/active-session-screen');
+              } else if (mounted) {
+                // If cancelled/failed, send them to login screen (they can try biometrics again or type credentials)
+                context.go('/login');
+              }
+            } else if (mounted) {
+              context.go('/active-session-screen');
+            }
           }
         } else {
           context.go('/login');
@@ -122,6 +139,16 @@ class _SplashScreenState extends State<SplashScreen>
                         fontWeight: FontWeight.w400,
                         color: AppTheme.primary.withAlpha(200),
                         letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'v${AppVersion.display}',
+                      style: TextStyle(
+                        fontFamily: 'Space Grotesk',
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF6B7490),
                       ),
                     ),
                     const SizedBox(height: 48),

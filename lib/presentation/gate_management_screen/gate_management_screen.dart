@@ -297,6 +297,13 @@ class _GateManagementScreenState extends State<GateManagementScreen> {
                       ],
                     ),
                   ),
+                  Image.asset(
+                    'assets/images/goodyear_sightline_logo.png',
+                    height: 18,
+                    color: Colors.white70,
+                    fit: BoxFit.contain,
+                  ),
+                  const SizedBox(width: 12),
                   GestureDetector(
                     onTap: () => setState(() => _searchActive = true),
                     child: Container(

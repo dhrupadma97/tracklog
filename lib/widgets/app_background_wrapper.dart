@@ -9,18 +9,28 @@ class AppBackgroundWrapper extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // Layer 0: Background Texture
-        Positioned.fill(
-          child: Container(
-            color: const Color(0xFF030712), // background-deep
-          ),
-        ),
+        // Layer 0: Background Image
         Positioned.fill(
           child: Image.asset(
             'assets/images/GYRacing_DesktopTeamsWallpaper_5-1779284234231.png',
             fit: BoxFit.cover,
-            color: const Color(0xFF030712).withAlpha(220),
-            colorBlendMode: BlendMode.srcOver,
+            semanticLabel: 'Goodyear racing team wallpaper',
+          ),
+        ),
+        // Layer 1: Gradient Overlay
+        Positioned.fill(
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  const Color(0xFF042024).withAlpha(225),
+                  const Color(0xFF030712).withAlpha(245),
+                ],
+                stops: const [0.0, 0.7],
+              ),
+            ),
           ),
         ),
         

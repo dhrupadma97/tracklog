@@ -58,5 +58,7 @@
 	</array>
 	<key>GOOGLE_MAPS_API_KEY</key>
 	<string>$(GOOGLE_MAPS_API_KEY)</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>TrackLog requires Face ID/Biometric access to securely unlock the application.</string>
 </dict>
 </plist>

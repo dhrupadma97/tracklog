@@ -28,22 +28,14 @@ class SessionStatusHeaderWidget extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
       child: Row(
         children: [
-          // Goodyear SightLine logo
-          Container(
-            height: 32,
-            width: 90,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(6.0),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-            child: Image.asset(
-              'assets/images/goodyear-sightline-logo-single-black-1779279917234.png',
-              fit: BoxFit.contain,
-              semanticLabel: 'Goodyear SightLine logo',
-            ),
+          Image.asset(
+            'assets/images/goodyear_sightline_logo.png',
+            height: 20,
+            color: Colors.white70,
+            fit: BoxFit.contain,
+            semanticLabel: 'Goodyear SightLine logo',
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

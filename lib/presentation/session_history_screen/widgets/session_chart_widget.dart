@@ -5,15 +5,21 @@ import '../../../core/app_export.dart';
 // Anatomy locked: card with period tab selector inside top + LineChart + value label bottom
 class SessionChartWidget extends StatefulWidget {
   final List<Map<String, dynamic>> sessions;
+  final int selectedPeriod;
+  final ValueChanged<int> onPeriodChanged;
 
-  const SessionChartWidget({super.key, required this.sessions});
+  const SessionChartWidget({
+    super.key,
+    required this.sessions,
+    required this.selectedPeriod,
+    required this.onPeriodChanged,
+  });
 
   @override
   State<SessionChartWidget> createState() => _SessionChartWidgetState();
 }
 
 class _SessionChartWidgetState extends State<SessionChartWidget> {
-  int _selectedPeriod = 0; // 0 = This Month, 1 = Last Month
   int? _touchedIndex;
 
   // Build daily hours data for the chart
@@ -27,16 +33,16 @@ class _SessionChartWidgetState extends State<SessionChartWidget> {
       dailyHours[day] = (dailyHours[day] ?? 0) + hours;
     }
 
-    // Fill 20 days of data with 0 for days without sessions
+    // Fill 30 days of data with 0 for days without sessions
     final spots = <FlSpot>[];
-    for (int d = 1; d <= 20; d++) {
+    for (int d = 1; d <= 30; d++) {
       spots.add(FlSpot(d.toDouble(), dailyHours[d] ?? 0.0));
     }
     return spots;
   }
 
   List<FlSpot> _buildLastMonthSpots() {
-    // Simulated last month data
+    // Simulated last month data (fallback)
     return [
       const FlSpot(1, 0),
       const FlSpot(2, 2.1),
@@ -58,13 +64,25 @@ class _SessionChartWidgetState extends State<SessionChartWidget> {
       const FlSpot(18, 3.5),
       const FlSpot(19, 4.2),
       const FlSpot(20, 1.0),
+      const FlSpot(21, 0),
+      const FlSpot(22, 1.5),
+      const FlSpot(23, 0),
+      const FlSpot(24, 0),
+      const FlSpot(25, 2.0),
+      const FlSpot(26, 0),
+      const FlSpot(27, 3.0),
+      const FlSpot(28, 1.0),
+      const FlSpot(29, 0),
+      const FlSpot(30, 0.5),
     ];
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final spots = _selectedPeriod == 0 ? _buildSpots() : _buildLastMonthSpots();
+    final spots = _buildSpots().isEmpty || widget.sessions.isEmpty
+        ? _buildLastMonthSpots()
+        : _buildSpots();
     final maxY = spots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
     final chartMax = (maxY + 1).ceilToDouble();
 
@@ -89,14 +107,14 @@ class _SessionChartWidgetState extends State<SessionChartWidget> {
                 children: [
                   _PeriodTab(
                     label: 'This Month',
-                    isSelected: _selectedPeriod == 0,
-                    onTap: () => setState(() => _selectedPeriod = 0),
+                    isSelected: widget.selectedPeriod == 0,
+                    onTap: () => widget.onPeriodChanged(0),
                   ),
                   const SizedBox(width: 4),
                   _PeriodTab(
                     label: 'Last Month',
-                    isSelected: _selectedPeriod == 1,
-                    onTap: () => setState(() => _selectedPeriod = 1),
+                    isSelected: widget.selectedPeriod == 1,
+                    onTap: () => widget.onPeriodChanged(1),
                   ),
                 ],
               ),

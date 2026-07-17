@@ -34,7 +34,19 @@ class AppScaffold extends StatelessWidget {
             ),
           ),
           Positioned.fill(
-            child: Container(color: const Color(0xFF050811).withAlpha(215)),
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    const Color(0xFF042024).withAlpha(225), // Premium deep teal-green gradient start
+                    const Color(0xFF030712).withAlpha(245), // Dark space black gradient end
+                  ],
+                  stops: const [0.0, 0.7],
+                ),
+              ),
+            ),
           ),
           navigationShell,
         ],
@@ -76,52 +88,59 @@ class _WideScaffoldState extends State<_WideScaffold> {
   List<_NavItem> _getItems() {
     final items = <_NavItem>[];
     
+    // 0. Projects
+    items.add(const _NavItem(
+      icon: Icons.workspaces_outlined,
+      activeIcon: Icons.workspaces,
+      label: 'Projects',
+      branch: 10,
+    ));
+
+    // 1. Analyser
+    items.add(const _NavItem(
+      icon: Icons.analytics_outlined,
+      activeIcon: Icons.analytics_rounded,
+      label: 'Analyser',
+      branch: 4,
+    ));
+
+    // 2. Sessions (mobile only, center tab)
     if (!kIsWeb) {
       items.add(const _NavItem(
-        icon: Icons.timer_outlined,
-        activeIcon: Icons.timer,
-        label: 'Session',
+        icon: Icons.play_circle_outline_rounded,
+        activeIcon: Icons.play_circle_filled_rounded,
+        label: 'Sessions',
         branch: 0,
       ));
     }
 
-    items.add(const _NavItem(
-      icon: Icons.history_outlined,
-      activeIcon: Icons.history,
-      label: 'History',
-      branch: 1,
-    ));
-
-    if (!kIsWeb) {
+    // 3. Tracks (web only)
+    if (kIsWeb) {
       items.add(const _NavItem(
-        icon: Icons.location_on_outlined,
-        activeIcon: Icons.location_on,
-        label: 'Gates',
-        branch: 2,
+        icon: Icons.map_outlined,
+        activeIcon: Icons.map,
+        label: 'Tracks',
+        branch: 1,
       ));
     }
 
-    items.addAll([
-      const _NavItem(
-        icon: Icons.edit_note_outlined,
-        activeIcon: Icons.edit_note_rounded,
-        label: 'Manual',
-        branch: 3,
-      ),
-      const _NavItem(
-        icon: Icons.analytics_outlined,
-        activeIcon: Icons.analytics_rounded,
-        label: 'Analyser',
-        branch: 4,
-      ),
-      const _NavItem(
-        icon: Icons.settings_outlined,
-        activeIcon: Icons.settings,
-        label: 'Settings',
-        branch: 5,
-      ),
-    ]);
+    // 4. Manual Entry
+    items.add(const _NavItem(
+      icon: Icons.edit_note_outlined,
+      activeIcon: Icons.edit_note_rounded,
+      label: 'Manual Entry',
+      branch: 3,
+    ));
 
+    // 5. Settings
+    items.add(const _NavItem(
+      icon: Icons.settings_outlined,
+      activeIcon: Icons.settings,
+      label: 'Settings',
+      branch: 5,
+    ));
+
+    // 6. Admin
     if (_isManager) {
       items.add(const _NavItem(
         icon: Icons.admin_panel_settings_outlined,
@@ -129,6 +148,30 @@ class _WideScaffoldState extends State<_WideScaffold> {
         label: 'Admin',
         branch: 6,
       ));
+    }
+
+    // 7. Updates & Trends & Instruments
+    if (kIsWeb) {
+      items.addAll([
+        const _NavItem(
+          icon: Icons.campaign_outlined,
+          activeIcon: Icons.campaign_rounded,
+          label: 'Updates',
+          branch: 7,
+        ),
+        const _NavItem(
+          icon: Icons.trending_up_outlined,
+          activeIcon: Icons.trending_up_rounded,
+          label: 'Trends',
+          branch: 8,
+        ),
+        const _NavItem(
+          icon: Icons.precision_manufacturing_outlined,
+          activeIcon: Icons.precision_manufacturing,
+          label: 'Instruments',
+          branch: 9,
+        ),
+      ]);
     }
 
     return items;
@@ -151,7 +194,19 @@ class _WideScaffoldState extends State<_WideScaffold> {
             ),
           ),
           Positioned.fill(
-            child: Container(color: const Color(0xFF050811).withAlpha(215)),
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    const Color(0xFF042024).withAlpha(225), // Premium deep teal-green gradient start
+                    const Color(0xFF030712).withAlpha(245), // Dark space black gradient end
+                  ],
+                  stops: const [0.0, 0.7],
+                ),
+              ),
+            ),
           ),
           Row(
             children: [
@@ -216,14 +271,17 @@ class _WideScaffoldState extends State<_WideScaffold> {
                           const SizedBox(height: 32),
                           ...List.generate(items.length, (i) {
                             final item = items[i];
+                            final state = GoRouterState.of(context);
                             final isActive = item.branch == current;
                             return _RailItem(
                               item: item,
                               isActive: isActive,
-                              onTap: () => widget.navigationShell.goBranch(
-                                item.branch,
-                                initialLocation: item.branch == current,
-                              ),
+                              onTap: () {
+                                widget.navigationShell.goBranch(
+                                  item.branch,
+                                  initialLocation: item.branch == current,
+                                );
+                              },
                             );
                           }),
                           const Spacer(),

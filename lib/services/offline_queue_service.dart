@@ -4,9 +4,7 @@ import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../presentation/manual_entry_screen/manual_entry_screen.dart';
 import './supabase_service.dart';
-import 'supabase_service.dart';
 
 /// Represents a single queued manual entry waiting to be synced.
 class QueuedEntry {

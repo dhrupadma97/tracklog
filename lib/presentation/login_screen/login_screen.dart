@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_theme.dart';
 import '../../services/engineer_auth_service.dart';
 import '../../routes/app_routes.dart';
+import '../../services/biometric_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -26,7 +28,9 @@ class _LoginScreenState extends State<LoginScreen>
   bool _isSignUp = false;
   bool _obscurePassword = true;
   String? _errorMessage;
-  final bool _resetEmailSent = false;
+  bool _biometricAvailable = false;
+  bool _biometricEnabled = false;
+  bool _biometricHardwareSupported = false;
 
   late AnimationController _bgAnimController;
   late AnimationController _cardAnimController;
@@ -60,6 +64,198 @@ class _LoginScreenState extends State<LoginScreen>
       ),
     );
     _cardAnimController.forward();
+    _checkBiometrics();
+  }
+
+  Future<void> _checkBiometrics() async {
+    if (kIsWeb) return;
+    final supported = await BiometricService.instance.isHardwareSupported();
+    final enrolled = await BiometricService.instance.hasEnrolledBiometrics();
+    final enabled = await BiometricService.instance.isEnabled();
+    if (mounted) {
+      setState(() {
+        _biometricHardwareSupported = supported;
+        _biometricAvailable = enrolled;
+        _biometricEnabled = enabled;
+      });
+      // Auto-trigger biometric prompt if enabled and credentials exist
+      if (enrolled && enabled && !_isSignUp) {
+        Future.delayed(const Duration(milliseconds: 600), () {
+          if (mounted && !_isLoading) {
+            _loginWithBiometrics();
+          }
+        });
+      }
+    }
+  }
+
+  Future<void> _loginWithBiometrics() async {
+    final enrolled = await BiometricService.instance.hasEnrolledBiometrics();
+    if (!enrolled) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: const Color(0xFF0A1025),
+            title: Text(
+              'Biometrics Not Set Up',
+              style: GoogleFonts.spaceGrotesk(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            content: Text(
+              'No fingerprint or Face ID is registered on this device.\n\nPlease enroll your biometrics in your device\'s system settings first.',
+              style: GoogleFonts.spaceGrotesk(color: Colors.white70),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: Text(
+                  'OK',
+                  style: GoogleFonts.spaceGrotesk(
+                    color: const Color(0xFF00F3FF),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
+    final enabled = await BiometricService.instance.isEnabled();
+    if (!enabled) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: const Color(0xFF0A1025),
+            title: Text(
+              'Fingerprint Login Not Enabled',
+              style: GoogleFonts.spaceGrotesk(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            content: Text(
+              'Fingerprint login is not enabled for your account yet.\n\nPlease sign in manually with email and password once to enable it.',
+              style: GoogleFonts.spaceGrotesk(color: Colors.white70),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: Text(
+                  'OK',
+                  style: GoogleFonts.spaceGrotesk(
+                    color: const Color(0xFF00F3FF),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
+    final authenticated = await BiometricService.instance.authenticate(
+      reason: 'Scan fingerprint to sign in to TrackLog',
+    );
+    if (authenticated) {
+      final credentials = await BiometricService.instance.getSavedCredentials();
+      if (credentials != null && mounted) {
+        _emailController.text = credentials['email'] ?? '';
+        _passwordController.text = credentials['password'] ?? '';
+        _submit();
+      }
+    }
+  }
+
+  Future<bool> _showEnableBiometricsDialog() async {
+    return await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withAlpha(160),
+      builder: (ctx) {
+        return Dialog(
+          backgroundColor: const Color(0xFF0A1025),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20.0),
+            side: BorderSide(color: Colors.white.withAlpha(20)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF00F3FF).withAlpha(25),
+                        borderRadius: BorderRadius.circular(10.0),
+                      ),
+                      child: const Icon(
+                        Icons.fingerprint_rounded,
+                        color: Color(0xFF00F3FF),
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Enable Biometric Login',
+                        style: GoogleFonts.spaceGrotesk(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Would you like to enable fingerprint login for faster access to TrackLog next time?',
+                  style: GoogleFonts.spaceGrotesk(
+                    fontSize: 13,
+                    color: Colors.white.withAlpha(140),
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(false),
+                      child: const Text('No thanks', style: TextStyle(color: Colors.white70)),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF00F3FF),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10.0),
+                        ),
+                      ),
+                      onPressed: () => Navigator.of(ctx).pop(true),
+                      child: const Text('Enable'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    ) ?? false;
   }
 
   @override
@@ -95,10 +291,20 @@ class _LoginScreenState extends State<LoginScreen>
         );
       }
       if (mounted) {
-        if (kIsWeb) {
-          context.go('/session-history-screen');
-        } else {
-          context.go('/active-session-screen');
+        if (_biometricAvailable && !_biometricEnabled) {
+          final shouldEnable = await _showEnableBiometricsDialog();
+          if (shouldEnable) {
+            await BiometricService.instance.saveCredentials(
+              _emailController.text.trim(),
+              _passwordController.text,
+            );
+            setState(() {
+              _biometricEnabled = true;
+            });
+          }
+        }
+        if (mounted) {
+          context.go(kIsWeb ? AppRoutes.projectSelection : AppRoutes.activeSession);
         }
       }
     } on AuthException catch (e) {
@@ -275,7 +481,7 @@ class _LoginScreenState extends State<LoginScreen>
                                         .resetPasswordForEmail(
                                           email,
                                           redirectTo:
-                                              'https://tracklog4686.builtwithrocket.new',
+                                              'https://sightlinevalidation.web.app',
                                         );
                                     setDialogState(() {
                                       emailSent = true;
@@ -427,11 +633,11 @@ class _LoginScreenState extends State<LoginScreen>
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      stops: const [0.0, 0.35, 0.65, 1.0],
+                      stops: const [0.0, 0.3, 0.65, 1.0],
                       colors: [
-                        const Color(0xFF050811).withAlpha(200),
-                        const Color(0xFF050811).withAlpha(140),
-                        const Color(0xFF050811).withAlpha(210),
+                        const Color(0xFF050811).withAlpha(180),
+                        const Color(0xFF0A1030).withAlpha(140),
+                        const Color(0xFF050811).withAlpha(220),
                         const Color(0xFF050811).withAlpha(255),
                       ],
                     ),
@@ -441,7 +647,7 @@ class _LoginScreenState extends State<LoginScreen>
             ),
           ),
 
-          // ── Animated accent glow (NATRAX orange) ────────────────────
+          // ── Animated teal accent glow (top-right) ───────────────────
           Positioned(
             top: -80,
             right: -60,
@@ -455,9 +661,9 @@ class _LoginScreenState extends State<LoginScreen>
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
                       colors: [
-                        const Color(
-                          0xFF00F3FF,
-                        ).withAlpha((30 + (_bgPulseAnim.value * 20)).toInt()),
+                        const Color(0xFF00F3FF).withAlpha(
+                          (30 + (_bgPulseAnim.value * 20)).toInt(),
+                        ),
                         Colors.transparent,
                       ],
                     ),
@@ -467,29 +673,47 @@ class _LoginScreenState extends State<LoginScreen>
             ),
           ),
 
-          // ── Teal accent glow (bottom left) ──────────────────────────
+          // ── Animated purple glow blob (bottom-left) ─────────────────
           Positioned(
-            bottom: size.height * 0.25,
-            left: -80,
+            bottom: -60,
+            left: -60,
             child: AnimatedBuilder(
               animation: _bgPulseAnim,
               builder: (context, _) {
+                final size = 200.0 + (_bgPulseAnim.value * 80.0);
                 return Container(
-                  width: 260,
-                  height: 260,
+                  width: size,
+                  height: size,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
                       colors: [
-                        AppTheme.primary.withAlpha(
-                          (20 + (_bgPulseAnim.value * 15)).toInt(),
-                        ),
+                        const Color(0xFF7000FF).withAlpha(25),
                         Colors.transparent,
                       ],
                     ),
                   ),
                 );
               },
+            ),
+          ),
+
+          // ── Static indigo glow (center-left) ────────────────────────
+          Positioned(
+            top: size.height * 0.4,
+            left: -40,
+            child: Container(
+              width: 180,
+              height: 180,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    const Color(0xFF3D00CC).withAlpha(15),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
             ),
           ),
 
@@ -512,58 +736,135 @@ class _LoginScreenState extends State<LoginScreen>
             ),
           ),
 
-          // ── Main scrollable content ──────────────────────────────────
+          // ── Main content — responsive layout ────────────────────────
           SafeArea(
             child: AnimatedBuilder(
               animation: _cardAnimController,
-              builder: (context, child) {
-                return Transform.translate(
-                  offset: Offset(0, _cardSlideAnim.value),
-                  child: Opacity(opacity: _cardFadeAnim.value, child: child),
-                );
-              },
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 20,
+              builder: (context, child) => Transform.translate(
+                offset: Offset(0, _cardSlideAnim.value),
+                child: Opacity(opacity: _cardFadeAnim.value, child: child),
+              ),
+              child: LayoutBuilder(builder: (context, constraints) {
+                final isWide = constraints.maxWidth >= 900;
+                if (isWide) return _buildWideLayout();
+                return _buildNarrowLayout();
+              }),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Wide (web) two-column layout ─────────────────────────────────────
+  Widget _buildWideLayout() {
+    return Row(
+      children: [
+        // Left panel — branding
+        Expanded(
+          flex: 55,
+          child: Container(
+            height: double.infinity,
+            padding: const EdgeInsets.fromLTRB(56, 48, 48, 48),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildHeader(),
+                const SizedBox(height: 48),
+                _buildTrackStatsStrip(),
+                const Spacer(),
+                // SightLine tagline
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withAlpha(8),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white.withAlpha(15)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF00F3FF).withAlpha(25),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text('GOODYEAR SIGHTLINE™',
+                              style: GoogleFonts.spaceGrotesk(
+                                  fontSize: 9, fontWeight: FontWeight.w800,
+                                  color: const Color(0xFF00F3FF), letterSpacing: 1.5)),
+                        ),
+                      ]),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Tire Intelligence Platform\nfor Real-World Validation',
+                        style: GoogleFonts.spaceGrotesk(
+                            fontSize: 18, fontWeight: FontWeight.w700,
+                            color: Colors.white, height: 1.4),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Friction estimation · Aquaplaning detection\nPressure & load sensing · Predictive maintenance',
+                        style: GoogleFonts.spaceGrotesk(
+                            fontSize: 12, color: Colors.white.withAlpha(120), height: 1.6),
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(height: 24),
+                _buildFooter(),
+              ],
+            ),
+          ),
+        ),
+
+        // Right panel — form (max-width 480px, centered)
+        Expanded(
+          flex: 45,
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 48),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const SizedBox(height: 16),
-
-                    // ── Header branding ──────────────────────────────
-                    _buildHeader(),
-
-                    const SizedBox(height: 36),
-
-                    // ── Track stats strip ────────────────────────────
-                    _buildTrackStatsStrip(),
-
-                    const SizedBox(height: 32),
-
-                    // ── Login card ───────────────────────────────────
                     _buildLoginCard(),
-
                     const SizedBox(height: 20),
-
-                    // ── Toggle sign-in / sign-up ─────────────────────
                     _buildToggleRow(),
-
-                    const SizedBox(height: 24),
-
-                    // ── Demo credentials ─────────────────────────────
+                    const SizedBox(height: 20),
                     _buildDemoCredentials(),
-
-                    const SizedBox(height: 32),
-
-                    // ── Footer ───────────────────────────────────────
-                    _buildFooter(),
                   ],
                 ),
               ),
             ),
           ),
+        ),
+      ],
+    );
+  }
+
+  // ── Narrow (mobile) stacked layout ───────────────────────────────────
+  Widget _buildNarrowLayout() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 16),
+          _buildHeader(),
+          const SizedBox(height: 36),
+          _buildTrackStatsStrip(),
+          const SizedBox(height: 32),
+          _buildLoginCard(),
+          const SizedBox(height: 20),
+          _buildToggleRow(),
+          const SizedBox(height: 24),
+          _buildDemoCredentials(),
+          const SizedBox(height: 32),
+          _buildFooter(),
         ],
       ),
     );
@@ -578,19 +879,23 @@ class _LoginScreenState extends State<LoginScreen>
         Row(
           children: [
             // NATRAX badge
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            DecoratedBox(
               decoration: BoxDecoration(
-                color: const Color(0xFF00F3FF),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF00F3FF), Color(0xFF0088FF)],
+                ),
                 borderRadius: BorderRadius.circular(6.0),
               ),
-              child: Text(
-                'NATRAX',
-                style: GoogleFonts.spaceGrotesk(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  letterSpacing: 1.5,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                child: Text(
+                  'NATRAX',
+                  style: GoogleFonts.spaceGrotesk(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF050811),
+                    letterSpacing: 1.5,
+                  ),
                 ),
               ),
             ),
@@ -618,11 +923,23 @@ class _LoginScreenState extends State<LoginScreen>
         const SizedBox(height: 20),
 
         // Main title
-        RichText(
-          text: TextSpan(
-            children: [
-              TextSpan(
-                text: 'Track',
+        Row(
+          children: [
+            Text(
+              'Track',
+              style: GoogleFonts.spaceGrotesk(
+                fontSize: 32,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+                height: 1.1,
+              ),
+            ),
+            ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [Color(0xFF00F3FF), Color(0xFF7000FF)],
+              ).createShader(bounds),
+              child: Text(
+                'Log',
                 style: GoogleFonts.spaceGrotesk(
                   fontSize: 32,
                   fontWeight: FontWeight.w800,
@@ -630,17 +947,8 @@ class _LoginScreenState extends State<LoginScreen>
                   height: 1.1,
                 ),
               ),
-              TextSpan(
-                text: 'Log',
-                style: GoogleFonts.spaceGrotesk(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w800,
-                  color: const Color(0xFF00F3FF),
-                  height: 1.1,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
         const SizedBox(height: 6),
         Text(
@@ -680,12 +988,17 @@ class _LoginScreenState extends State<LoginScreen>
         ),
         child: Column(
           children: [
-            Text(
-              value,
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: const Color(0xFF00F3FF),
+            ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [Color(0xFF00F3FF), Color(0xFF7000FF)],
+              ).createShader(bounds),
+              child: Text(
+                value,
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
               ),
             ),
             const SizedBox(height: 2),
@@ -706,11 +1019,15 @@ class _LoginScreenState extends State<LoginScreen>
 
   // ── Login card ────────────────────────────────────────────────────────
   Widget _buildLoginCard() {
-    return Container(
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
       decoration: BoxDecoration(
         color: const Color(0xFF0A1025).withAlpha(230),
         borderRadius: BorderRadius.circular(20.0),
-        border: Border.all(color: Colors.white.withAlpha(18)),
+        border: Border.all(color: const Color(0xFF00F3FF).withAlpha(35), width: 1),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withAlpha(100),
@@ -718,8 +1035,8 @@ class _LoginScreenState extends State<LoginScreen>
             offset: const Offset(0, 20),
           ),
           BoxShadow(
-            color: const Color(0xFF00F3FF).withAlpha(15),
-            blurRadius: 60,
+            color: const Color(0xFF00F3FF).withAlpha(30),
+            blurRadius: 80,
             offset: const Offset(0, 0),
           ),
         ],
@@ -727,6 +1044,23 @@ class _LoginScreenState extends State<LoginScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Top card highlight line
+          Container(
+            height: 1,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.transparent,
+                  const Color(0xFF00F3FF).withAlpha(120),
+                  Colors.transparent,
+                ],
+              ),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(20),
+                topRight: Radius.circular(20),
+              ),
+            ),
+          ),
           // Card header tab
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -927,58 +1261,124 @@ class _LoginScreenState extends State<LoginScreen>
                   // Submit button
                   SizedBox(
                     height: 52,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _submit,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF00F3FF),
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor: const Color(
-                          0xFF00F3FF,
-                        ).withAlpha(80),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12.0),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.white,
-                                ),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: _isLoading
+                            ? const LinearGradient(
+                                colors: [Color(0xFF00F3FF), Color(0xFF7000FF)],
+                                begin: Alignment.centerLeft,
+                                end: Alignment.centerRight,
+                              )
+                            : const LinearGradient(
+                                colors: [Color(0xFF00F3FF), Color(0xFF7000FF)],
+                                begin: Alignment.centerLeft,
+                                end: Alignment.centerRight,
                               ),
-                            )
-                          : Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  _isSignUp
-                                      ? 'Create Profile & Sign In'
-                                      : 'Sign In to TrackLog',
-                                  style: GoogleFonts.spaceGrotesk(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 0.3,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF00F3FF).withAlpha(60),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _submit,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: Colors.transparent,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                const Icon(
-                                  Icons.arrow_forward_rounded,
-                                  size: 18,
-                                ),
-                              ],
-                            ),
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    _isSignUp
+                                        ? 'Create Profile & Sign In'
+                                        : 'Sign In to TrackLog',
+                                    style: GoogleFonts.spaceGrotesk(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.3,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Icon(
+                                    Icons.arrow_forward_rounded,
+                                    size: 18,
+                                  ),
+                                ],
+                              ),
+                      ),
                     ),
                   ),
+                  if (!_isSignUp && _biometricHardwareSupported) ...[
+                    const SizedBox(height: 12),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF00F3FF), Color(0xFF7000FF)],
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(1.5),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF050811),
+                            borderRadius: BorderRadius.circular(10.5),
+                          ),
+                          child: SizedBox(
+                            height: 52,
+                            width: double.infinity,
+                            child: TextButton(
+                              onPressed: _loginWithBiometrics,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.fingerprint_rounded, size: 22, color: Color(0xFF00F3FF)),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Sign In with Fingerprint',
+                                    style: GoogleFonts.spaceGrotesk(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.bold,
+                                      color: const Color(0xFF00F3FF),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
           ),
         ],
       ),
+      ),
+    ),
     );
   }
 
