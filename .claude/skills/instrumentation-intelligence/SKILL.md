@@ -107,7 +107,10 @@ for CANoe/CANape but a GL1000 logger can't join an FD bus") and **answer queries
 - The Instruments UI is **login-gated** (router redirects to /login when signed out), so it can't be
   screenshotted without credentials — verify code via `flutter analyze` + build, not browser shots.
 - Firebase Hosting: `sightlinevalidation.web.app` (login-gated; Flutter renders to canvas, so
-  browser screenshots time out and there's no DOM text to scrape).
+  browser screenshots time out and there's no DOM text to scrape). **Deploying:** firebase/node
+  are NOT on PATH — run the cached standalone CLI:
+  `& "C:\Users\AE12230\AppData\Local\ms-playwright-go\1.57.0\node.exe" "C:\Users\AE12230\.cache\firebase\tools\lib\node_modules\firebase-tools\lib\bin\firebase.js" deploy --only hosting`
+  (already logged in as dhrupadma97@gmail.com; hosting serves `build/web`).
 - Supabase project `qmcsxfqizvjbzffbrakp` (shared infra). Edge-function pattern exists
   (`supabase/functions/send-report-email`) — a future LLM query endpoint would follow it.
 - `dio` and `file_picker` already in `pubspec.yaml` — no new plumbing for HTTP / DBC uploads.
