@@ -1,5 +1,9 @@
 /// TrackLog — Instrumentation Intelligence Data Layer
-/// Hardcoded catalog of instruments, vehicle profiles, and OBD pinouts.
+/// Real owned inventory + per-vehicle CAN configs + schematic backbone.
+/// Source of truth: .claude/skills/instrumentation-intelligence/reference/instrument-knowledge.md
+///
+/// Owned gear (confirmed 2026-07-17): GL2000 ("GLM 2000"), Kvaser, Raptor CAL,
+/// CANoe, CANape, VBOX 3i Dual Antenna, IMU. Everything else was dropped.
 
 // ─── Protocol Enum ──────────────────────────────────────────────────────────
 enum BusProtocol {
@@ -52,6 +56,12 @@ extension BusProtocolExt on BusProtocol {
     }
   }
 
+  /// True for any CAN-family protocol (used for channel budgeting).
+  bool get isCan =>
+      this == BusProtocol.can2A ||
+      this == BusProtocol.can2B ||
+      this == BusProtocol.canFD;
+
   int get colorValue {
     switch (this) {
       case BusProtocol.can2A: return 0xFFFF4D4D;   // Red
@@ -68,6 +78,25 @@ extension BusProtocolExt on BusProtocol {
       case BusProtocol.sent: return 0xFF80DEEA;     // Cyan
     }
   }
+}
+
+
+/// Parse a [BusProtocol] from its stored name (JSON); falls back to classic CAN.
+BusProtocol busProtocolFromName(String? name) {
+  if (name == null) return BusProtocol.can2A;
+  return BusProtocol.values.firstWhere(
+    (p) => p.name == name,
+    orElse: () => BusProtocol.can2A,
+  );
+}
+
+/// Parse an [InstrumentCategory] from its stored name (JSON).
+InstrumentCategory instrumentCategoryFromName(String? name) {
+  if (name == null) return InstrumentCategory.connector;
+  return InstrumentCategory.values.firstWhere(
+    (c) => c.name == name,
+    orElse: () => InstrumentCategory.connector,
+  );
 }
 
 
@@ -91,7 +120,7 @@ extension InstrumentCategoryExt on InstrumentCategory {
       case InstrumentCategory.interfaceDevice: return 'Interface';
       case InstrumentCategory.software: return 'Software';
       case InstrumentCategory.sensor: return 'Sensor';
-      case InstrumentCategory.ecu: return 'ECU';
+      case InstrumentCategory.ecu: return 'ECU / Controller';
       case InstrumentCategory.receiver: return 'Receiver';
       case InstrumentCategory.display: return 'Display';
       case InstrumentCategory.power: return 'Power';
@@ -113,6 +142,76 @@ extension InstrumentCategoryExt on InstrumentCategory {
     }
   }
 }
+
+
+// ─── Instrument Vertical (activity grouping) ────────────────────────────────
+// The 3 verticals the engineer thinks in: Calibration / Validation / Data
+// Collection. A tool can belong to several; Kvaser + Power are shared infra.
+enum InstrumentVertical { calibration, validation, dataCollection }
+
+extension InstrumentVerticalExt on InstrumentVertical {
+  String get label {
+    switch (this) {
+      case InstrumentVertical.calibration: return 'Calibration';
+      case InstrumentVertical.validation: return 'Validation';
+      case InstrumentVertical.dataCollection: return 'Data Collection';
+    }
+  }
+}
+
+const Map<InstrumentVertical, Set<String>> verticalInstrumentIds = {
+  // Calibration — Raptor is OPTIONAL here. Kvaser flashes the Raptor ECU firmware.
+  InstrumentVertical.calibration: {'canape', 'kvaser', 'raptor_cal', 'power_breakout'},
+  // Validation — Raptor is MANDATORY (runs the tire-intelligence models → Display).
+  InstrumentVertical.validation: {
+    'raptor_cal', 'display_uiux', 'gl2000', 'canoe',
+    'vbox_3i_dual', 'imu', 'huf_receiver', 'power_breakout',
+  },
+  // Data Collection — the recording/sensing gear.
+  InstrumentVertical.dataCollection: {
+    'gl2000', 'huf_receiver', 'vbox_3i_dual', 'imu', 'display_uiux', 'power_breakout',
+  },
+};
+
+/// Instruments in a given vertical (order follows the catalog).
+List<Instrument> instrumentsForVertical(InstrumentVertical v) {
+  final ids = verticalInstrumentIds[v] ?? const <String>{};
+  return instrumentCatalog.where((i) => ids.contains(i.id)).toList();
+}
+
+/// Is the Raptor ECU mandatory for this vertical? (Validation: yes; Calibration: optional.)
+bool raptorMandatoryFor(InstrumentVertical v) => v == InstrumentVertical.validation;
+
+
+// ─── Tire Intelligence Models ───────────────────────────────────────────────
+// The SightLine models validated on-vehicle. Path: Vehicle CAN → Raptor CAL
+// (models run here) → Display. Raptor is REQUIRED for validation.
+class TireModel {
+  final String name;
+  final String description;
+  final String? sensor; // extra sensor this model relies on, if any
+  const TireModel({required this.name, required this.description, this.sensor});
+}
+
+const List<TireModel> tireIntelligenceModels = [
+  TireModel(
+    name: 'AQD',
+    description: 'Aquaplaning Detection — detects loss of tire–road contact on water film.',
+  ),
+  TireModel(
+    name: 'Leak Detection',
+    description: 'Detects tire pressure loss / slow leaks from sensor + CAN data.',
+  ),
+  TireModel(
+    name: 'Dynamic Friction Estimate',
+    description: 'Estimates available road–tire friction in real time.',
+  ),
+  TireModel(
+    name: 'Dynamic Load Estimation',
+    description: 'Estimates per-tire load using a tire-mounted sensor.',
+    sensor: 'Tire-mounted sensor',
+  ),
+];
 
 
 // ─── Instrument Status ──────────────────────────────────────────────────────
@@ -159,6 +258,19 @@ class Instrument {
   final DateTime? calibrationDueDate;
   final String? notes;
 
+  // ── Capability flags (drive the physics rules R1–R9) ──
+  /// Software that cannot reach the vehicle bus on its own — needs a hardware
+  /// interface (VN / Kvaser). E.g. CANoe, CANape. (Rule R2/R3)
+  final bool requiresInterface;
+
+  /// Part of the fixed backbone: every captured bus must reach this device.
+  /// True for Raptor CAL and the GL2000. (Rule R8)
+  final bool mustReceiveAllSignals;
+
+  /// GNSS with dual antenna → true heading + slip angle + pitch/roll + yaw,
+  /// valid even at rest. Single antenna cannot do slip/low-speed heading. (Rule R4)
+  final bool dualAntenna;
+
   const Instrument({
     required this.id,
     required this.name,
@@ -172,10 +284,22 @@ class Instrument {
     this.quantity = 1,
     this.calibrationDueDate,
     this.notes,
+    this.requiresInterface = false,
+    this.mustReceiveAllSignals = false,
+    this.dualAntenna = false,
   });
 
   int get totalChannels =>
       channelCount.values.fold(0, (sum, c) => sum + c);
+
+  /// CAN channels only (classic + FD) — used for channel budgeting (R5).
+  int get canChannels => channelCount.entries
+      .where((e) => e.key.isCan)
+      .fold(0, (sum, e) => sum + e.value);
+
+  /// True if this device is a hardware bus interface (Kvaser / VN) that
+  /// software like CANoe/CANape can connect through. (R2)
+  bool get isBusInterface => category == InstrumentCategory.interfaceDevice;
 }
 
 
@@ -184,7 +308,7 @@ class OBDPin {
   final int pinNumber;
   final String description;
   final BusProtocol? protocol;
-  final bool isHighLine; // true = CANH, false = CANL, null for non-CAN
+  final bool isHighLine; // true = CANH, false = CANL
   final bool isPresent;
 
   const OBDPin({
@@ -194,6 +318,24 @@ class OBDPin {
     this.isHighLine = true,
     this.isPresent = true,
   });
+
+  Map<String, dynamic> toJson() => {
+        'pinNumber': pinNumber,
+        'description': description,
+        'protocol': protocol?.name,
+        'isHighLine': isHighLine,
+        'isPresent': isPresent,
+      };
+
+  factory OBDPin.fromJson(Map<String, dynamic> j) => OBDPin(
+        pinNumber: (j['pinNumber'] as num?)?.toInt() ?? 0,
+        description: j['description'] as String? ?? '',
+        protocol: j['protocol'] == null
+            ? null
+            : busProtocolFromName(j['protocol'] as String?),
+        isHighLine: j['isHighLine'] as bool? ?? true,
+        isPresent: j['isPresent'] as bool? ?? true,
+      );
 }
 
 
@@ -205,6 +347,7 @@ class VehicleBus {
   final int? obdPinHigh;
   final int? obdPinLow;
   final String? description;
+  final String? dbcFile; // associated DBC (Phase 3)
 
   const VehicleBus({
     required this.id,
@@ -213,7 +356,49 @@ class VehicleBus {
     this.obdPinHigh,
     this.obdPinLow,
     this.description,
+    this.dbcFile,
   });
+
+  bool get isCanFD => protocol == BusProtocol.canFD;
+
+  VehicleBus copyWith({
+    String? name,
+    BusProtocol? protocol,
+    int? obdPinHigh,
+    int? obdPinLow,
+    String? description,
+    String? dbcFile,
+    bool clearDbc = false,
+  }) =>
+      VehicleBus(
+        id: id,
+        name: name ?? this.name,
+        protocol: protocol ?? this.protocol,
+        obdPinHigh: obdPinHigh ?? this.obdPinHigh,
+        obdPinLow: obdPinLow ?? this.obdPinLow,
+        description: description ?? this.description,
+        dbcFile: clearDbc ? null : (dbcFile ?? this.dbcFile),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'protocol': protocol.name,
+        'obdPinHigh': obdPinHigh,
+        'obdPinLow': obdPinLow,
+        'description': description,
+        'dbcFile': dbcFile,
+      };
+
+  factory VehicleBus.fromJson(Map<String, dynamic> j) => VehicleBus(
+        id: j['id'] as String? ?? '',
+        name: j['name'] as String? ?? '',
+        protocol: busProtocolFromName(j['protocol'] as String?),
+        obdPinHigh: (j['obdPinHigh'] as num?)?.toInt(),
+        obdPinLow: (j['obdPinLow'] as num?)?.toInt(),
+        description: j['description'] as String?,
+        dbcFile: j['dbcFile'] as String?,
+      );
 }
 
 
@@ -236,6 +421,26 @@ class SchematicNode {
     required this.x,
     required this.y,
   });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'label': label,
+        'sublabel': sublabel,
+        'nodeType': nodeType.name,
+        'instrumentId': instrumentId,
+        'x': x,
+        'y': y,
+      };
+
+  factory SchematicNode.fromJson(Map<String, dynamic> j) => SchematicNode(
+        id: j['id'] as String? ?? '',
+        label: j['label'] as String? ?? '',
+        sublabel: j['sublabel'] as String?,
+        nodeType: instrumentCategoryFromName(j['nodeType'] as String?),
+        instrumentId: j['instrumentId'] as String?,
+        x: (j['x'] as num?)?.toDouble() ?? 0.5,
+        y: (j['y'] as num?)?.toDouble() ?? 0.5,
+      );
 }
 
 
@@ -254,6 +459,23 @@ class SchematicConnection {
     required this.protocol,
     this.busIndex,
   });
+
+  Map<String, dynamic> toJson() => {
+        'fromNodeId': fromNodeId,
+        'toNodeId': toNodeId,
+        'label': label,
+        'protocol': protocol.name,
+        'busIndex': busIndex,
+      };
+
+  factory SchematicConnection.fromJson(Map<String, dynamic> j) =>
+      SchematicConnection(
+        fromNodeId: j['fromNodeId'] as String? ?? '',
+        toNodeId: j['toNodeId'] as String? ?? '',
+        label: j['label'] as String? ?? '',
+        protocol: busProtocolFromName(j['protocol'] as String?),
+        busIndex: (j['busIndex'] as num?)?.toInt(),
+      );
 }
 
 
@@ -279,251 +501,169 @@ class VehicleProfile {
 
   Set<BusProtocol> get requiredProtocols =>
       buses.map((b) => b.protocol).toSet();
+
+  /// Vehicle CAN buses only — count drives the CAN channel budget (R5).
+  List<VehicleBus> get canBuses =>
+      buses.where((b) => b.protocol.isCan).toList();
+
+  bool get hasCanFD => buses.any((b) => b.isCanFD);
 }
 
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  HARDCODED DATA
+//  HARDCODED DATA — real owned inventory
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ─── Instrument Catalog ─────────────────────────────────────────────────────
 final List<Instrument> instrumentCatalog = [
-  // ── Vector GL Series ──
-  Instrument(
-    id: 'gl1000',
-    name: 'GL1000',
-    brand: 'Vector',
-    category: InstrumentCategory.logger,
-    supportedProtocols: {BusProtocol.can2A, BusProtocol.can2B},
-    supportsCAnFD: false,
-    channelCount: {BusProtocol.can2A: 2},
-    description: 'Compact 2-channel CAN data logger. No CAN FD support.',
-    status: InstrumentStatus.inUse,
-    quantity: 1,
-    notes: 'Currently deployed in TATA BETA vehicle setup. Connected to Vehicle CAN 1 & CAN 2.',
-  ),
+  // ── Vector GL2000 — the primary standalone data logger (classic CAN ONLY) ──
   Instrument(
     id: 'gl2000',
-    name: 'GL2000',
+    name: 'GL2000 ("GLM")',
     brand: 'Vector',
     category: InstrumentCategory.logger,
-    supportedProtocols: {BusProtocol.can2A, BusProtocol.can2B},
+    supportedProtocols: {BusProtocol.can2A, BusProtocol.can2B, BusProtocol.lin},
     supportsCAnFD: false,
-    channelCount: {BusProtocol.can2A: 4},
-    description: '4-channel CAN data logger. No CAN FD. DB9 connectors.',
-    status: InstrumentStatus.available,
+    channelCount: {BusProtocol.can2A: 4, BusProtocol.lin: 2},
+    description:
+        'Primary standalone data logger. Classic CAN 2.0 + LIN, up to 4 CAN channels. '
+        'NO CAN FD — this is the key limitation: on an FD bus the GL2000 cannot log.',
+    status: InstrumentStatus.inUse,
     quantity: 1,
-  ),
-  Instrument(
-    id: 'gl3000',
-    name: 'GL3000',
-    brand: 'Vector',
-    category: InstrumentCategory.logger,
-    supportedProtocols: {BusProtocol.can2A, BusProtocol.can2B, BusProtocol.canFD, BusProtocol.lin},
-    supportsCAnFD: true,
-    channelCount: {BusProtocol.canFD: 4, BusProtocol.lin: 2},
-    description: 'Mid-range logger with CAN FD and LIN support. 4 CAN/FD + 2 LIN channels.',
-    status: InstrumentStatus.available,
-    quantity: 0,
-    notes: 'Not currently in inventory. Recommended upgrade for CAN FD vehicles.',
-  ),
-  Instrument(
-    id: 'gl4000',
-    name: 'GL4000',
-    brand: 'Vector',
-    category: InstrumentCategory.logger,
-    supportedProtocols: {BusProtocol.can2A, BusProtocol.can2B, BusProtocol.canFD, BusProtocol.lin, BusProtocol.ethernet},
-    supportsCAnFD: true,
-    channelCount: {BusProtocol.canFD: 6, BusProtocol.lin: 4, BusProtocol.ethernet: 2},
-    description: 'Top-tier logger. CAN FD, LIN, Automotive Ethernet. Full protocol coverage.',
-    status: InstrumentStatus.available,
-    quantity: 0,
-    notes: 'Not currently in inventory. Premium option for full vehicle network capture.',
+    mustReceiveAllSignals: true,
+    notes: 'Backbone: every captured bus must also reach the GL2000 (R8). '
+        'Classic CAN only → FD buses must be logged elsewhere (CANoe/CANape/Raptor).',
   ),
 
-  // ── Vector VN Series ──
+  // ── Kvaser interface (PC bus access for CANoe/CANape) ──
   Instrument(
-    id: 'vn1610',
-    name: 'VN1610',
-    brand: 'Vector',
-    category: InstrumentCategory.interfaceDevice,
-    supportedProtocols: {BusProtocol.can2A, BusProtocol.can2B},
-    supportsCAnFD: false,
-    channelCount: {BusProtocol.can2A: 2},
-    description: 'USB CAN interface. 2 CAN channels. No CAN FD.',
-    status: InstrumentStatus.available,
-    quantity: 1,
-  ),
-  Instrument(
-    id: 'vn1630',
-    name: 'VN1630',
-    brand: 'Vector',
-    category: InstrumentCategory.interfaceDevice,
-    supportedProtocols: {BusProtocol.can2A, BusProtocol.can2B, BusProtocol.canFD, BusProtocol.lin},
-    supportsCAnFD: true,
-    channelCount: {BusProtocol.canFD: 2, BusProtocol.lin: 2},
-    description: 'USB CAN FD + LIN interface. Compact and FD-capable.',
-    status: InstrumentStatus.available,
-    quantity: 1,
-  ),
-  Instrument(
-    id: 'vn5610',
-    name: 'VN5610',
-    brand: 'Vector',
-    category: InstrumentCategory.interfaceDevice,
-    supportedProtocols: {BusProtocol.can2A, BusProtocol.can2B, BusProtocol.canFD, BusProtocol.ethernet},
-    supportsCAnFD: true,
-    channelCount: {BusProtocol.canFD: 2, BusProtocol.ethernet: 1},
-    description: 'CAN FD + Automotive Ethernet interface.',
-    status: InstrumentStatus.available,
-    quantity: 0,
-  ),
-  Instrument(
-    id: 'vn7640',
-    name: 'VN7640',
-    brand: 'Vector',
-    category: InstrumentCategory.interfaceDevice,
-    supportedProtocols: {BusProtocol.can2A, BusProtocol.can2B, BusProtocol.canFD, BusProtocol.lin, BusProtocol.flexRay, BusProtocol.ethernet},
-    supportsCAnFD: true,
-    channelCount: {BusProtocol.canFD: 4, BusProtocol.lin: 4, BusProtocol.flexRay: 2, BusProtocol.ethernet: 2},
-    description: 'Full protocol coverage: CAN FD, LIN, FlexRay, Ethernet.',
-    status: InstrumentStatus.available,
-    quantity: 0,
-  ),
-
-  // ── Vector Software ──
-  Instrument(
-    id: 'canalyzer',
-    name: 'CANalyzer',
-    brand: 'Vector',
-    category: InstrumentCategory.software,
-    supportedProtocols: {BusProtocol.can2A, BusProtocol.can2B, BusProtocol.canFD, BusProtocol.lin, BusProtocol.ethernet},
-    supportsCAnFD: true,
-    channelCount: {},
-    description: 'CAN/LIN/Ethernet analysis software. CAN FD support with FD license.',
-    status: InstrumentStatus.available,
-    quantity: 1,
-    notes: 'Requires Vector hardware interface (VN series) to connect to vehicle.',
-  ),
-  Instrument(
-    id: 'canoe',
-    name: 'CANoe',
-    brand: 'Vector',
-    category: InstrumentCategory.software,
-    supportedProtocols: {BusProtocol.can2A, BusProtocol.can2B, BusProtocol.canFD, BusProtocol.lin, BusProtocol.flexRay, BusProtocol.ethernet},
-    supportsCAnFD: true,
-    channelCount: {},
-    description: 'Full simulation and analysis environment. All protocols.',
-    status: InstrumentStatus.available,
-    quantity: 1,
-  ),
-
-  // ── Kvaser ──
-  Instrument(
-    id: 'kvaser_leaf_v2',
-    name: 'Leaf Light v2',
+    id: 'kvaser',
+    name: 'Kvaser Interface',
     brand: 'Kvaser',
     category: InstrumentCategory.interfaceDevice,
     supportedProtocols: {BusProtocol.can2A, BusProtocol.can2B},
     supportsCAnFD: false,
     channelCount: {BusProtocol.can2A: 1},
-    description: 'Budget single-channel CAN interface. No CAN FD.',
+    description:
+        'USB CAN interface used to FLASH the Raptor ECUs — that is its one main function. '
+        'Not part of the live vehicle capture path.',
     status: InstrumentStatus.available,
     quantity: 1,
-  ),
-  Instrument(
-    id: 'kvaser_u100',
-    name: 'U100',
-    brand: 'Kvaser',
-    category: InstrumentCategory.interfaceDevice,
-    supportedProtocols: {BusProtocol.can2A, BusProtocol.can2B, BusProtocol.canFD},
-    supportsCAnFD: true,
-    channelCount: {BusProtocol.canFD: 1},
-    description: 'Compact single-channel CAN FD interface.',
-    status: InstrumentStatus.available,
-    quantity: 0,
+    notes: 'Primary role: flashing Raptor ECU firmware (Calibration). ⚠ Confirm exact model.',
   ),
 
-  // ── Racelogic ──
+  // ── New Eagle Raptor CAL — rapid-proto controller (CAN + CAN FD) ──
   Instrument(
-    id: 'vbox_3i',
-    name: 'VBOX 3i',
-    brand: 'Racelogic',
-    category: InstrumentCategory.sensor,
-    supportedProtocols: {BusProtocol.gpsGnss, BusProtocol.analog, BusProtocol.can2A},
-    supportsCAnFD: false,
-    channelCount: {BusProtocol.gpsGnss: 1, BusProtocol.can2A: 2, BusProtocol.analog: 4},
-    description: '20 Hz GPS data logger with 2 CAN + 4 analog inputs.',
-    status: InstrumentStatus.available,
-    quantity: 1,
-  ),
-  Instrument(
-    id: 'vbox_touch',
-    name: 'VBOX Touch',
-    brand: 'Racelogic',
-    category: InstrumentCategory.sensor,
-    supportedProtocols: {BusProtocol.gpsGnss, BusProtocol.can2A, BusProtocol.video},
-    supportsCAnFD: false,
-    channelCount: {BusProtocol.gpsGnss: 1, BusProtocol.can2A: 2, BusProtocol.video: 2},
-    description: 'Touchscreen GPS logger with 2 CAN + 2 camera inputs.',
-    status: InstrumentStatus.available,
-    quantity: 0,
-  ),
-
-  // ── dSPACE ──
-  Instrument(
-    id: 'microautobox_ii',
-    name: 'MicroAutoBox II',
-    brand: 'dSPACE',
-    category: InstrumentCategory.ecu,
-    supportedProtocols: {BusProtocol.can2A, BusProtocol.can2B, BusProtocol.canFD, BusProtocol.lin, BusProtocol.ethernet},
-    supportsCAnFD: true,
-    channelCount: {BusProtocol.canFD: 6, BusProtocol.lin: 4},
-    description: 'Rapid prototyping ECU. CAN FD, LIN, Ethernet. Real-time.',
-    status: InstrumentStatus.available,
-    quantity: 0,
-  ),
-
-  // ── Oxford / GeneSys ──
-  Instrument(
-    id: 'rt3000',
-    name: 'RT3000',
-    brand: 'Oxford Technical Solutions',
-    category: InstrumentCategory.sensor,
-    supportedProtocols: {BusProtocol.gpsGnss, BusProtocol.imu, BusProtocol.can2A},
-    supportsCAnFD: false,
-    channelCount: {BusProtocol.gpsGnss: 1, BusProtocol.imu: 1, BusProtocol.can2A: 1},
-    description: '100 Hz high-precision INS/IMU + GPS. CAN output only.',
-    status: InstrumentStatus.available,
-    quantity: 1,
-  ),
-  Instrument(
-    id: 'adma',
-    name: 'ADMA',
-    brand: 'GeneSys',
-    category: InstrumentCategory.sensor,
-    supportedProtocols: {BusProtocol.gpsGnss, BusProtocol.imu, BusProtocol.can2A, BusProtocol.ethernet},
-    supportsCAnFD: false,
-    channelCount: {BusProtocol.gpsGnss: 1, BusProtocol.imu: 1, BusProtocol.can2A: 1, BusProtocol.ethernet: 1},
-    description: '200+ Hz premium INS. CAN + Ethernet output.',
-    status: InstrumentStatus.available,
-    quantity: 0,
-  ),
-
-  // ── TATA Setup Specific ──
-  Instrument(
-    id: 'raptor_rcm80',
-    name: 'Raptor RCM80',
+    id: 'raptor_cal',
+    name: 'Raptor CAL (RCM80)',
     brand: 'New Eagle',
     category: InstrumentCategory.ecu,
-    supportedProtocols: {BusProtocol.can2A, BusProtocol.can2B, BusProtocol.canFD, BusProtocol.analog, BusProtocol.digitalIO},
+    supportedProtocols: {
+      BusProtocol.can2A,
+      BusProtocol.can2B,
+      BusProtocol.canFD,
+      BusProtocol.analog,
+      BusProtocol.digitalIO,
+    },
     supportsCAnFD: true,
     channelCount: {BusProtocol.canFD: 4, BusProtocol.analog: 8, BusProtocol.digitalIO: 8},
-    description: 'Rapid prototyping controller. 4 CAN/FD, 8 analog, 8 DIO. Connector J2 (Black Key): 64319211.',
+    description:
+        'Rapid-prototyping controller running the SightLine tire-intelligence models '
+        '(AQD, Leak Detection, Dynamic Friction, Dynamic Load) → output to the Display. '
+        'Vehicle CAN feeds it here. 4 CAN/CAN FD, 8 analog, 8 DIO.',
     status: InstrumentStatus.inUse,
     quantity: 1,
-    notes: 'Deployed in TATA BETA setup. Connected to Vehicle CAN 3, HUF Receiver (TMS_CAN), and Display.',
+    mustReceiveAllSignals: true,
+    notes: 'MANDATORY for Validation (models run here → Display). OPTIONAL for Calibration. '
+        'Flashed via Kvaser. Connector J2 (Black Key): 64319211.',
   ),
+
+  // ── Vector CANoe — analysis/simulation software (needs interface) ──
+  Instrument(
+    id: 'canoe',
+    name: 'CANoe',
+    brand: 'Vector',
+    category: InstrumentCategory.software,
+    supportedProtocols: {
+      BusProtocol.can2A,
+      BusProtocol.can2B,
+      BusProtocol.canFD,
+      BusProtocol.lin,
+      BusProtocol.flexRay,
+      BusProtocol.ethernet,
+    },
+    supportsCAnFD: true,
+    channelCount: {},
+    description:
+        'Bus simulation, analysis and test. Supports CAN FD — but only through an '
+        'FD-capable hardware interface. Cannot touch the vehicle without an interface.',
+    status: InstrumentStatus.available,
+    quantity: 1,
+    requiresInterface: true,
+    notes: 'Needs a Vector VN (or Kvaser via CANlib) interface to reach the bus (R2/R3).',
+  ),
+
+  // ── Vector CANape — ECU measurement + calibration (needs interface) ──
+  Instrument(
+    id: 'canape',
+    name: 'CANape',
+    brand: 'Vector',
+    category: InstrumentCategory.software,
+    supportedProtocols: {
+      BusProtocol.can2A,
+      BusProtocol.can2B,
+      BusProtocol.canFD,
+      BusProtocol.lin,
+      BusProtocol.flexRay,
+      BusProtocol.ethernet,
+    },
+    supportsCAnFD: true,
+    channelCount: {},
+    description:
+        'ECU measurement & calibration (XCP/CCP, A2L). Supports CAN FD; can run XCP on '
+        'CAN FD with the same A2L (CANoe handles this differently).',
+    status: InstrumentStatus.available,
+    quantity: 1,
+    requiresInterface: true,
+    notes: 'Needs a Vector VN/VX (or Kvaser) interface to reach the bus (R2/R3).',
+  ),
+
+  // ── Racelogic VBOX 3i Dual Antenna — GNSS (slip angle, true heading) ──
+  Instrument(
+    id: 'vbox_3i_dual',
+    name: 'VBOX 3i Dual Antenna',
+    brand: 'Racelogic',
+    category: InstrumentCategory.sensor,
+    supportedProtocols: {BusProtocol.gpsGnss, BusProtocol.can2A, BusProtocol.analog},
+    supportsCAnFD: false,
+    channelCount: {BusProtocol.gpsGnss: 1, BusProtocol.can2A: 2, BusProtocol.analog: 4},
+    description:
+        '100 Hz GPS+GLONASS logger. Dual antenna → TRUE heading + slip angle + pitch/roll '
+        '+ yaw rate, valid even at rest. CAN out to feed the logger/Raptor.',
+    status: InstrumentStatus.inUse,
+    quantity: 1,
+    dualAntenna: true,
+    notes: 'Dual antenna is essential for vehicle-dynamics/tire work (slip angle).',
+  ),
+
+  // ── Racelogic IMU (integrated with VBOX 3i) ──
+  Instrument(
+    id: 'imu',
+    name: 'IMU',
+    brand: 'Racelogic',
+    category: InstrumentCategory.sensor,
+    supportedProtocols: {BusProtocol.imu, BusProtocol.can2A},
+    supportsCAnFD: false,
+    channelCount: {BusProtocol.imu: 1},
+    description:
+        'Inertial measurement unit, Kalman-fused with the VBOX 3i to improve slip/attitude '
+        'accuracy and bridge GNSS dropouts.',
+    status: InstrumentStatus.inUse,
+    quantity: 1,
+    notes: '⚠ Confirm model (e.g. Racelogic IMU04). Integrated with VBOX 3i.',
+  ),
+
+  // ── Setup components (vehicle-specific accessories) ──
   Instrument(
     id: 'huf_receiver',
     name: 'HUF Receiver',
@@ -532,10 +672,10 @@ final List<Instrument> instrumentCatalog = [
     supportedProtocols: {BusProtocol.can2A},
     supportsCAnFD: false,
     channelCount: {BusProtocol.can2A: 1},
-    description: 'TPMS receiver for tire pressure monitoring. CAN 2.0 output (TMS_CAN).',
+    description: 'TPMS receiver → tire pressure/temperature over CAN (TMS_CAN).',
     status: InstrumentStatus.inUse,
     quantity: 1,
-    notes: 'Connected to Raptor RCM80 via TMS_CAN_1.',
+    notes: 'Tire-intelligence accessory. Typically feeds the Raptor CAL.',
   ),
   Instrument(
     id: 'display_uiux',
@@ -545,10 +685,9 @@ final List<Instrument> instrumentCatalog = [
     supportedProtocols: {BusProtocol.can2A},
     supportsCAnFD: false,
     channelCount: {BusProtocol.can2A: 1},
-    description: 'Custom display for real-time visualization.',
+    description: 'Custom display for real-time visualization. Fed by the Raptor CAL.',
     status: InstrumentStatus.inUse,
     quantity: 1,
-    notes: 'Connected to Raptor RCM80.',
   ),
   Instrument(
     id: 'power_breakout',
@@ -558,18 +697,20 @@ final List<Instrument> instrumentCatalog = [
     supportedProtocols: {},
     supportsCAnFD: false,
     channelCount: {},
-    description: 'Power distribution unit for vehicle instrumentation.',
+    description: 'Fused power distribution for the instrumentation backbone.',
     status: InstrumentStatus.inUse,
     quantity: 1,
-    notes: 'Provides fused power to GL1000, Raptor, HUF, and Display.',
+    notes: 'Provides fused power to GL2000, Raptor CAL, HUF, Display, VBOX.',
   ),
 ];
 
 
-// ─── TATA BETA OBD Pinout ───────────────────────────────────────────────────
+// ─── Example Vehicle: TATA BETA (EV) ────────────────────────────────────────
+// Demonstrates the fixed parallel backbone (every bus → GL2000 AND Raptor CAL)
+// and an FD bus (CAN 3) that trips the R9 conflict against the classic-only GL2000.
 const List<OBDPin> tataBetaOBDPinout = [
   OBDPin(pinNumber: 1,  description: 'Ignition'),
-  OBDPin(pinNumber: 2,  description: 'ADAS CANH',        protocol: BusProtocol.can2A, isHighLine: true),
+  OBDPin(pinNumber: 2,  description: 'ADAS CANH',        protocol: BusProtocol.canFD, isHighLine: true),
   OBDPin(pinNumber: 3,  description: 'EV CANH',          protocol: BusProtocol.can2A, isHighLine: true),
   OBDPin(pinNumber: 4,  description: 'Chassis Ground'),
   OBDPin(pinNumber: 5,  description: 'Signal Ground'),
@@ -577,68 +718,68 @@ const List<OBDPin> tataBetaOBDPinout = [
   OBDPin(pinNumber: 7,  description: 'PT_CAN H',         protocol: BusProtocol.can2A, isHighLine: true),
   OBDPin(pinNumber: 8,  description: 'Body CANH',        protocol: BusProtocol.can2A, isHighLine: true),
   OBDPin(pinNumber: 9,  description: 'Body CANL',        protocol: BusProtocol.can2A, isHighLine: false),
-  OBDPin(pinNumber: 10, description: 'ADAS CANL',        protocol: BusProtocol.can2A, isHighLine: false),
-  OBDPin(pinNumber: 11, description: 'EV CAN',           protocol: BusProtocol.can2A, isHighLine: false),
+  OBDPin(pinNumber: 10, description: 'ADAS CANL',        protocol: BusProtocol.canFD, isHighLine: false),
+  OBDPin(pinNumber: 11, description: 'EV CANL',          protocol: BusProtocol.can2A, isHighLine: false),
   OBDPin(pinNumber: 12, description: 'BCM LIN2 (Sunroof)', protocol: BusProtocol.lin),
-  OBDPin(pinNumber: 13, description: 'BCM LIN1 (Front + Rear PDC)', protocol: BusProtocol.lin),
+  OBDPin(pinNumber: 13, description: 'BCM LIN1 (PDC)',   protocol: BusProtocol.lin),
   OBDPin(pinNumber: 14, description: 'Diagnostics CANL', protocol: BusProtocol.can2A, isHighLine: false),
   OBDPin(pinNumber: 15, description: 'PT_CAN L',         protocol: BusProtocol.can2A, isHighLine: false),
   OBDPin(pinNumber: 16, description: 'Battery Positive'),
 ];
 
-
-// ─── TATA BETA Vehicle Profile ──────────────────────────────────────────────
 final VehicleProfile tataBetaProfile = VehicleProfile(
   id: 'tata_beta',
   name: 'TATA BETA (EV)',
   manufacturer: 'Tata Motors',
   buses: const [
-    VehicleBus(id: 'adas_can',  name: 'ADAS CAN',        protocol: BusProtocol.can2A, obdPinHigh: 2,  obdPinLow: 10, description: 'Advanced Driver Assistance System'),
-    VehicleBus(id: 'ev_can',    name: 'EV CAN',          protocol: BusProtocol.can2A, obdPinHigh: 3,  obdPinLow: 11, description: 'Electric Vehicle powertrain'),
-    VehicleBus(id: 'diag_can',  name: 'Diagnostics CAN', protocol: BusProtocol.can2A, obdPinHigh: 6,  obdPinLow: 14, description: 'OBD-II diagnostics'),
-    VehicleBus(id: 'pt_can',    name: 'PT_CAN',          protocol: BusProtocol.can2A, obdPinHigh: 7,  obdPinLow: 15, description: 'Powertrain CAN bus'),
-    VehicleBus(id: 'body_can',  name: 'Body CAN',        protocol: BusProtocol.can2A, obdPinHigh: 8,  obdPinLow: 9,  description: 'Body electronics'),
-    VehicleBus(id: 'lin1',      name: 'BCM LIN1',        protocol: BusProtocol.lin,   obdPinHigh: 13, description: 'Front + Rear PDC'),
-    VehicleBus(id: 'lin2',      name: 'BCM LIN2',        protocol: BusProtocol.lin,   obdPinHigh: 12, description: 'Sunroof'),
+    VehicleBus(id: 'pt_can',   name: 'Vehicle CAN 1 · PT_CAN',   protocol: BusProtocol.can2A, obdPinHigh: 7, obdPinLow: 15, description: 'Powertrain'),
+    VehicleBus(id: 'body_can', name: 'Vehicle CAN 2 · Body CAN', protocol: BusProtocol.can2A, obdPinHigh: 8, obdPinLow: 9,  description: 'Body electronics'),
+    VehicleBus(id: 'adas_can', name: 'Vehicle CAN 3 · ADAS',     protocol: BusProtocol.canFD, obdPinHigh: 2, obdPinLow: 10, description: 'ADAS — CAN FD (GL2000 cannot log this!)'),
   ],
   obdPinout: tataBetaOBDPinout,
   schematicNodes: [
-    // Vehicle source
-    SchematicNode(id: 'obd_port',       label: 'Vehicle OBD',    sublabel: 'TATA BETA',     nodeType: InstrumentCategory.connector, x: 0.08, y: 0.45),
-    // CAN buses (fan out)
-    SchematicNode(id: 'can1_bus',       label: 'Vehicle CAN 1',  sublabel: 'PT_CAN',        nodeType: InstrumentCategory.connector, x: 0.28, y: 0.15),
-    SchematicNode(id: 'can2_bus',       label: 'Vehicle CAN 2',  sublabel: 'Body CAN',      nodeType: InstrumentCategory.connector, x: 0.28, y: 0.45),
-    SchematicNode(id: 'can3_bus',       label: 'Vehicle CAN 3',  sublabel: 'ADAS CAN',      nodeType: InstrumentCategory.connector, x: 0.28, y: 0.75),
-    // Instruments
-    SchematicNode(id: 'gl1000',         label: 'Vector GL1000',  sublabel: 'Data Logger',    nodeType: InstrumentCategory.logger, instrumentId: 'gl1000', x: 0.52, y: 0.22),
-    SchematicNode(id: 'raptor',         label: 'Raptor RCM80',   sublabel: 'ECU',            nodeType: InstrumentCategory.ecu, instrumentId: 'raptor_rcm80', x: 0.52, y: 0.65),
-    // Downstream
-    SchematicNode(id: 'huf',            label: 'HUF Receiver',   sublabel: 'TPMS',           nodeType: InstrumentCategory.receiver, instrumentId: 'huf_receiver', x: 0.75, y: 0.50),
-    SchematicNode(id: 'display',        label: 'Display UI/UX',  sublabel: 'Visualization',  nodeType: InstrumentCategory.display, instrumentId: 'display_uiux', x: 0.75, y: 0.80),
-    // Power
-    SchematicNode(id: 'power_bar',      label: 'Power Breakout', sublabel: 'Distribution',   nodeType: InstrumentCategory.power, instrumentId: 'power_breakout', x: 0.52, y: 0.02),
-    // Software / PC
-    SchematicNode(id: 'pc_sw',          label: 'PC / CANalyzer', sublabel: 'Analysis',       nodeType: InstrumentCategory.software, instrumentId: 'canalyzer', x: 0.92, y: 0.22),
+    // Vehicle source + buses (fan out)
+    SchematicNode(id: 'obd_port', label: 'Vehicle OBD', sublabel: 'TATA BETA', nodeType: InstrumentCategory.connector, x: 0.06, y: 0.50),
+    SchematicNode(id: 'can1_bus', label: 'CAN 1 · PT',  sublabel: 'CAN 2.0',  nodeType: InstrumentCategory.connector, x: 0.24, y: 0.22),
+    SchematicNode(id: 'can2_bus', label: 'CAN 2 · Body', sublabel: 'CAN 2.0', nodeType: InstrumentCategory.connector, x: 0.24, y: 0.50),
+    SchematicNode(id: 'can3_bus', label: 'CAN 3 · ADAS', sublabel: 'CAN FD',  nodeType: InstrumentCategory.connector, x: 0.24, y: 0.78),
+    // Backbone: GL2000 + Raptor CAL (both receive all buses)
+    SchematicNode(id: 'gl2000', label: 'GL2000', sublabel: 'Logger (no FD)', nodeType: InstrumentCategory.logger, instrumentId: 'gl2000', x: 0.52, y: 0.30),
+    SchematicNode(id: 'raptor', label: 'Raptor CAL', sublabel: 'Controller', nodeType: InstrumentCategory.ecu, instrumentId: 'raptor_cal', x: 0.52, y: 0.68),
+    // GNSS / inertial
+    SchematicNode(id: 'vbox', label: 'VBOX 3i', sublabel: 'Dual Antenna', nodeType: InstrumentCategory.sensor, instrumentId: 'vbox_3i_dual', x: 0.80, y: 0.20),
+    SchematicNode(id: 'imu', label: 'IMU', sublabel: 'Inertial', nodeType: InstrumentCategory.sensor, instrumentId: 'imu', x: 0.80, y: 0.42),
+    // Downstream accessories
+    SchematicNode(id: 'huf', label: 'HUF', sublabel: 'TPMS', nodeType: InstrumentCategory.receiver, instrumentId: 'huf_receiver', x: 0.80, y: 0.64),
+    SchematicNode(id: 'display', label: 'Display', sublabel: 'UI/UX', nodeType: InstrumentCategory.display, instrumentId: 'display_uiux', x: 0.80, y: 0.86),
+    // PC software + power
+    SchematicNode(id: 'pc_sw', label: 'PC · CANoe/CANape', sublabel: 'via Kvaser', nodeType: InstrumentCategory.software, instrumentId: 'canoe', x: 0.52, y: 0.94),
+    SchematicNode(id: 'power_bar', label: 'Power Breakout', sublabel: 'Distribution', nodeType: InstrumentCategory.power, instrumentId: 'power_breakout', x: 0.52, y: 0.04),
   ],
   schematicConnections: [
-    // OBD to CAN buses
-    SchematicConnection(fromNodeId: 'obd_port', toNodeId: 'can1_bus', label: 'PT_CAN',   protocol: BusProtocol.can2A, busIndex: 1),
-    SchematicConnection(fromNodeId: 'obd_port', toNodeId: 'can2_bus', label: 'Body CAN',  protocol: BusProtocol.can2A, busIndex: 2),
-    SchematicConnection(fromNodeId: 'obd_port', toNodeId: 'can3_bus', label: 'ADAS CAN',  protocol: BusProtocol.can2A, busIndex: 3),
-    // CAN 1 & 2 → GL1000
-    SchematicConnection(fromNodeId: 'can1_bus',  toNodeId: 'gl1000',  label: 'Vehicle CAN 1', protocol: BusProtocol.can2A, busIndex: 1),
-    SchematicConnection(fromNodeId: 'can2_bus',  toNodeId: 'gl1000',  label: 'Vehicle CAN 2', protocol: BusProtocol.can2A, busIndex: 2),
-    // CAN 3 → Raptor
-    SchematicConnection(fromNodeId: 'can3_bus',  toNodeId: 'raptor',  label: 'Vehicle CAN 3', protocol: BusProtocol.can2A, busIndex: 3),
-    // Raptor → HUF (TMS_CAN)
-    SchematicConnection(fromNodeId: 'raptor',    toNodeId: 'huf',     label: 'TMS_CAN_1',     protocol: BusProtocol.can2A),
-    // Raptor → Display
-    SchematicConnection(fromNodeId: 'raptor',    toNodeId: 'display', label: 'Display CAN',   protocol: BusProtocol.can2A),
-    // GL1000 → PC
-    SchematicConnection(fromNodeId: 'gl1000',    toNodeId: 'pc_sw',   label: 'USB / SD',      protocol: BusProtocol.can2A),
-    // Power connections (shown as lines but no data protocol)
-    SchematicConnection(fromNodeId: 'power_bar', toNodeId: 'gl1000',  label: 'Power',          protocol: BusProtocol.analog),
-    SchematicConnection(fromNodeId: 'power_bar', toNodeId: 'raptor',  label: 'Power',          protocol: BusProtocol.analog),
+    // OBD → buses
+    SchematicConnection(fromNodeId: 'obd_port', toNodeId: 'can1_bus', label: 'PT_CAN',  protocol: BusProtocol.can2A, busIndex: 1),
+    SchematicConnection(fromNodeId: 'obd_port', toNodeId: 'can2_bus', label: 'Body',    protocol: BusProtocol.can2A, busIndex: 2),
+    SchematicConnection(fromNodeId: 'obd_port', toNodeId: 'can3_bus', label: 'ADAS FD', protocol: BusProtocol.canFD, busIndex: 3),
+    // Parallel backbone (R8): every bus → GL2000 AND Raptor CAL
+    SchematicConnection(fromNodeId: 'can1_bus', toNodeId: 'gl2000', label: 'CAN 1', protocol: BusProtocol.can2A, busIndex: 1),
+    SchematicConnection(fromNodeId: 'can1_bus', toNodeId: 'raptor', label: 'CAN 1', protocol: BusProtocol.can2A, busIndex: 1),
+    SchematicConnection(fromNodeId: 'can2_bus', toNodeId: 'gl2000', label: 'CAN 2', protocol: BusProtocol.can2A, busIndex: 2),
+    SchematicConnection(fromNodeId: 'can2_bus', toNodeId: 'raptor', label: 'CAN 2', protocol: BusProtocol.can2A, busIndex: 2),
+    SchematicConnection(fromNodeId: 'can3_bus', toNodeId: 'gl2000', label: 'CAN 3 (FD!)', protocol: BusProtocol.canFD, busIndex: 3),
+    SchematicConnection(fromNodeId: 'can3_bus', toNodeId: 'raptor', label: 'CAN 3', protocol: BusProtocol.canFD, busIndex: 3),
+    // Raptor → accessories
+    SchematicConnection(fromNodeId: 'raptor', toNodeId: 'huf',     label: 'TMS_CAN', protocol: BusProtocol.can2A),
+    SchematicConnection(fromNodeId: 'raptor', toNodeId: 'display', label: 'Display', protocol: BusProtocol.can2A),
+    // GNSS / inertial → backbone
+    SchematicConnection(fromNodeId: 'imu',  toNodeId: 'vbox',   label: 'IMU fuse', protocol: BusProtocol.imu),
+    SchematicConnection(fromNodeId: 'vbox', toNodeId: 'raptor', label: 'GPS CAN',  protocol: BusProtocol.can2A),
+    SchematicConnection(fromNodeId: 'vbox', toNodeId: 'gl2000', label: 'GPS CAN',  protocol: BusProtocol.can2A),
+    // PC software (via interface)
+    SchematicConnection(fromNodeId: 'can3_bus', toNodeId: 'pc_sw', label: 'FD via Kvaser', protocol: BusProtocol.canFD, busIndex: 3),
+    // Power
+    SchematicConnection(fromNodeId: 'power_bar', toNodeId: 'gl2000', label: 'Power', protocol: BusProtocol.analog),
+    SchematicConnection(fromNodeId: 'power_bar', toNodeId: 'raptor', label: 'Power', protocol: BusProtocol.analog),
   ],
 );
 

@@ -86,7 +86,7 @@ class _AppNavigationState extends State<AppNavigation>
       ));
     }
 
-    // 7. Updates & Trends & Instruments (web only)
+    // 7. Updates & Trends (web only)
     if (kIsWeb) {
       list.addAll([
         const _TabSpec(
@@ -101,14 +101,16 @@ class _AppNavigationState extends State<AppNavigation>
           label: 'Trends',
           branchIndex: 8,
         ),
-        const _TabSpec(
-          icon: 'precision_manufacturing',
-          selectedIcon: 'precision_manufacturing',
-          label: 'Instruments',
-          branchIndex: 9,
-        ),
       ]);
     }
+
+    // 8. Instruments (web + mobile) — instrumentation setup planner
+    list.add(const _TabSpec(
+      icon: 'precision_manufacturing',
+      selectedIcon: 'precision_manufacturing',
+      label: 'Instruments',
+      branchIndex: 9,
+    ));
 
     return list;
   }

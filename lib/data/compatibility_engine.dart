@@ -96,6 +96,7 @@ class CompatibilityEngine {
     required Set<BusProtocol> vehicleProtocols,
     required List<Instrument> selectedInstruments,
     int requiredCANChannels = 3,
+    bool requiresSlipAngle = false,
   }) {
     final results = <CompatibilityResult>[];
 
@@ -236,6 +237,71 @@ class CompatibilityEngine {
       }
     }
 
+    // ── R2. Software needs a hardware interface to reach the bus ──
+    final software =
+        selectedInstruments.where((i) => i.requiresInterface).toList();
+    final hasInterface =
+        selectedInstruments.any((i) => i.isBusInterface);
+    if (software.isNotEmpty && !hasInterface) {
+      for (final s in software) {
+        results.add(CompatibilityResult(
+          severity: WarningSeverity.error,
+          title: '${s.name} — No Hardware Interface',
+          message:
+              '${s.name} is software and cannot reach the vehicle bus on its own. '
+              'It needs a hardware interface (Kvaser / Vector VN).',
+          instrumentId: s.id,
+          recommendation: 'Add a Kvaser or Vector VN interface to the setup.',
+        ));
+      }
+    }
+
+    // ── R8. Parallel backbone: every signal must reach Raptor CAL AND the GL2000 ──
+    if (vehicleProtocols.isNotEmpty) {
+      final backbone =
+          selectedInstruments.where((i) => i.mustReceiveAllSignals).toList();
+      final hasLogger =
+          backbone.any((i) => i.category == InstrumentCategory.logger);
+      final hasController =
+          backbone.any((i) => i.category == InstrumentCategory.ecu);
+      if (!hasLogger) {
+        results.add(const CompatibilityResult(
+          severity: WarningSeverity.warning,
+          title: 'No Primary Logger (GL2000)',
+          message:
+              'The backbone rule says every signal is logged on the GL2000, '
+              'but no data logger is selected — signals would not be recorded.',
+          recommendation: 'Add the GL2000 data logger.',
+        ));
+      }
+      if (!hasController) {
+        results.add(const CompatibilityResult(
+          severity: WarningSeverity.warning,
+          title: 'No Raptor CAL Controller',
+          message:
+              'The backbone rule says every signal also feeds the Raptor CAL, '
+              'but no controller is selected — real-time / calibration path is missing.',
+          recommendation: 'Add the Raptor CAL (RCM80).',
+        ));
+      }
+    }
+
+    // ── R4. Slip angle / low-speed heading requires a dual-antenna GNSS ──
+    if (requiresSlipAngle) {
+      final hasDual = selectedInstruments.any((i) => i.dualAntenna);
+      if (!hasDual) {
+        results.add(const CompatibilityResult(
+          severity: WarningSeverity.error,
+          title: 'Slip Angle — No Dual-Antenna GNSS',
+          message:
+              'Slip angle and low/zero-speed true heading need a dual-antenna GNSS. '
+              'A single-antenna receiver only derives heading from motion.',
+          relatedProtocol: BusProtocol.gpsGnss,
+          recommendation: 'Add the VBOX 3i Dual Antenna (with IMU).',
+        ));
+      }
+    }
+
     // ── 4. Overall compatibility check ──
     if (results.every((r) => r.severity == WarningSeverity.success || r.severity == WarningSeverity.info)) {
       results.insert(0, const CompatibilityResult(
@@ -248,33 +314,149 @@ class CompatibilityEngine {
     return ValidationReport(results);
   }
 
-  /// Recommend an FD-capable replacement for a given instrument
+  /// Recommend how to handle a CAN FD bus given a device that can't do FD.
+  /// (No FD logger exists in inventory — the GL2000 is classic-CAN only.)
   static String _recommendFDUpgrade(Instrument instrument) {
     if (instrument.category == InstrumentCategory.logger) {
-      switch (instrument.id) {
-        case 'gl1000':
-        case 'gl2000':
-          return 'Upgrade to Vector GL3000 (CAN FD + LIN) or GL4000 (full protocol).';
-        default:
-          return 'Use a CAN FD capable logger (GL3000+).';
-      }
+      return 'The GL2000 is classic-CAN only. Log the CAN FD bus via the Raptor CAL '
+          '(FD-capable) or CANoe/CANape with an FD-capable interface instead.';
     }
     if (instrument.category == InstrumentCategory.interfaceDevice) {
-      switch (instrument.id) {
-        case 'vn1610':
-          return 'Upgrade to Vector VN1630 (CAN FD + LIN) or VN5610 (CAN FD + Ethernet).';
-        case 'kvaser_leaf_v2':
-          return 'Upgrade to Kvaser U100 (CAN FD) or Vector VN1630.';
-        default:
-          return 'Use a CAN FD capable interface (VN1630+).';
-      }
+      return 'This interface is classic-CAN only. Use an FD-capable interface '
+          '(e.g. Kvaser U-series / Vector VN16xx) for the CAN FD bus.';
     }
-    return 'Use an instrument that supports CAN FD.';
+    return 'Route the CAN FD bus through an FD-capable device '
+        '(Raptor CAL, or CANoe/CANape + FD interface).';
   }
 
   /// Quick check: does a single instrument support a given protocol?
   static bool instrumentSupportsProtocol(Instrument instrument, BusProtocol protocol) {
     if (protocol == BusProtocol.canFD) return instrument.supportsCAnFD;
     return instrument.supportedProtocols.contains(protocol);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  PER-VEHICLE VALIDATION — the interactive planner engine
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Validate a full per-vehicle setup. Unlike [validateSetup] (which reasons over
+  /// a flat set of protocols), this evaluates each vehicle bus individually:
+  ///  • R8 — every bus must reach both the logger (GL2000) and controller (Raptor CAL)
+  ///  • R9 — a CAN FD bus cannot be logged by the classic-only GL2000
+  ///  • R5 — CAN channel budget vs number of buses
+  ///  • R2 — software needs a hardware interface
+  ///  • R4 — slip angle needs a dual-antenna GNSS
+  static ValidationReport validateVehicle({
+    required VehicleProfile vehicle,
+    required List<Instrument> selectedInstruments,
+    bool requiresSlipAngle = false,
+  }) {
+    final results = <CompatibilityResult>[];
+
+    final backbone =
+        selectedInstruments.where((i) => i.mustReceiveAllSignals).toList();
+    final loggers = backbone
+        .where((i) => i.category == InstrumentCategory.logger)
+        .toList();
+    final controllers = backbone
+        .where((i) => i.category == InstrumentCategory.ecu)
+        .toList();
+    final classicOnlyLoggers =
+        loggers.where((l) => !l.supportsCAnFD).toList();
+
+    // ── Per-bus: R8 reachability + R9 FD conflict ──
+    for (final bus in vehicle.canBuses) {
+      if (bus.isCanFD && classicOnlyLoggers.isNotEmpty) {
+        for (final l in classicOnlyLoggers) {
+          results.add(CompatibilityResult(
+            severity: WarningSeverity.error,
+            title: '${bus.name} — ${l.name} cannot log CAN FD',
+            message:
+                '${bus.name} is CAN FD, but ${l.name} is classic-CAN only. Under the '
+                '"all signals to the logger" backbone rule this bus cannot reach it.',
+            instrumentId: l.id,
+            relatedProtocol: BusProtocol.canFD,
+            recommendation:
+                'Log this FD bus via the Raptor CAL, or CANoe/CANape + an FD interface.',
+          ));
+        }
+      } else {
+        results.add(CompatibilityResult(
+          severity: WarningSeverity.success,
+          title: '${bus.name} — OK',
+          message: '${bus.name} (${bus.protocol.label}) reaches the backbone.',
+        ));
+      }
+    }
+
+    // ── R8: backbone presence ──
+    if (loggers.isEmpty) {
+      results.add(const CompatibilityResult(
+        severity: WarningSeverity.warning,
+        title: 'No Primary Logger (GL2000)',
+        message: 'No data logger selected — signals would not be recorded.',
+        recommendation: 'Add the GL2000 data logger.',
+      ));
+    }
+    if (controllers.isEmpty) {
+      results.add(const CompatibilityResult(
+        severity: WarningSeverity.warning,
+        title: 'No Raptor CAL Controller',
+        message: 'No controller selected — real-time / calibration path is missing.',
+        recommendation: 'Add the Raptor CAL (RCM80).',
+      ));
+    }
+
+    // ── R5: CAN channel budget ──
+    final busCount = vehicle.canBuses.length;
+    final availableChannels = selectedInstruments
+        .where((i) => i.mustReceiveAllSignals || i.isBusInterface)
+        .fold<int>(0, (sum, i) => sum + i.canChannels);
+    if (busCount > 0 && availableChannels < busCount) {
+      results.add(CompatibilityResult(
+        severity: WarningSeverity.warning,
+        title: 'Insufficient CAN Channels',
+        message: 'Vehicle has $busCount CAN bus(es) but the backbone provides only '
+            '$availableChannels CAN channel(s).',
+        recommendation: 'Add an interface or use a logger/controller with more channels.',
+      ));
+    } else if (busCount > 0) {
+      results.add(CompatibilityResult(
+        severity: WarningSeverity.success,
+        title: 'CAN Channel Budget OK',
+        message: '$availableChannels channel(s) available for $busCount bus(es).',
+      ));
+    }
+
+    // ── R2: software needs a hardware interface ──
+    final software =
+        selectedInstruments.where((i) => i.requiresInterface).toList();
+    final hasInterface = selectedInstruments.any((i) => i.isBusInterface);
+    if (software.isNotEmpty && !hasInterface) {
+      for (final s in software) {
+        results.add(CompatibilityResult(
+          severity: WarningSeverity.error,
+          title: '${s.name} — No Hardware Interface',
+          message: '${s.name} cannot reach the bus without a hardware interface.',
+          instrumentId: s.id,
+          recommendation: 'Add a Kvaser or Vector VN interface.',
+        ));
+      }
+    }
+
+    // ── R4: slip angle needs a dual-antenna GNSS ──
+    if (requiresSlipAngle && !selectedInstruments.any((i) => i.dualAntenna)) {
+      results.add(const CompatibilityResult(
+        severity: WarningSeverity.error,
+        title: 'Slip Angle — No Dual-Antenna GNSS',
+        message:
+            'Slip angle / low-speed heading needs a dual-antenna GNSS (single antenna '
+            'only derives heading from motion).',
+        relatedProtocol: BusProtocol.gpsGnss,
+        recommendation: 'Add the VBOX 3i Dual Antenna (with IMU).',
+      ));
+    }
+
+    return ValidationReport(results);
   }
 }
