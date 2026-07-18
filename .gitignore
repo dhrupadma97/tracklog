@@ -90,3 +90,6 @@ scripts/
 # Temporary images used during development
 CLIENT_Page3-fold1-price-banner.png
 Desert_Myst_588x330.webp
+
+# Firebase deploy cache
+.firebase/
