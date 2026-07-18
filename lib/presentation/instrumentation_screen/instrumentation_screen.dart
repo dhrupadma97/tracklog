@@ -1,5 +1,8 @@
 /// TrackLog — Instrumentation Intelligence Screen
-/// 3-tab screen: Catalog · Compatibility · Schematic
+/// 2-tab screen: Compatibility · Schematic. The owned-gear list lives in an
+/// info bottom sheet (header inventory button) instead of a Catalog tab.
+/// The schematic has two independently lockable sections: Calibration and
+/// Validation; the base wiring (OBD → buses → logger/sensors) sits around them.
 
 import 'dart:convert';
 import 'dart:ui';
@@ -82,7 +85,7 @@ class _InstrumentationScreenState extends State<InstrumentationScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
   }
 
   @override
@@ -116,6 +119,36 @@ class _InstrumentationScreenState extends State<InstrumentationScreen>
                     ),
                   ),
                   const Spacer(),
+                  // Owned-gear list (replaces the old Catalog tab)
+                  GestureDetector(
+                    onTap: () => _showInstrumentsSheet(context),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 7),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        color: _kTeal.withAlpha(15),
+                        border: Border.all(color: _kTeal.withAlpha(60)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.inventory_2_outlined,
+                              size: 14, color: _kTeal),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Instruments',
+                            style: GoogleFonts.spaceGrotesk(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: _kTeal,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
                   Icon(Icons.precision_manufacturing,
                       color: _kTeal.withAlpha(180), size: 28),
                 ],
@@ -147,7 +180,6 @@ class _InstrumentationScreenState extends State<InstrumentationScreen>
                   unselectedLabelStyle: GoogleFonts.spaceGrotesk(
                       fontSize: 12, fontWeight: FontWeight.w500),
                   tabs: const [
-                    Tab(text: 'Catalog'),
                     Tab(text: 'Compatibility'),
                     Tab(text: 'Schematic'),
                   ],
@@ -160,7 +192,6 @@ class _InstrumentationScreenState extends State<InstrumentationScreen>
               child: TabBarView(
                 controller: _tabController,
                 children: const [
-                  _CatalogTab(),
                   _CompatibilityTab(),
                   _SchematicTab(),
                 ],
@@ -174,490 +205,245 @@ class _InstrumentationScreenState extends State<InstrumentationScreen>
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-//  TAB 1 — INSTRUMENT CATALOG
+//  INSTRUMENTS INFO SHEET (owned gear — replaces the old Catalog tab)
 // ═════════════════════════════════════════════════════════════════════════════
-class _CatalogTab extends StatefulWidget {
-  const _CatalogTab();
-
-  @override
-  State<_CatalogTab> createState() => _CatalogTabState();
-}
-
-class _CatalogTabState extends State<_CatalogTab> {
-  String _filter = 'All';
-  String? _expandedId;
-
-  // Purpose-first filters: the 3 activity verticals (plus All).
-  static const _filters = [
-    'All',
-    'Calibration',
-    'Validation',
-    'Data Collection',
-  ];
-
-  List<Instrument> get _filteredCatalog {
-    switch (_filter) {
-      case 'Calibration':
-        return instrumentsForVertical(InstrumentVertical.calibration);
-      case 'Validation':
-        return instrumentsForVertical(InstrumentVertical.validation);
-      case 'Data Collection':
-        return instrumentsForVertical(InstrumentVertical.dataCollection);
-      default:
-        return instrumentCatalog;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final items = _filteredCatalog;
-    return Column(
-      children: [
-        // ── Filter Chips ──
-        SizedBox(
-          height: 44,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            itemCount: _filters.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
-            itemBuilder: (_, i) {
-              final f = _filters[i];
-              final sel = _filter == f;
-              return GestureDetector(
-                onTap: () => setState(() => _filter = f),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    gradient: sel ? _tealPurpleGradient : null,
-                    color: sel ? null : const Color(0xFF0A1025).withAlpha(180),
-                    border: sel
-                        ? null
-                        : Border.all(
-                            color: const Color(0xFF00F3FF).withAlpha(35)),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    f,
-                    style: GoogleFonts.spaceGrotesk(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: sel ? Colors.white : Colors.white70,
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-        const SizedBox(height: 8),
-        if (_filter == 'Validation') _tireModelsBanner(),
-        // ── Grid ──
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final crossCount = constraints.maxWidth > 900
-                  ? 3
-                  : constraints.maxWidth > 550
-                      ? 2
-                      : 1;
-              return GridView.builder(
-                padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: crossCount,
-                  mainAxisSpacing: 14,
-                  crossAxisSpacing: 14,
-                  childAspectRatio: 1.05,
-                ),
-                itemCount: items.length,
-                itemBuilder: (_, i) =>
-                    _InstrumentCard(
-                      instrument: items[i],
-                      isExpanded: _expandedId == items[i].id,
-                      onTap: () => setState(() {
-                        _expandedId =
-                            _expandedId == items[i].id ? null : items[i].id;
-                      }),
-                    ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  // Banner shown under the Validation filter: the SightLine models run on Raptor.
-  Widget _tireModelsBanner() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-      padding: const EdgeInsets.all(14),
+void _showInstrumentsSheet(BuildContext context) {
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (sheetCtx) => Container(
+      constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(sheetCtx).size.height * 0.85),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        color: _kPurple.withAlpha(20),
-        border: Border.all(color: _kPurple.withAlpha(70)),
+        color: const Color(0xFF0A1025).withAlpha(245),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border.all(color: _kTeal.withAlpha(40)),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(Icons.model_training, size: 16, color: _kTeal),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Tire Intelligence Models — run on Raptor CAL → Display',
-                  style: GoogleFonts.spaceGrotesk(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Raptor CAL is mandatory for validation — vehicle CAN signals feed the models here.',
-            style: GoogleFonts.spaceGrotesk(fontSize: 10, color: Colors.white54),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: tireIntelligenceModels.map((m) {
-              return Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  color: const Color(0xFF0A1025).withAlpha(200),
-                  border: Border.all(color: _kTeal.withAlpha(50)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.check_circle, size: 12, color: _kTeal),
-                    const SizedBox(width: 6),
-                    Text(
-                      m.name,
-                      style: GoogleFonts.spaceGrotesk(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                    if (m.sensor != null) ...[
-                      const SizedBox(width: 6),
-                      Text(
-                        '· ${m.sensor}',
-                        style: GoogleFonts.spaceGrotesk(
-                          fontSize: 9,
-                          color: Colors.white38,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Instrument Card ─────────────────────────────────────────────────────────
-class _InstrumentCard extends StatelessWidget {
-  final Instrument instrument;
-  final bool isExpanded;
-  final VoidCallback onTap;
-
-  const _InstrumentCard({
-    required this.instrument,
-    required this.isExpanded,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cat = instrument.category;
-    final statusCol = Color(instrument.status.colorValue);
-
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeInOut,
-        decoration: BoxDecoration(
-          color: const Color(0xFF0A1025).withAlpha(230),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: isExpanded
-                ? _kTeal.withAlpha(90)
-                : const Color(0xFF00F3FF).withAlpha(35),
-            width: isExpanded ? 1.2 : 0.8,
-          ),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Row 1: Icon + Name
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: _kTeal.withAlpha(18),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(_mapIcon(cat.icon),
-                            color: _kTeal, size: 20),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${instrument.brand} ${instrument.name}',
-                              style: GoogleFonts.spaceGrotesk(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 2),
-                            // Category badge
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: _kPurple.withAlpha(30),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                cat.label,
-                                style: GoogleFonts.spaceGrotesk(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: _kPurple,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      // Quantity
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withAlpha(8),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          'x${instrument.quantity}',
-                          style: GoogleFonts.spaceGrotesk(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: instrument.quantity > 0
-                                ? Colors.white70
-                                : Colors.red.shade300,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  // Protocol chips
-                  Wrap(
-                    spacing: 4,
-                    runSpacing: 4,
-                    children: instrument.supportedProtocols.map((p) {
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Color(p.colorValue).withAlpha(25),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                              color: Color(p.colorValue).withAlpha(60)),
-                        ),
-                        child: Text(
-                          p.shortLabel,
-                          style: GoogleFonts.spaceGrotesk(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w700,
-                            color: Color(p.colorValue),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 8),
-                  // CAN FD + Status + Channels
-                  Row(
-                    children: [
-                      // CAN FD badge
-                      Icon(
-                        instrument.supportsCAnFD
-                            ? Icons.check_circle
-                            : Icons.cancel,
-                        size: 14,
-                        color: instrument.supportsCAnFD
-                            ? const Color(0xFF4CAF50)
-                            : const Color(0xFFFF4D6A),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'CAN FD',
-                        style: GoogleFonts.spaceGrotesk(
-                          fontSize: 10,
-                          color: Colors.white54,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      // Status
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: statusCol.withAlpha(25),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          instrument.status.label,
-                          style: GoogleFonts.spaceGrotesk(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w600,
-                            color: statusCol,
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                      // Channel count
-                      if (instrument.totalChannels > 0)
-                        Text(
-                          '${instrument.totalChannels} ch',
-                          style: GoogleFonts.spaceGrotesk(
-                            fontSize: 10,
-                            color: Colors.white38,
-                          ),
-                        ),
-                    ],
-                  ),
-                  // ── Expanded Details ──
-                  if (isExpanded) ...[
-                    const SizedBox(height: 10),
-                    Divider(color: _kTeal.withAlpha(30), height: 1),
-                    const SizedBox(height: 8),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              instrument.description,
-                              style: GoogleFonts.spaceGrotesk(
-                                fontSize: 11,
-                                color: Colors.white70,
-                                height: 1.4,
-                              ),
-                            ),
-                            if (instrument.notes != null) ...[
-                              const SizedBox(height: 6),
-                              Text(
-                                'Notes: ${instrument.notes}',
-                                style: GoogleFonts.spaceGrotesk(
-                                  fontSize: 10,
-                                  color: _kTeal.withAlpha(180),
-                                  fontStyle: FontStyle.italic,
-                                  height: 1.3,
-                                ),
-                              ),
-                            ],
-                            if (instrument.calibrationDueDate != null) ...[
-                              const SizedBox(height: 6),
-                              Row(
-                                children: [
-                                  Icon(Icons.event,
-                                      size: 12,
-                                      color: Colors.white38),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    'Cal due: ${instrument.calibrationDueDate!.toIso8601String().substring(0, 10)}',
-                                    style: GoogleFonts.spaceGrotesk(
-                                      fontSize: 10,
-                                      color: Colors.white38,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                            const SizedBox(height: 6),
-                            // Channel breakdown
-                            if (instrument.channelCount.isNotEmpty) ...[
-                              Text(
-                                'Channels:',
-                                style: GoogleFonts.spaceGrotesk(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white54,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              ...instrument.channelCount.entries.map((e) {
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 2),
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        width: 6,
-                                        height: 6,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: Color(e.key.colorValue),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        '${e.key.label}: ${e.value}',
-                                        style: GoogleFonts.spaceGrotesk(
-                                          fontSize: 10,
-                                          color: Colors.white54,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
           ),
-        ),
+          const SizedBox(height: 14),
+          Text(
+            'Owned Instruments',
+            style: GoogleFonts.spaceGrotesk(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: Colors.white),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'The real gear, grouped by activity — a tool can serve more than one.',
+            style:
+                GoogleFonts.spaceGrotesk(fontSize: 10.5, color: Colors.white54),
+          ),
+          const SizedBox(height: 12),
+          Flexible(
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                for (final v in InstrumentVertical.values) ...[
+                  Row(
+                    children: [
+                      Icon(_verticalIcon(v), size: 14, color: _kTeal),
+                      const SizedBox(width: 8),
+                      Text(
+                        v.label,
+                        style: GoogleFonts.spaceGrotesk(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${instrumentsForVertical(v).length}',
+                        style: GoogleFonts.spaceGrotesk(
+                            fontSize: 11, color: Colors.white38),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  if (v == InstrumentVertical.validation) _modelsStrip(),
+                  ...instrumentsForVertical(v).map(_instrumentTile),
+                  const SizedBox(height: 14),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
-    );
+    ),
+  );
+}
+
+IconData _verticalIcon(InstrumentVertical v) {
+  switch (v) {
+    case InstrumentVertical.calibration:
+      return Icons.tune;
+    case InstrumentVertical.validation:
+      return Icons.verified_outlined;
+    case InstrumentVertical.dataCollection:
+      return Icons.storage;
   }
+}
+
+/// SightLine models strip — shown under Validation (run on Raptor → Display).
+Widget _modelsStrip() {
+  return Container(
+    margin: const EdgeInsets.only(bottom: 8),
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(12),
+      color: _kPurple.withAlpha(20),
+      border: Border.all(color: _kPurple.withAlpha(70)),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Tire Intelligence Models — run on Raptor CAL → Display',
+          style: GoogleFonts.spaceGrotesk(
+              fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.white),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: tireIntelligenceModels.map((m) {
+            return Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                color: const Color(0xFF0A1025).withAlpha(200),
+                border: Border.all(color: _kTeal.withAlpha(50)),
+              ),
+              child: Text(
+                m.sensor == null ? m.name : '${m.name} · ${m.sensor}',
+                style: GoogleFonts.spaceGrotesk(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    ),
+  );
+}
+
+Widget _instrumentTile(Instrument i) {
+  final statusCol = Color(i.status.colorValue);
+  return Container(
+    margin: const EdgeInsets.only(bottom: 6),
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(12),
+      color: const Color(0xFF0A1025).withAlpha(200),
+      border: Border.all(color: _kTeal.withAlpha(30)),
+    ),
+    child: Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: _kTeal.withAlpha(15),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(_mapIcon(i.category.icon), size: 16, color: _kTeal),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      i.name,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.spaceGrotesk(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '×${i.quantity}',
+                    style: GoogleFonts.spaceGrotesk(
+                        fontSize: 10, color: Colors.white38),
+                  ),
+                ],
+              ),
+              Text(
+                '${i.brand} · ${i.category.label}'
+                '${i.canChannels > 0 ? ' · ${i.canChannels} CAN ch' : ''}',
+                style: GoogleFonts.spaceGrotesk(
+                    fontSize: 9.5, color: Colors.white54),
+              ),
+              if (i.supportedProtocols.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 3,
+                  children: [
+                    ...i.supportedProtocols.map((p) => Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 5, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(5),
+                            color: Color(p.colorValue).withAlpha(20),
+                            border: Border.all(
+                                color: Color(p.colorValue).withAlpha(50)),
+                          ),
+                          child: Text(
+                            p.shortLabel,
+                            style: GoogleFonts.spaceGrotesk(
+                                fontSize: 8,
+                                fontWeight: FontWeight.w700,
+                                color: Color(p.colorValue)),
+                          ),
+                        )),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(7),
+            color: statusCol.withAlpha(20),
+            border: Border.all(color: statusCol.withAlpha(70)),
+          ),
+          child: Text(
+            i.status.label,
+            style: GoogleFonts.spaceGrotesk(
+                fontSize: 8.5,
+                fontWeight: FontWeight.w600,
+                color: statusCol),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1130,6 +916,95 @@ class _SchematicTabState extends State<_SchematicTab>
 
   bool get _canEdit => _config != null && !_config!.isLocked;
 
+  /// True when the node belongs to a locked section (Calibration/Validation).
+  bool _nodeLocked(SchematicNode n) =>
+      _config?.isSectionLocked(n.section) ?? false;
+
+  // ── Section zones on the canvas ───────────────────────────────────────────
+  /// Outlined regions bounding each section's nodes, with a heading chip that
+  /// opens the section's Validate & Lock sheet.
+  List<Widget> _sectionZones(double w, double h) {
+    const nw = 120.0, nh = 60.0;
+    final out = <Widget>[];
+    for (final s in const [
+      SchematicSection.calibration,
+      SchematicSection.validation,
+    ]) {
+      final members =
+          _profile.schematicNodes.where((n) => n.section == s).toList();
+      if (members.isEmpty) continue;
+      double minX = members.map((n) => n.x).reduce(min) * w - nw / 2 - 14;
+      double maxX = members.map((n) => n.x).reduce(max) * w + nw / 2 + 14;
+      double minY = members.map((n) => n.y).reduce(min) * h - nh / 2 - 12;
+      double maxY = members.map((n) => n.y).reduce(max) * h + nh / 2 + 12;
+      minX = minX.clamp(2.0, w - 60.0);
+      maxX = maxX.clamp(minX + 60.0, w - 2.0);
+      minY = minY.clamp(20.0, h - 44.0);
+      maxY = maxY.clamp(minY + 40.0, h - 2.0);
+      final locked = _config?.isSectionLocked(s) ?? false;
+      final col = s == SchematicSection.calibration
+          ? const Color(0xFFFFB547)
+          : _kPurple;
+      out.add(Positioned(
+        left: minX,
+        top: minY,
+        width: maxX - minX,
+        height: maxY - minY,
+        child: IgnorePointer(
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              color: col.withAlpha(locked ? 14 : 8),
+              border: Border.all(
+                color: col.withAlpha(locked ? 130 : 60),
+                width: locked ? 1.4 : 1,
+              ),
+            ),
+          ),
+        ),
+      ));
+      out.add(Positioned(
+        left: minX + 10,
+        top: minY - 11,
+        child: GestureDetector(
+          onTap: () => _sectionLockSheet(s),
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(9),
+              color: const Color(0xFF0A1025),
+              border: Border.all(color: col.withAlpha(locked ? 160 : 90)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  locked ? Icons.lock : Icons.lock_open_outlined,
+                  size: 10,
+                  color: col,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  locked
+                      ? '${s.label.toUpperCase()} · LOCKED'
+                      : s.label.toUpperCase(),
+                  style: GoogleFonts.spaceGrotesk(
+                    fontSize: 8.5,
+                    fontWeight: FontWeight.w700,
+                    color: col,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ));
+    }
+    return out;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1334,6 +1209,8 @@ class _SchematicTabState extends State<_SchematicTab>
                                   selectedNodeId: _selectedNodeId,
                                 ),
                               ),
+                              // Lockable section zones (Calibration / Validation)
+                              ..._sectionZones(w, h),
                               // Interactive node overlays
                               ..._profile.schematicNodes.map((node) {
                                 final nx = node.x * w;
@@ -1350,7 +1227,9 @@ class _SchematicTabState extends State<_SchematicTab>
                                   child: GestureDetector(
                                     onTap: () =>
                                         _onNodeTap(context, node),
-                                    onPanUpdate: (_editMode && _canEdit)
+                                    onPanUpdate: (_editMode &&
+                                            _canEdit &&
+                                            !_nodeLocked(node))
                                         ? (d) => setState(() {
                                               node.x = ((node.x * w +
                                                           d.delta.dx) /
@@ -1633,9 +1512,22 @@ class _SchematicTabState extends State<_SchematicTab>
         _saveNow,
       ),
       const SizedBox(width: 8),
-      _tbBtn(Icons.verified_user, 'Validate & Lock', false,
-          _validateAndLockSheet),
+      _sectionBtn(SchematicSection.calibration),
+      const SizedBox(width: 8),
+      _sectionBtn(SchematicSection.validation),
     ];
+  }
+
+  /// Toolbar button for one lockable section — shows its lock state and opens
+  /// the section's Validate & Lock sheet.
+  Widget _sectionBtn(SchematicSection s) {
+    final locked = _config?.isSectionLocked(s) ?? false;
+    return _tbBtn(
+      locked ? Icons.lock : Icons.lock_open_outlined,
+      s.label,
+      locked,
+      () => _sectionLockSheet(s),
+    );
   }
 
   Widget _tbBtn(
@@ -1740,6 +1632,12 @@ class _SchematicTabState extends State<_SchematicTab>
     if (ok == true && _config != null) {
       final inst =
           instrumentCatalog.where((i) => i.id == instId).firstOrNull;
+      final sec = sectionForInstrument(instId);
+      if (_config!.isSectionLocked(sec)) {
+        _toast('${sec.label} is locked — unlock it to add '
+            '${inst?.name ?? 'this node'}');
+        return;
+      }
       setState(() {
         _config!.nodes.add(SchematicNode(
           id: 'n${DateTime.now().microsecondsSinceEpoch}',
@@ -1798,6 +1696,11 @@ class _SchematicTabState extends State<_SchematicTab>
                         itemCount: _profile.schematicConnections.length,
                         itemBuilder: (_, i) {
                           final conn = _profile.schematicConnections[i];
+                          final connLocked = _profile.schematicNodes.any(
+                              (n) =>
+                                  (n.id == conn.fromNodeId ||
+                                      n.id == conn.toNodeId) &&
+                                  _nodeLocked(n));
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 6),
                             child: Row(
@@ -1822,20 +1725,30 @@ class _SchematicTabState extends State<_SchematicTab>
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
-                                GestureDetector(
-                                  onTap: () {
-                                    setSheet(() {});
-                                    setState(() {
-                                      _config?.connections.remove(conn);
-                                      _dirty = true;
-                                    });
-                                  },
-                                  child: const Padding(
-                                    padding: EdgeInsets.all(4),
-                                    child: Icon(Icons.delete_outline,
-                                        size: 16, color: Color(0xFFFF4D6A)),
-                                  ),
-                                ),
+                                connLocked
+                                    ? const Padding(
+                                        padding: EdgeInsets.all(4),
+                                        child: Icon(Icons.lock,
+                                            size: 14,
+                                            color: Colors.white24),
+                                      )
+                                    : GestureDetector(
+                                        onTap: () {
+                                          setSheet(() {});
+                                          setState(() {
+                                            _config?.connections
+                                                .remove(conn);
+                                            _dirty = true;
+                                          });
+                                        },
+                                        child: const Padding(
+                                          padding: EdgeInsets.all(4),
+                                          child: Icon(
+                                              Icons.delete_outline,
+                                              size: 16,
+                                              color: Color(0xFFFF4D6A)),
+                                        ),
+                                      ),
                               ],
                             ),
                           );
@@ -1850,10 +1763,17 @@ class _SchematicTabState extends State<_SchematicTab>
     );
   }
 
-  // ── Validate & Lock ───────────────────────────────────────────────────────
-  void _validateAndLockSheet() {
+  // ── Section Validate & Lock ───────────────────────────────────────────────
+  void _sectionLockSheet(SchematicSection s) {
     final c = _config;
-    if (c == null) return;
+    if (c == null) {
+      _toast('Cloud sync required to lock sections');
+      return;
+    }
+    if (c.sectionLock(s).locked) {
+      _sectionUnlockDialog(s);
+      return;
+    }
     final profile = _profile;
     final instruments = instrumentCatalog
         .where((i) => profile.schematicNodes.any((n) => n.instrumentId == i.id))
@@ -1882,15 +1802,16 @@ class _SchematicTabState extends State<_SchematicTab>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Validate & Lock — ${c.name} v${c.version}',
+            Text('Validate & Lock — ${s.label} · ${c.name} v${c.version}',
                 style: GoogleFonts.spaceGrotesk(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                     color: Colors.white)),
             const SizedBox(height: 4),
             Text(
-              'Locking freezes this schematic and instrument list for the test. '
-              'A locked version cannot be edited — start a New Version instead.',
+              'Locking freezes the ${s.label} section — its nodes and wiring. '
+              'When Calibration AND Validation are both locked, the whole '
+              'config is locked for the test.',
               style: GoogleFonts.spaceGrotesk(
                   fontSize: 10.5, color: Colors.white54, height: 1.4),
             ),
@@ -1992,10 +1913,14 @@ class _SchematicTabState extends State<_SchematicTab>
                               final by = EngineerAuthService
                                       .instance.currentUser?.email ??
                                   'engineer';
-                              await _repo.lockConfig(c, lockedBy: by);
+                              await _repo.lockSection(c, s,
+                                  lockedBy: by);
+                              final fullyLocked = c.bothSectionsLocked;
                               await _loadConfigs();
-                              _toast(
-                                  '${c.name} v${c.version} locked ✓');
+                              _toast(fullyLocked
+                                  ? 'Both sections locked — '
+                                      '${c.name} v${c.version} is locked ✓'
+                                  : '${s.label} locked ✓');
                             } catch (e) {
                               _toast('Lock failed — $e');
                             }
@@ -2011,7 +1936,9 @@ class _SchematicTabState extends State<_SchematicTab>
                             canLock ? null : Colors.white.withAlpha(10),
                       ),
                       child: Text(
-                        canLock ? 'Confirm Lock 🔒' : 'Fix errors to lock',
+                        canLock
+                            ? 'Lock ${s.label} 🔒'
+                            : 'Fix errors to lock',
                         style: GoogleFonts.spaceGrotesk(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
@@ -2029,6 +1956,52 @@ class _SchematicTabState extends State<_SchematicTab>
         ),
       ),
     );
+  }
+
+  /// Confirm + unlock a locked section (drops the config back to draft).
+  Future<void> _sectionUnlockDialog(SchematicSection s) async {
+    final c = _config;
+    if (c == null) return;
+    final ls = c.sectionLock(s);
+    final by = ls.by?.split('@').first ?? 'unknown';
+    final when = ls.at == null
+        ? ''
+        : ' on ${ls.at!.toLocal().toString().split('.').first}';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dCtx) => AlertDialog(
+        backgroundColor: const Color(0xFF0A1025),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Unlock ${s.label}?',
+            style: GoogleFonts.spaceGrotesk(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: Colors.white)),
+        content: Text(
+          'Locked by $by$when. Unlocking makes its nodes editable again '
+          'and drops the config back to draft.',
+          style: GoogleFonts.spaceGrotesk(
+              fontSize: 12, color: Colors.white70, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dCtx, false),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(dCtx, true),
+              child: const Text('Unlock')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await _repo.unlockSection(c, s);
+      await _loadConfigs();
+      _toast('${s.label} unlocked — editable again');
+    } catch (e) {
+      _toast('Unlock failed — $e');
+    }
   }
 
   // ── Buses & Pins editor (+ DBC per bus) ───────────────────────────────────
@@ -2741,6 +2714,13 @@ class _SchematicTabState extends State<_SchematicTab>
   /// Complete a link started in link mode: pick protocol + label, then add.
   Future<void> _finishLink(SchematicNode toNode) async {
     final fromId = _linkFromId!;
+    final fromNode =
+        _profile.schematicNodes.where((n) => n.id == fromId).firstOrNull;
+    if ((fromNode != null && _nodeLocked(fromNode)) || _nodeLocked(toNode)) {
+      _toast('Locked section — unlock it to change its wiring');
+      setState(() => _linkFromId = null);
+      return;
+    }
     BusProtocol proto = BusProtocol.can2A;
     final labelCtrl = TextEditingController(text: 'CAN');
     final ok = await showDialog<bool>(
@@ -2961,7 +2941,38 @@ class _SchematicTabState extends State<_SchematicTab>
                 ),
               ),
             ],
-            if (_editMode && _canEdit) ...[
+            if (_nodeLocked(node)) ...[
+              const SizedBox(height: 16),
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    color: const Color(0xFF4CAF50).withAlpha(15),
+                    border: Border.all(
+                        color: const Color(0xFF4CAF50).withAlpha(80)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.lock,
+                          size: 13, color: Color(0xFF4CAF50)),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${node.section.label} is locked — unlock to edit',
+                        style: GoogleFonts.spaceGrotesk(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF4CAF50),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+            if (_editMode && _canEdit && !_nodeLocked(node)) ...[
               const SizedBox(height: 16),
               Center(
                 child: GestureDetector(

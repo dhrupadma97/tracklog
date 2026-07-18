@@ -159,6 +159,49 @@ extension InstrumentVerticalExt on InstrumentVertical {
   }
 }
 
+// ─── Schematic Section (lockable grouping on the canvas) ────────────────────
+/// The two independently lockable schematic groups + the base wiring.
+/// Base = OBD → buses → logger/sensor backbone (the data-collection layer).
+enum SchematicSection { base, calibration, validation }
+
+extension SchematicSectionExt on SchematicSection {
+  String get label {
+    switch (this) {
+      case SchematicSection.base: return 'Base';
+      case SchematicSection.calibration: return 'Calibration';
+      case SchematicSection.validation: return 'Validation';
+    }
+  }
+}
+
+/// Default schematic section for an instrument. CANape + Kvaser are the
+/// calibration tools; the validation chain is Raptor (models) → Display with
+/// CANoe for analysis. Everything else (buses, logger, sensors, power) = base.
+SchematicSection sectionForInstrument(String? instrumentId) {
+  switch (instrumentId) {
+    case 'canape':
+    case 'kvaser':
+      return SchematicSection.calibration;
+    case 'raptor_cal':
+    case 'canoe':
+    case 'display_uiux':
+      return SchematicSection.validation;
+    default:
+      return SchematicSection.base;
+  }
+}
+
+/// Parse a [SchematicSection] from its stored name; legacy rows without one
+/// fall back to the instrument default.
+SchematicSection schematicSectionFromName(String? name, {String? instrumentId}) {
+  if (name == null) return sectionForInstrument(instrumentId);
+  return SchematicSection.values.firstWhere(
+    (s) => s.name == name,
+    orElse: () => sectionForInstrument(instrumentId),
+  );
+}
+
+
 const Map<InstrumentVertical, Set<String>> verticalInstrumentIds = {
   // Calibration — Raptor is OPTIONAL here. Kvaser flashes the Raptor ECU firmware.
   InstrumentVertical.calibration: {'canape', 'kvaser', 'raptor_cal', 'power_breakout'},
@@ -409,6 +452,7 @@ class SchematicNode {
   final String? sublabel;
   final InstrumentCategory nodeType;
   final String? instrumentId; // links to Instrument.id if applicable
+  final SchematicSection section; // lockable grouping (base = unsectioned)
   double x; // position (fraction 0..1 of canvas width)
   double y; // position (fraction 0..1 of canvas height)
 
@@ -418,9 +462,10 @@ class SchematicNode {
     this.sublabel,
     required this.nodeType,
     this.instrumentId,
+    SchematicSection? section,
     required this.x,
     required this.y,
-  });
+  }) : section = section ?? sectionForInstrument(instrumentId);
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -428,6 +473,7 @@ class SchematicNode {
         'sublabel': sublabel,
         'nodeType': nodeType.name,
         'instrumentId': instrumentId,
+        'section': section.name,
         'x': x,
         'y': y,
       };
@@ -438,6 +484,8 @@ class SchematicNode {
         sublabel: j['sublabel'] as String?,
         nodeType: instrumentCategoryFromName(j['nodeType'] as String?),
         instrumentId: j['instrumentId'] as String?,
+        section: schematicSectionFromName(j['section'] as String?,
+            instrumentId: j['instrumentId'] as String?),
         x: (j['x'] as num?)?.toDouble() ?? 0.5,
         y: (j['y'] as num?)?.toDouble() ?? 0.5,
       );
@@ -706,11 +754,11 @@ final List<Instrument> instrumentCatalog = [
 
 
 // ─── Example Vehicle: TATA BETA (EV) ────────────────────────────────────────
-// Demonstrates the fixed parallel backbone (every bus → GL2000 AND Raptor CAL)
-// and an FD bus (CAN 3) that trips the R9 conflict against the classic-only GL2000.
+// Demonstrates the fixed parallel backbone (every bus → GL2000 AND Raptor CAL).
+// All three CAN buses are classic CAN 2.0 (confirmed — ADAS is NOT CAN FD).
 const List<OBDPin> tataBetaOBDPinout = [
   OBDPin(pinNumber: 1,  description: 'Ignition'),
-  OBDPin(pinNumber: 2,  description: 'ADAS CANH',        protocol: BusProtocol.canFD, isHighLine: true),
+  OBDPin(pinNumber: 2,  description: 'ADAS CANH',        protocol: BusProtocol.can2A, isHighLine: true),
   OBDPin(pinNumber: 3,  description: 'EV CANH',          protocol: BusProtocol.can2A, isHighLine: true),
   OBDPin(pinNumber: 4,  description: 'Chassis Ground'),
   OBDPin(pinNumber: 5,  description: 'Signal Ground'),
@@ -718,7 +766,7 @@ const List<OBDPin> tataBetaOBDPinout = [
   OBDPin(pinNumber: 7,  description: 'PT_CAN H',         protocol: BusProtocol.can2A, isHighLine: true),
   OBDPin(pinNumber: 8,  description: 'Body CANH',        protocol: BusProtocol.can2A, isHighLine: true),
   OBDPin(pinNumber: 9,  description: 'Body CANL',        protocol: BusProtocol.can2A, isHighLine: false),
-  OBDPin(pinNumber: 10, description: 'ADAS CANL',        protocol: BusProtocol.canFD, isHighLine: false),
+  OBDPin(pinNumber: 10, description: 'ADAS CANL',        protocol: BusProtocol.can2A, isHighLine: false),
   OBDPin(pinNumber: 11, description: 'EV CANL',          protocol: BusProtocol.can2A, isHighLine: false),
   OBDPin(pinNumber: 12, description: 'BCM LIN2 (Sunroof)', protocol: BusProtocol.lin),
   OBDPin(pinNumber: 13, description: 'BCM LIN1 (PDC)',   protocol: BusProtocol.lin),
@@ -734,40 +782,41 @@ final VehicleProfile tataBetaProfile = VehicleProfile(
   buses: const [
     VehicleBus(id: 'pt_can',   name: 'Vehicle CAN 1 · PT_CAN',   protocol: BusProtocol.can2A, obdPinHigh: 7, obdPinLow: 15, description: 'Powertrain'),
     VehicleBus(id: 'body_can', name: 'Vehicle CAN 2 · Body CAN', protocol: BusProtocol.can2A, obdPinHigh: 8, obdPinLow: 9,  description: 'Body electronics'),
-    VehicleBus(id: 'adas_can', name: 'Vehicle CAN 3 · ADAS',     protocol: BusProtocol.canFD, obdPinHigh: 2, obdPinLow: 10, description: 'ADAS — CAN FD (GL2000 cannot log this!)'),
+    VehicleBus(id: 'adas_can', name: 'Vehicle CAN 3 · ADAS',     protocol: BusProtocol.can2A, obdPinHigh: 2, obdPinLow: 10, description: 'ADAS'),
   ],
   obdPinout: tataBetaOBDPinout,
   schematicNodes: [
-    // Vehicle source + buses (fan out)
+    // Vehicle source + buses (fan out) — base wiring
     SchematicNode(id: 'obd_port', label: 'Vehicle OBD', sublabel: 'TATA BETA', nodeType: InstrumentCategory.connector, x: 0.06, y: 0.50),
     SchematicNode(id: 'can1_bus', label: 'CAN 1 · PT',  sublabel: 'CAN 2.0',  nodeType: InstrumentCategory.connector, x: 0.24, y: 0.22),
     SchematicNode(id: 'can2_bus', label: 'CAN 2 · Body', sublabel: 'CAN 2.0', nodeType: InstrumentCategory.connector, x: 0.24, y: 0.50),
-    SchematicNode(id: 'can3_bus', label: 'CAN 3 · ADAS', sublabel: 'CAN FD',  nodeType: InstrumentCategory.connector, x: 0.24, y: 0.78),
-    // Backbone: GL2000 + Raptor CAL (both receive all buses)
-    SchematicNode(id: 'gl2000', label: 'GL2000', sublabel: 'Logger (no FD)', nodeType: InstrumentCategory.logger, instrumentId: 'gl2000', x: 0.52, y: 0.30),
-    SchematicNode(id: 'raptor', label: 'Raptor CAL', sublabel: 'Controller', nodeType: InstrumentCategory.ecu, instrumentId: 'raptor_cal', x: 0.52, y: 0.68),
-    // GNSS / inertial
+    SchematicNode(id: 'can3_bus', label: 'CAN 3 · ADAS', sublabel: 'CAN 2.0', nodeType: InstrumentCategory.connector, x: 0.24, y: 0.78),
+    // Backbone: GL2000 logs everything (base); Raptor runs the models (Validation)
+    SchematicNode(id: 'gl2000', label: 'GL2000', sublabel: 'Logger', nodeType: InstrumentCategory.logger, instrumentId: 'gl2000', x: 0.52, y: 0.30),
+    SchematicNode(id: 'raptor', label: 'Raptor CAL', sublabel: 'Models', nodeType: InstrumentCategory.ecu, instrumentId: 'raptor_cal', x: 0.52, y: 0.68),
+    // GNSS / inertial — base sensing
     SchematicNode(id: 'vbox', label: 'VBOX 3i', sublabel: 'Dual Antenna', nodeType: InstrumentCategory.sensor, instrumentId: 'vbox_3i_dual', x: 0.80, y: 0.20),
     SchematicNode(id: 'imu', label: 'IMU', sublabel: 'Inertial', nodeType: InstrumentCategory.sensor, instrumentId: 'imu', x: 0.80, y: 0.42),
     // Downstream accessories
     SchematicNode(id: 'huf', label: 'HUF', sublabel: 'TPMS', nodeType: InstrumentCategory.receiver, instrumentId: 'huf_receiver', x: 0.80, y: 0.64),
     SchematicNode(id: 'display', label: 'Display', sublabel: 'UI/UX', nodeType: InstrumentCategory.display, instrumentId: 'display_uiux', x: 0.80, y: 0.86),
-    // PC software + power
-    SchematicNode(id: 'pc_sw', label: 'PC · CANoe/CANape', sublabel: 'via Kvaser', nodeType: InstrumentCategory.software, instrumentId: 'canoe', x: 0.52, y: 0.94),
+    // PC software (CANape = Calibration section, CANoe = Validation section)
+    SchematicNode(id: 'pc_canape', label: 'CANape', sublabel: 'via Kvaser', nodeType: InstrumentCategory.software, instrumentId: 'canape', x: 0.24, y: 0.94),
+    SchematicNode(id: 'pc_canoe', label: 'CANoe', sublabel: 'via Kvaser', nodeType: InstrumentCategory.software, instrumentId: 'canoe', x: 0.62, y: 0.94),
     SchematicNode(id: 'power_bar', label: 'Power Breakout', sublabel: 'Distribution', nodeType: InstrumentCategory.power, instrumentId: 'power_breakout', x: 0.52, y: 0.04),
   ],
   schematicConnections: [
     // OBD → buses
     SchematicConnection(fromNodeId: 'obd_port', toNodeId: 'can1_bus', label: 'PT_CAN',  protocol: BusProtocol.can2A, busIndex: 1),
     SchematicConnection(fromNodeId: 'obd_port', toNodeId: 'can2_bus', label: 'Body',    protocol: BusProtocol.can2A, busIndex: 2),
-    SchematicConnection(fromNodeId: 'obd_port', toNodeId: 'can3_bus', label: 'ADAS FD', protocol: BusProtocol.canFD, busIndex: 3),
+    SchematicConnection(fromNodeId: 'obd_port', toNodeId: 'can3_bus', label: 'ADAS',    protocol: BusProtocol.can2A, busIndex: 3),
     // Parallel backbone (R8): every bus → GL2000 AND Raptor CAL
     SchematicConnection(fromNodeId: 'can1_bus', toNodeId: 'gl2000', label: 'CAN 1', protocol: BusProtocol.can2A, busIndex: 1),
     SchematicConnection(fromNodeId: 'can1_bus', toNodeId: 'raptor', label: 'CAN 1', protocol: BusProtocol.can2A, busIndex: 1),
     SchematicConnection(fromNodeId: 'can2_bus', toNodeId: 'gl2000', label: 'CAN 2', protocol: BusProtocol.can2A, busIndex: 2),
     SchematicConnection(fromNodeId: 'can2_bus', toNodeId: 'raptor', label: 'CAN 2', protocol: BusProtocol.can2A, busIndex: 2),
-    SchematicConnection(fromNodeId: 'can3_bus', toNodeId: 'gl2000', label: 'CAN 3 (FD!)', protocol: BusProtocol.canFD, busIndex: 3),
-    SchematicConnection(fromNodeId: 'can3_bus', toNodeId: 'raptor', label: 'CAN 3', protocol: BusProtocol.canFD, busIndex: 3),
+    SchematicConnection(fromNodeId: 'can3_bus', toNodeId: 'gl2000', label: 'CAN 3', protocol: BusProtocol.can2A, busIndex: 3),
+    SchematicConnection(fromNodeId: 'can3_bus', toNodeId: 'raptor', label: 'CAN 3', protocol: BusProtocol.can2A, busIndex: 3),
     // Raptor → accessories
     SchematicConnection(fromNodeId: 'raptor', toNodeId: 'huf',     label: 'TMS_CAN', protocol: BusProtocol.can2A),
     SchematicConnection(fromNodeId: 'raptor', toNodeId: 'display', label: 'Display', protocol: BusProtocol.can2A),
@@ -775,8 +824,10 @@ final VehicleProfile tataBetaProfile = VehicleProfile(
     SchematicConnection(fromNodeId: 'imu',  toNodeId: 'vbox',   label: 'IMU fuse', protocol: BusProtocol.imu),
     SchematicConnection(fromNodeId: 'vbox', toNodeId: 'raptor', label: 'GPS CAN',  protocol: BusProtocol.can2A),
     SchematicConnection(fromNodeId: 'vbox', toNodeId: 'gl2000', label: 'GPS CAN',  protocol: BusProtocol.can2A),
-    // PC software (via interface)
-    SchematicConnection(fromNodeId: 'can3_bus', toNodeId: 'pc_sw', label: 'FD via Kvaser', protocol: BusProtocol.canFD, busIndex: 3),
+    // PC software: CANape flashes/calibrates the Raptor (via Kvaser);
+    // CANoe analyses the vehicle buses (via Kvaser)
+    SchematicConnection(fromNodeId: 'pc_canape', toNodeId: 'raptor', label: 'Flash/XCP', protocol: BusProtocol.can2A),
+    SchematicConnection(fromNodeId: 'can1_bus', toNodeId: 'pc_canoe', label: 'Analysis', protocol: BusProtocol.can2A, busIndex: 1),
     // Power
     SchematicConnection(fromNodeId: 'power_bar', toNodeId: 'gl2000', label: 'Power', protocol: BusProtocol.analog),
     SchematicConnection(fromNodeId: 'power_bar', toNodeId: 'raptor', label: 'Power', protocol: BusProtocol.analog),

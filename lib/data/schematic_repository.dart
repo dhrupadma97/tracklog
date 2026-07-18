@@ -6,6 +6,27 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'instrumentation_data.dart';
 
+/// Lock state of one schematic section (calibration / validation).
+class SectionLockState {
+  bool locked;
+  String? by;
+  DateTime? at;
+
+  SectionLockState({this.locked = false, this.by, this.at});
+
+  factory SectionLockState.fromJson(Map<String, dynamic> j) => SectionLockState(
+        locked: j['locked'] as bool? ?? false,
+        by: j['by'] as String?,
+        at: j['at'] == null ? null : DateTime.tryParse(j['at'] as String),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'locked': locked,
+        'by': by,
+        'at': at?.toIso8601String(),
+      };
+}
+
 /// One vehicle instrumentation schematic (a row in `instrumentation_configs`).
 class InstrConfig {
   final String id;
@@ -20,6 +41,10 @@ class InstrConfig {
   String? lockedBy;
   DateTime? lockedAt;
 
+  /// Per-section locks, keyed by [SchematicSection.name]
+  /// ('calibration' | 'validation'). Base wiring is never section-locked.
+  Map<String, SectionLockState> sectionLocks;
+
   InstrConfig({
     required this.id,
     required this.name,
@@ -32,12 +57,24 @@ class InstrConfig {
     this.version = 1,
     this.lockedBy,
     this.lockedAt,
+    Map<String, SectionLockState>? sectionLocks,
   })  : buses = buses ?? [],
         obdPinout = obdPinout ?? [],
         nodes = nodes ?? [],
-        connections = connections ?? [];
+        connections = connections ?? [],
+        sectionLocks = sectionLocks ?? {};
 
   bool get isLocked => status == 'locked';
+
+  SectionLockState sectionLock(SchematicSection s) =>
+      sectionLocks[s.name] ?? SectionLockState();
+
+  bool isSectionLocked(SchematicSection s) =>
+      s != SchematicSection.base && (sectionLocks[s.name]?.locked ?? false);
+
+  bool get bothSectionsLocked =>
+      isSectionLocked(SchematicSection.calibration) &&
+      isSectionLocked(SchematicSection.validation);
 
   String get displayName =>
       isLocked ? '$name · v$version 🔒' : '$name · v$version (draft)';
@@ -76,6 +113,12 @@ class InstrConfig {
         lockedAt: row['locked_at'] == null
             ? null
             : DateTime.tryParse(row['locked_at'] as String),
+        sectionLocks: ((row['section_locks'] as Map?) ?? {}).map(
+          (k, v) => MapEntry(
+            k as String,
+            SectionLockState.fromJson(Map<String, dynamic>.from(v as Map)),
+          ),
+        ),
       );
 
   Map<String, dynamic> toContentRow() => {
@@ -85,6 +128,8 @@ class InstrConfig {
         'obd_pinout': obdPinout.map((p) => p.toJson()).toList(),
         'nodes': nodes.map((n) => n.toJson()).toList(),
         'connections': connections.map((c) => c.toJson()).toList(),
+        'section_locks':
+            sectionLocks.map((k, v) => MapEntry(k, v.toJson())),
       };
 }
 
@@ -133,23 +178,49 @@ class SchematicRepository {
     return InstrConfig.fromRow(Map<String, dynamic>.from(row));
   }
 
-  /// Lock a validated draft: freezes schematic + instrument list for the test.
-  Future<void> lockConfig(InstrConfig config, {required String lockedBy}) async {
+  /// Lock one section (Calibration / Validation) of a config. When both
+  /// sections are locked the whole config flips to status 'locked' (frozen,
+  /// and protected from deletion by RLS).
+  Future<void> lockSection(InstrConfig config, SchematicSection section,
+      {required String lockedBy}) async {
+    config.sectionLocks[section.name] = SectionLockState(
+      locked: true,
+      by: lockedBy,
+      at: DateTime.now().toUtc(),
+    );
+    final fullyLocked = config.bothSectionsLocked;
     await _client.from(_table).update({
       ...config.toContentRow(), // persist latest edits along with the lock
-      'status': 'locked',
-      'locked_by': lockedBy,
-      'locked_at': DateTime.now().toUtc().toIso8601String(),
+      if (fullyLocked) 'status': 'locked',
+      if (fullyLocked) 'locked_by': lockedBy,
+      if (fullyLocked)
+        'locked_at': DateTime.now().toUtc().toIso8601String(),
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     }).eq('id', config.id);
   }
 
-  /// Start a new editable version from a locked config. Returns the new draft.
+  /// Unlock a section again. Always drops the whole-config status back to
+  /// draft (a config is only fully locked while BOTH sections are locked).
+  Future<void> unlockSection(
+      InstrConfig config, SchematicSection section) async {
+    config.sectionLocks[section.name] = SectionLockState(locked: false);
+    await _client.from(_table).update({
+      ...config.toContentRow(),
+      'status': 'draft',
+      'locked_by': null,
+      'locked_at': null,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', config.id);
+  }
+
+  /// Start a new editable version from a locked config. Returns the new draft
+  /// (section locks cleared).
   Future<InstrConfig> newVersionFrom(InstrConfig locked) async {
     final row = await _client
         .from(_table)
         .insert({
           ...locked.toContentRow(),
+          'section_locks': <String, dynamic>{},
           'status': 'draft',
           'version': locked.version + 1,
         })

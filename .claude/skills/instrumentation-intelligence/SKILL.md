@@ -23,17 +23,23 @@ for CANoe/CANape but a GL1000 logger can't join an FD bus") and **answer queries
 - **Nav:** Instruments tab is now shown on **web AND mobile** (mobile-nav gate removed in
   `app_navigation.dart`).
 
-## UX direction (2026-07-17 — ease-first, from Dhrupad)
+## UX direction (2026-07-17 — ease-first, from Dhrupad; revised 2026-07-18)
 - **Simplicity over compatibility policing.** FD compatibility is NOT the headline — keep the data
   correct (GL2000 = classic CAN only) but do not build the UI around FD warnings. Emphasize making
   setup **easy**.
 - **Only real owned gear** — never introduce general/reference instruments.
-- **Three verticals** organize the feature: **Calibration / Validation / Data Collection**. A tool
-  can belong to more than one. Proposed mapping (confirm w/ Dhrupad):
-  - Calibration → Raptor CAL, CANape
-  - Validation → CANoe, VBOX 3i Dual, IMU
-  - Data Collection → GL2000, HUF, VBOX 3i Dual, IMU
-  - Kvaser → shared interface across all
+- **NO Catalog tab, no filter nav bars** (Dhrupad 2026-07-18: "those nav bars making more
+  complicated") — the owned-gear list lives in an **info bottom sheet** (header "Instruments"
+  button), grouped by the 3 verticals. Screen has just 2 tabs: Compatibility · Schematic.
+- **Schematic has two separately lockable sections** — locked headings **Calibration** and
+  **Validation** rendered as zones on the canvas; base wiring (OBD → buses → GL2000/sensors) is
+  effectively the data-collection layer and stays around them (Dhrupad picked: separately lockable;
+  just Cal+Val headings; keep Compatibility tab).
+  - Schematic section mapping (`sectionForInstrument`): Calibration = CANape, Kvaser;
+    Validation = Raptor CAL, CANoe, Display; everything else = base.
+- **⚠ ADAS is NOT CAN FD** — Dhrupad 2026-07-18: TATA BETA CAN 3 (ADAS) is classic CAN. The FD
+  demo value was synthetic and wrong. All three TATA BETA buses are CAN 2.0. Do not reintroduce
+  FD example data without a real vehicle spec.
 - **Animated OBD-II pinout per vehicle** — render the 16-pin OBD-II connector from each vehicle's
   `obdPinout`, glow/animate active pins by bus (CAN/LIN/power/ground). Data already exists
   (`tataBetaOBDPinout`).
@@ -76,9 +82,10 @@ for CANoe/CANape but a GL1000 logger can't join an FD bus") and **answer queries
 - ✅ Supabase migration `supabase/migrations/20260718090000_instrumentation_configs.sql` — ONE
   JSONB table `instrumentation_configs` (name, buses, obd_pinout, nodes, connections, status
   draft|locked, version, locked_by/at). RLS: authenticated CRUD; locked rows cannot be deleted.
-  **Both migrations applied in prod 2026-07-18** (Dhrupad, SQL editor; verified via REST probe —
-  both tables return 200). If the Schematic tab shows the cloud-off banner now, suspect
-  auth/network, not missing schema.
+  **First two migrations applied in prod 2026-07-18** (Dhrupad, SQL editor; verified via REST
+  probe). Third migration `20260718150000_section_locks.sql` (section_locks column + stale demo
+  draft cleanup) must also be applied for section locking to save. If the Schematic tab shows
+  the cloud-off banner, suspect auth/network, not missing schema.
 - ✅ `schematic_repository.dart` rewritten: `InstrConfig` model (+`toProfile()`), fetch/save/
   createFromProfile (auto-seeds TATA BETA on first run)/lock/newVersion/deleteDraft.
 - ✅ JSON serialization on OBDPin/VehicleBus/SchematicNode/SchematicConnection
@@ -87,6 +94,26 @@ for CANoe/CANape but a GL1000 logger can't join an FD bus") and **answer queries
   with node dragging (pan), Add node dialog, Link mode (tap 2 nodes → protocol+label dialog),
   Wires sheet (delete connections), node sheet Remove button, Save, and **Validate & Lock** sheet
   (runs `validateVehicle`; lock blocked while errors exist; locked = green badge + New Version).
+**Phase 2.5 — Ease-first restructure + section locks** *(built 2026-07-18, after Dhrupad's live
+feedback)*
+- ✅ Catalog tab REMOVED (2 tabs left: Compatibility · Schematic); owned gear moved to an
+  info bottom sheet via the header "Instruments" button (grouped by the 3 verticals, with the
+  tire-models strip under Validation).
+- ✅ ADAS bus corrected to classic CAN everywhere (pinout pins 2/10, bus def, template nodes +
+  connections); pc_sw node split into `pc_canape` (Calibration) + `pc_canoe` (Validation).
+- ✅ `SchematicSection` enum (base/calibration/validation) + `SchematicNode.section` (serialized;
+  legacy rows derive from instrumentId via `sectionForInstrument`).
+- ✅ Per-section locks: `SectionLockState` map on InstrConfig → column `section_locks` (migration
+  `20260718150000_section_locks.sql`, which ALSO deletes the stale 'TATA BETA (EV)' draft so it
+  re-seeds corrected). Repo: `lockSection`/`unlockSection` replace `lockConfig`; both-locked ⇒
+  row status 'locked' (+ RLS delete protection); unlock any section ⇒ back to 'draft'.
+  `newVersionFrom` clears section locks.
+- ✅ UI: amber Calibration / purple Validation zone outlines auto-bounding their nodes, heading
+  chips with lock state (tap → per-section Validate & Lock sheet; locked → unlock confirm
+  dialog). Toolbar: Calibration/Validation lock buttons replace the old global Validate & Lock.
+  Locked sections: no drag/remove/link/add/wire-delete for member nodes (lock note shown in the
+  node sheet; wires list shows a lock icon).
+
 **Phase 3 — DBC management** *(built 2026-07-18 — analyze clean)*
 - ✅ `lib/data/dbc_parser.dart` — minimal Vector DBC parser (BO_ messages + SG_ signal names,
   extended-ID detection). Browsing-grade, not a full toolchain.
