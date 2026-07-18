@@ -1390,6 +1390,23 @@ class _SchematicTabState extends State<_SchematicTab>
               child: const Icon(Icons.add, size: 16, color: _kTeal),
             ),
           ),
+          if (!_config!.isLocked) ...[
+            const SizedBox(width: 6),
+            GestureDetector(
+              onTap: _renameConfig,
+              child: Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  color: _kTeal.withAlpha(15),
+                  border: Border.all(color: _kTeal.withAlpha(60)),
+                ),
+                child: const Icon(Icons.drive_file_rename_outline,
+                    size: 15, color: _kTeal),
+              ),
+            ),
+          ],
         ],
       ],
     );
@@ -1427,12 +1444,14 @@ class _SchematicTabState extends State<_SchematicTab>
       ),
     );
     if (ok != true) return;
+    final name = nameCtrl.text.trim();
+    if (name.isEmpty) {
+      _toast('Name required — vehicle not created');
+      return;
+    }
     try {
-      final created = await _repo.createFromProfile(allVehicleProfiles.first);
-      if (nameCtrl.text.trim().isNotEmpty) {
-        created.name = nameCtrl.text.trim();
-        await _repo.saveConfig(created);
-      }
+      final created = await _repo
+          .createFromProfile(allVehicleProfiles.first, name: name);
       setState(() {
         _configs.insert(0, created);
         _config = created;
@@ -1441,6 +1460,52 @@ class _SchematicTabState extends State<_SchematicTab>
       _toast('Created "${created.name}" — starts from the standard backbone');
     } catch (e) {
       _toast('Could not create vehicle — $e');
+    }
+  }
+
+  /// Rename the selected draft config.
+  Future<void> _renameConfig() async {
+    final c = _config;
+    if (c == null || c.isLocked) return;
+    final ctrl = TextEditingController(text: c.name);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dCtx) => AlertDialog(
+        backgroundColor: const Color(0xFF0A1025),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Rename Vehicle',
+            style: GoogleFonts.spaceGrotesk(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: Colors.white)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: GoogleFonts.spaceGrotesk(fontSize: 13, color: Colors.white),
+          decoration: const InputDecoration(labelText: 'Vehicle name'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dCtx, false),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(dCtx, true),
+              child: const Text('Rename')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final name = ctrl.text.trim();
+    if (name.isEmpty || name == c.name) return;
+    final oldName = c.name;
+    setState(() => c.name = name);
+    try {
+      await _repo.saveConfig(c);
+      _toast('Renamed to "$name"');
+    } catch (e) {
+      setState(() => c.name = oldName);
+      _toast('Rename failed — $e');
     }
   }
 

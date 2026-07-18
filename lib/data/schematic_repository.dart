@@ -158,12 +158,14 @@ class SchematicRepository {
   }
 
   /// Create a new draft config seeded from a [VehicleProfile] (e.g. the
-  /// built-in TATA BETA template). Returns the created config.
-  Future<InstrConfig> createFromProfile(VehicleProfile profile) async {
+  /// built-in TATA BETA template). Returns the created config. Pass [name] to
+  /// name it in the same insert — avoids clones stuck with the template name.
+  Future<InstrConfig> createFromProfile(VehicleProfile profile,
+      {String? name}) async {
     final row = await _client
         .from(_table)
         .insert({
-          'name': profile.name,
+          'name': name ?? profile.name,
           'manufacturer': profile.manufacturer,
           'buses': profile.buses.map((b) => b.toJson()).toList(),
           'obd_pinout': profile.obdPinout.map((p) => p.toJson()).toList(),
