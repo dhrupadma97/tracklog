@@ -81,6 +81,80 @@ extension BusProtocolExt on BusProtocol {
 }
 
 
+// ─── Schematic wire colours ─────────────────────────────────────────────────
+// Colouring wires by protocol alone made the canvas unreadable: every vehicle
+// bus is classic CAN, so nearly every line rendered the same red. Wires are now
+// coloured by BUS IDENTITY first — CAN 1 / CAN 2 / CAN 3 each get their own hue
+// — and fall back to the signal family only for links that ride no vehicle bus.
+
+/// Per-bus hues, widely separated and legible on the dark canvas.
+const List<int> kBusPalette = [
+  0xFFFFB300, // bus 1 — amber
+  0xFF2E9BFF, // bus 2 — blue
+  0xFFFF4FD8, // bus 3 — magenta
+  0xFFA6E22E, // bus 4 — lime
+  0xFFFF7043, // bus 5 — deep orange
+  0xFF9C7BFF, // bus 6 — violet
+];
+
+const int kWirePowerColor = 0xFFFF4D4D;  // power — red, wiring convention
+const int kWireGroundColor = 0xFF90A4AE; // ground — grey
+const int kWireGnssColor = 0xFF00E676;   // GPS / GNSS — green
+const int kWireImuColor = 0xFFFFA270;    // inertial — warm orange
+const int kWireFlashColor = 0xFFB388FF;  // calibration / flashing — violet
+const int kWireDeviceColor = 0xFF00E5D0; // device ↔ device link — aqua
+
+/// Colour of one schematic wire, chosen for maximum visual separation.
+/// Order matters: power/ground first, then vehicle-bus identity, then the
+/// signal family for everything that rides no numbered bus.
+int wireColorValue(SchematicConnection c) {
+  final l = c.label.toLowerCase();
+  if (l.contains('power') || l.contains('12v') || l.contains('supply')) {
+    return kWirePowerColor;
+  }
+  if (l.contains('gnd') || l.contains('ground')) return kWireGroundColor;
+
+  final idx = c.busIndex;
+  if (idx != null && idx > 0) return kBusPalette[(idx - 1) % kBusPalette.length];
+
+  if (l.contains('flash') || l.contains('xcp')) return kWireFlashColor;
+  if (l.contains('gps') || l.contains('gnss')) return kWireGnssColor;
+
+  switch (c.protocol) {
+    case BusProtocol.imu: return kWireImuColor;
+    case BusProtocol.gpsGnss: return kWireGnssColor;
+    case BusProtocol.analog: return 0xFF81C784;
+    case BusProtocol.lin: return 0xFFB388FF;
+    case BusProtocol.ethernet: return 0xFF4FC3F7;
+    case BusProtocol.video: return 0xFFE040FB;
+    case BusProtocol.digitalIO: return 0xFFFFD54F;
+    case BusProtocol.sent: return 0xFF80DEEA;
+    case BusProtocol.flexRay: return 0xFFFFA726;
+    default: return kWireDeviceColor;
+  }
+}
+
+/// Legend grouping key for a wire — the bus it belongs to, or its signal family.
+/// Wires sharing a key share a colour, so the legend has one row per key.
+String wireLegendKey(SchematicConnection c) {
+  final l = c.label.toLowerCase();
+  if (l.contains('power') || l.contains('12v') || l.contains('supply')) {
+    return 'Power';
+  }
+  if (l.contains('gnd') || l.contains('ground')) return 'Ground';
+  final idx = c.busIndex;
+  if (idx != null && idx > 0) return 'CAN $idx';
+  if (l.contains('flash') || l.contains('xcp')) return 'Calibration / flash';
+  if (l.contains('gps') || l.contains('gnss')) return 'GPS / GNSS';
+  switch (c.protocol) {
+    case BusProtocol.imu: return 'Inertial';
+    case BusProtocol.gpsGnss: return 'GPS / GNSS';
+    case BusProtocol.analog: return 'Analog';
+    default: return 'Device link';
+  }
+}
+
+
 /// Parse a [BusProtocol] from its stored name (JSON); falls back to classic CAN.
 BusProtocol busProtocolFromName(String? name) {
   if (name == null) return BusProtocol.can2A;
@@ -147,6 +221,34 @@ extension InstrumentCategoryExt on InstrumentCategory {
 // ─── Instrument Vertical (activity grouping) ────────────────────────────────
 // The 3 verticals the engineer thinks in: Calibration / Validation / Data
 // Collection. A tool can belong to several; Kvaser + Power are shared infra.
+// ─── Sites (where the gear physically lives) ────────────────────────────────
+/// The two locations holding SightLine instrumentation. An instrument may be
+/// present at one site or both.
+enum InstrumentSite { natrax, hyderabad }
+
+extension InstrumentSiteExt on InstrumentSite {
+  String get label {
+    switch (this) {
+      case InstrumentSite.natrax: return 'NATRAX';
+      case InstrumentSite.hyderabad: return 'Hyderabad';
+    }
+  }
+
+  String get subtitle {
+    switch (this) {
+      case InstrumentSite.natrax: return 'Proving Ground, Indore';
+      case InstrumentSite.hyderabad: return 'Goodyear, Hyderabad';
+    }
+  }
+
+  int get colorValue {
+    switch (this) {
+      case InstrumentSite.natrax: return 0xFF00F3FF;    // teal
+      case InstrumentSite.hyderabad: return 0xFFFFB300; // amber
+    }
+  }
+}
+
 enum InstrumentVertical { calibration, validation, dataCollection }
 
 extension InstrumentVerticalExt on InstrumentVertical {
@@ -217,10 +319,23 @@ const Map<InstrumentVertical, Set<String>> verticalInstrumentIds = {
 };
 
 /// Instruments in a given vertical (order follows the catalog).
-List<Instrument> instrumentsForVertical(InstrumentVertical v) {
+/// Pass [site] to narrow the list to gear held at that location.
+List<Instrument> instrumentsForVertical(InstrumentVertical v,
+    {InstrumentSite? site}) {
   final ids = verticalInstrumentIds[v] ?? const <String>{};
-  return instrumentCatalog.where((i) => ids.contains(i.id)).toList();
+  return instrumentCatalog
+      .where((i) => ids.contains(i.id))
+      .where((i) => site == null || i.sites.contains(site))
+      .toList();
 }
+
+/// Every instrument held at [site].
+List<Instrument> instrumentsAtSite(InstrumentSite site) =>
+    instrumentCatalog.where((i) => i.sites.contains(site)).toList();
+
+/// Total unit count at [site] (respects per-instrument quantity).
+int unitCountAtSite(InstrumentSite site) =>
+    instrumentsAtSite(site).fold(0, (sum, i) => sum + i.quantity);
 
 /// Is the Raptor ECU mandatory for this vertical? (Validation: yes; Calibration: optional.)
 bool raptorMandatoryFor(InstrumentVertical v) => v == InstrumentVertical.validation;
@@ -314,6 +429,12 @@ class Instrument {
   /// valid even at rest. Single antenna cannot do slip/low-speed heading. (Rule R4)
   final bool dualAntenna;
 
+  /// Site(s) where this unit physically lives. Defaults to NATRAX — every item
+  /// currently in the catalog is NATRAX gear. Hyderabad entries are added by
+  /// tagging an instrument with [InstrumentSite.hyderabad]; a unit present at
+  /// both sites carries both.
+  final Set<InstrumentSite> sites;
+
   const Instrument({
     required this.id,
     required this.name,
@@ -330,6 +451,7 @@ class Instrument {
     this.requiresInterface = false,
     this.mustReceiveAllSignals = false,
     this.dualAntenna = false,
+    this.sites = const {InstrumentSite.natrax},
   });
 
   int get totalChannels =>

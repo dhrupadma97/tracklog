@@ -101,7 +101,7 @@ class _InstrumentationScreenState extends State<InstrumentationScreen>
       body: AppBackgroundWrapper(
         child: Column(
           children: [
-            const SizedBox(height: 48),
+            const SizedBox(height: 30),
             // ── Title ──
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -112,7 +112,7 @@ class _InstrumentationScreenState extends State<InstrumentationScreen>
                     child: Text(
                       'Instrumentation Intelligence',
                       style: GoogleFonts.spaceGrotesk(
-                        fontSize: 22,
+                        fontSize: 18,
                         fontWeight: FontWeight.w700,
                         color: Colors.white,
                       ),
@@ -154,39 +154,49 @@ class _InstrumentationScreenState extends State<InstrumentationScreen>
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 10),
             // ── Tab Bar ──
+            // Deliberately compact and left-aligned: the schematic is the point
+            // of this screen, so the tabs read as a small switch rather than a
+            // full-width banner competing with the canvas.
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0A1025).withAlpha(180),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                      color: const Color(0xFF00F3FF).withAlpha(25)),
-                ),
-                child: TabBar(
-                  controller: _tabController,
-                  indicator: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    gradient: _tealPurpleGradient,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  width: 260,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0A1025).withAlpha(180),
+                    borderRadius: BorderRadius.circular(9),
+                    border: Border.all(
+                        color: const Color(0xFF00F3FF).withAlpha(25)),
                   ),
-                  indicatorSize: TabBarIndicatorSize.tab,
-                  dividerColor: Colors.transparent,
-                  labelColor: Colors.white,
-                  unselectedLabelColor: Colors.white54,
-                  labelStyle: GoogleFonts.spaceGrotesk(
-                      fontSize: 12, fontWeight: FontWeight.w600),
-                  unselectedLabelStyle: GoogleFonts.spaceGrotesk(
-                      fontSize: 12, fontWeight: FontWeight.w500),
-                  tabs: const [
-                    Tab(text: 'Compatibility'),
-                    Tab(text: 'Schematic'),
-                  ],
+                  child: TabBar(
+                    controller: _tabController,
+                    padding: const EdgeInsets.all(3),
+                    indicator: BoxDecoration(
+                      borderRadius: BorderRadius.circular(7),
+                      gradient: _tealPurpleGradient,
+                    ),
+                    indicatorSize: TabBarIndicatorSize.tab,
+                    dividerColor: Colors.transparent,
+                    labelColor: Colors.white,
+                    unselectedLabelColor: Colors.white54,
+                    labelPadding: EdgeInsets.zero,
+                    labelStyle: GoogleFonts.spaceGrotesk(
+                        fontSize: 11, fontWeight: FontWeight.w700),
+                    unselectedLabelStyle: GoogleFonts.spaceGrotesk(
+                        fontSize: 11, fontWeight: FontWeight.w500),
+                    tabs: const [
+                      Tab(text: 'Compatibility'),
+                      Tab(text: 'Schematic'),
+                    ],
+                  ),
                 ),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             // ── Tab Views ──
             Expanded(
               child: TabBarView(
@@ -207,83 +217,202 @@ class _InstrumentationScreenState extends State<InstrumentationScreen>
 // ═════════════════════════════════════════════════════════════════════════════
 //  INSTRUMENTS INFO SHEET (owned gear — replaces the old Catalog tab)
 // ═════════════════════════════════════════════════════════════════════════════
+/// Master instruments list. [site] == null shows every site ("All").
 void _showInstrumentsSheet(BuildContext context) {
+  InstrumentSite? site; // null = All sites
   showModalBottomSheet(
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
-    builder: (sheetCtx) => Container(
-      constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(sheetCtx).size.height * 0.85),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0A1025).withAlpha(245),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        border: Border.all(color: _kTeal.withAlpha(40)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white24,
-                borderRadius: BorderRadius.circular(2),
+    builder: (sheetCtx) => StatefulBuilder(
+      builder: (ctx, setSheetState) {
+        // Verticals that still have gear once the site filter is applied.
+        final visible = InstrumentVertical.values
+            .where((v) => instrumentsForVertical(v, site: site).isNotEmpty)
+            .toList();
+        return Container(
+          constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(ctx).size.height * 0.85),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0A1025).withAlpha(245),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(color: _kTeal.withAlpha(40)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
               ),
+              const SizedBox(height: 14),
+              Text(
+                'Master Instruments List',
+                style: GoogleFonts.spaceGrotesk(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'The real gear, grouped by activity — a tool can serve more than one.',
+                style: GoogleFonts.spaceGrotesk(
+                    fontSize: 10.5, color: Colors.white54),
+              ),
+              const SizedBox(height: 12),
+              // ── Site filter ──
+              Row(
+                children: [
+                  _siteChip(
+                    label: 'All sites',
+                    count: instrumentCatalog.length,
+                    color: Colors.white,
+                    selected: site == null,
+                    onTap: () => setSheetState(() => site = null),
+                  ),
+                  const SizedBox(width: 8),
+                  for (final s in InstrumentSite.values) ...[
+                    _siteChip(
+                      label: s.label,
+                      count: instrumentsAtSite(s).length,
+                      color: Color(s.colorValue),
+                      selected: site == s,
+                      onTap: () => setSheetState(() => site = s),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                ],
+              ),
+              if (site != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  site!.subtitle,
+                  style: GoogleFonts.spaceGrotesk(
+                      fontSize: 10, color: Colors.white38),
+                ),
+              ],
+              const SizedBox(height: 12),
+              Flexible(
+                child: visible.isEmpty
+                    ? _emptySiteMessage(site)
+                    : ListView(
+                        shrinkWrap: true,
+                        children: [
+                          for (final v in visible) ...[
+                            Row(
+                              children: [
+                                Icon(_verticalIcon(v), size: 14, color: _kTeal),
+                                const SizedBox(width: 8),
+                                Text(
+                                  v.label,
+                                  style: GoogleFonts.spaceGrotesk(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '${instrumentsForVertical(v, site: site).length}',
+                                  style: GoogleFonts.spaceGrotesk(
+                                      fontSize: 11, color: Colors.white38),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            if (v == InstrumentVertical.validation)
+                              _modelsStrip(),
+                            ...instrumentsForVertical(v, site: site)
+                                .map(_instrumentTile),
+                            const SizedBox(height: 14),
+                          ],
+                        ],
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    ),
+  );
+}
+
+/// Site filter pill in the master instruments list.
+Widget _siteChip({
+  required String label,
+  required int count,
+  required Color color,
+  required bool selected,
+  required VoidCallback onTap,
+}) {
+  return GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(9),
+        color: selected ? color.withAlpha(38) : Colors.white.withAlpha(10),
+        border: Border.all(
+          color: selected ? color.withAlpha(150) : Colors.white24,
+          width: selected ? 1.2 : 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.spaceGrotesk(
+              fontSize: 11,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              color: selected ? color : Colors.white60,
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(width: 6),
           Text(
-            'Owned Instruments',
+            '$count',
             style: GoogleFonts.spaceGrotesk(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: Colors.white),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            'The real gear, grouped by activity — a tool can serve more than one.',
-            style:
-                GoogleFonts.spaceGrotesk(fontSize: 10.5, color: Colors.white54),
-          ),
-          const SizedBox(height: 12),
-          Flexible(
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                for (final v in InstrumentVertical.values) ...[
-                  Row(
-                    children: [
-                      Icon(_verticalIcon(v), size: 14, color: _kTeal),
-                      const SizedBox(width: 8),
-                      Text(
-                        v.label,
-                        style: GoogleFonts.spaceGrotesk(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${instrumentsForVertical(v).length}',
-                        style: GoogleFonts.spaceGrotesk(
-                            fontSize: 11, color: Colors.white38),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  if (v == InstrumentVertical.validation) _modelsStrip(),
-                  ...instrumentsForVertical(v).map(_instrumentTile),
-                  const SizedBox(height: 14),
-                ],
-              ],
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: selected ? color.withAlpha(180) : Colors.white30,
             ),
           ),
         ],
       ),
+    ),
+  );
+}
+
+/// Shown when a site has no gear tagged to it yet.
+Widget _emptySiteMessage(InstrumentSite? site) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 28),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.inventory_2_outlined, size: 30, color: Colors.white24),
+        const SizedBox(height: 10),
+        Text(
+          'No instruments recorded at ${site?.label ?? 'this site'} yet',
+          style: GoogleFonts.spaceGrotesk(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.white54),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Send the equipment list and it will be added here.',
+          style:
+              GoogleFonts.spaceGrotesk(fontSize: 10.5, color: Colors.white30),
+        ),
+      ],
     ),
   );
 }
@@ -388,6 +517,29 @@ Widget _instrumentTile(Instrument i) {
                     style: GoogleFonts.spaceGrotesk(
                         fontSize: 10, color: Colors.white38),
                   ),
+                  const SizedBox(width: 6),
+                  // Site badge(s) — where this unit physically lives.
+                  ...i.sites.map((s) => Padding(
+                        padding: const EdgeInsets.only(left: 3),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 5, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(5),
+                            color: Color(s.colorValue).withAlpha(28),
+                            border: Border.all(
+                                color: Color(s.colorValue).withAlpha(90)),
+                          ),
+                          child: Text(
+                            s.label,
+                            style: GoogleFonts.spaceGrotesk(
+                              fontSize: 8,
+                              fontWeight: FontWeight.w700,
+                              color: Color(s.colorValue).withAlpha(220),
+                            ),
+                          ),
+                        ),
+                      )),
                 ],
               ),
               Text(
@@ -2708,32 +2860,40 @@ class _SchematicTabState extends State<_SchematicTab>
     );
   }
 
+  /// Legend rows — one per wire GROUP (CAN 1, CAN 2, Power, GPS …), not per
+  /// protocol. Protocol legends were useless here: every vehicle bus is classic
+  /// CAN, so the old legend read "CAN 2.0A" for three different buses.
   List<Widget> _legendItems() {
-    final protocols = <BusProtocol>{};
+    // Insertion-ordered so the legend follows the wiring order in the profile.
+    final groups = <String, Color>{};
     for (final c in _profile.schematicConnections) {
-      protocols.add(c.protocol);
+      groups.putIfAbsent(wireLegendKey(c), () => Color(wireColorValue(c)));
     }
-    return protocols.map((p) {
+    return groups.entries.map((e) {
+      final color = e.value;
       return Padding(
-        padding: const EdgeInsets.only(right: 12),
+        padding: const EdgeInsets.only(right: 10),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 16,
-              height: 3,
+              width: 14,
+              height: 3.5,
               decoration: BoxDecoration(
-                color: Color(p.colorValue),
+                color: color,
                 borderRadius: BorderRadius.circular(2),
+                boxShadow: [
+                  BoxShadow(color: color.withAlpha(120), blurRadius: 4),
+                ],
               ),
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 5),
             Text(
-              p.label,
+              e.key,
               style: GoogleFonts.spaceGrotesk(
-                fontSize: 9,
-                fontWeight: FontWeight.w600,
-                color: Color(p.colorValue).withAlpha(200),
+                fontSize: 9.5,
+                fontWeight: FontWeight.w700,
+                color: color.withAlpha(230),
               ),
             ),
           ],
@@ -3149,7 +3309,9 @@ class _SchematicPainter extends CustomPainter {
     for (final conn in connections) {
       final from = _nodeCenter(conn.fromNodeId);
       final to = _nodeCenter(conn.toNodeId);
-      final color = Color(conn.protocol.colorValue);
+      // Colour by bus identity — see wireColorValue(). Protocol-based colouring
+      // made every classic-CAN wire the same red.
+      final color = Color(wireColorValue(conn));
 
       // Curved path
       final path = Path()..moveTo(from.dx, from.dy);
@@ -3166,16 +3328,18 @@ class _SchematicPainter extends CustomPainter {
 
       // Glow layer
       final glowPaint = Paint()
-        ..color = color.withAlpha((20 + (animValue * 25).toInt()))
-        ..strokeWidth = 5
+        ..color = color.withAlpha((26 + (animValue * 30).toInt()))
+        ..strokeWidth = 6
         ..style = PaintingStyle.stroke
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
       canvas.drawPath(path, glowPaint);
 
-      // Main line — animated dash
+      // Main line — animated dash. Heavier and more opaque than before so the
+      // hue is readable against the background image.
       final linePaint = Paint()
-        ..color = color.withAlpha(140)
-        ..strokeWidth = 1.5
+        ..color = color.withAlpha(215)
+        ..strokeWidth = 2.2
+        ..strokeCap = StrokeCap.round
         ..style = PaintingStyle.stroke;
       _drawDashedPath(canvas, path, linePaint, 8, 4, animValue);
 
@@ -3211,26 +3375,34 @@ class _SchematicPainter extends CustomPainter {
       text: TextSpan(
         text: text,
         style: TextStyle(
-          fontSize: 8,
-          fontWeight: FontWeight.w600,
-          color: color.withAlpha(180),
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          color: color,
           fontFamily: 'Space Grotesk',
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
 
-    // Background
+    // Background — near-opaque chip with a hairline in the wire's own colour,
+    // so a label is always tied back to the line it belongs to.
     final bg = RRect.fromRectAndRadius(
       Rect.fromCenter(
         center: pos,
-        width: tp.width + 10,
-        height: tp.height + 6,
+        width: tp.width + 12,
+        height: tp.height + 7,
       ),
-      const Radius.circular(4),
+      const Radius.circular(5),
     );
     canvas.drawRRect(
-        bg, Paint()..color = const Color(0xFF050811).withAlpha(200));
+        bg, Paint()..color = const Color(0xFF050811).withAlpha(238));
+    canvas.drawRRect(
+      bg,
+      Paint()
+        ..color = color.withAlpha(110)
+        ..strokeWidth = 1
+        ..style = PaintingStyle.stroke,
+    );
 
     tp.paint(
         canvas, Offset(pos.dx - tp.width / 2, pos.dy - tp.height / 2));
