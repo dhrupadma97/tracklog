@@ -3,6 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../data/models/test_case_model.dart';
 import '../../data/services/test_case_service.dart';
 import '../../data/services/test_case_supplements.dart';
+import '../../data/services/test_case_repository.dart';
+import '../../services/engineer_auth_service.dart';
 
 class TestCasesScreen extends StatefulWidget {
   const TestCasesScreen({Key? key}) : super(key: key);
@@ -51,6 +53,13 @@ class _TestCasesScreenState extends State<TestCasesScreen> {
 
   // ─── State ───────────────────────────────────────────────────────────────────
   late List<TestCase> _allTestCases;
+
+  // Editing (Supabase overlay). Generated + supplements are the read-only base;
+  // manager edits/adds/hides are layered on top. Strictly private (RLS).
+  final TestCaseRepository _repo = TestCaseRepository();
+  List<TestCase> _baseCases = const [];
+  List<TestCaseOverride> _overrides = const [];
+  bool _isManager = false;
 
   String _selectedDrivetrain = 'All'; // 'EV' | 'ICE' | 'All'
   String _selectedActivity = 'All';   // 'Validation' | 'Calibration' | 'All'
@@ -125,10 +134,36 @@ class _TestCasesScreenState extends State<TestCasesScreen> {
     // Generated DVP cases + manually-maintained supplements (e.g. the temp
     // spare-wheel program). Drop curve-based cases up front so every count,
     // filter and the strategy banner reflect only what NATRAX can actually test.
-    _allTestCases = [
+    _baseCases = [
       ...TestCaseService.getMockTestCases(),
       ...TestCaseSupplements.cases,
     ].where((t) => !_isCurveCase(t)).toList();
+    _allTestCases = _baseCases;
+    _loadOverrides();
+    _resolveManager();
+  }
+
+  /// Pull the private Supabase overlay and rebuild the effective list.
+  Future<void> _loadOverrides() async {
+    try {
+      final ov = await _repo.fetchOverrides();
+      if (!mounted) return;
+      setState(() {
+        _overrides = ov;
+        _allTestCases = TestCaseRepository.applyOverrides(_baseCases, ov);
+      });
+    } catch (_) {
+      // Overlay unavailable (offline / migration not applied) — show the
+      // read-only baseline. Editing stays disabled.
+    }
+  }
+
+  Future<void> _resolveManager() async {
+    try {
+      final p = await EngineerAuthService.instance.getCurrentProfile();
+      if (!mounted) return;
+      setState(() => _isManager = p?.isManager ?? false);
+    } catch (_) {}
   }
 
   List<TestCase> get _filteredCases {
@@ -247,6 +282,22 @@ class _TestCasesScreenState extends State<TestCasesScreen> {
             label: const Text('Reset',
                 style: TextStyle(color: Colors.white54, fontSize: 12)),
           ),
+
+          // Managers only — add a new (private) test case.
+          if (_isManager)
+            ElevatedButton.icon(
+              onPressed: () => _editCaseSheet(null),
+              icon: const Icon(Icons.add, size: 16, color: Colors.black),
+              label: const Text('Add Case',
+                  style: TextStyle(
+                      color: Colors.black,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12)),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: gold,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8)),
+            ),
         ],
       ),
     );
@@ -665,6 +716,9 @@ class _TestCasesScreenState extends State<TestCasesScreen> {
           // Row tinted by road surface so a surface change is obvious while
           // scrolling the full, unfiltered sheet.
           color: WidgetStateProperty.all(_surfaceRowTint(tc.roadSurfaceType)),
+          // Managers tap a row to edit it (RLS enforces the write).
+          onSelectChanged:
+              _isManager ? (_) => _editCaseSheet(tc) : null,
           cells: [
             _cell(tc.testId, bold: true),
             _cell(tc.testCasesName),
@@ -817,6 +871,307 @@ class _TestCasesScreenState extends State<TestCasesScreen> {
                 fontWeight: FontWeight.bold, color: color)),
       ]),
     ));
+  }
+
+  void _toast(String m) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(m, style: const TextStyle(color: Colors.white)),
+      backgroundColor: darkNavy,
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(seconds: 2),
+    ));
+  }
+
+  // ─── Manager editing (private Supabase overlay) ──────────────────────────────
+
+  /// Add (existing == null) or edit a test case. Generated cases keep their id
+  /// (read-only) so the override targets the right row; brand-new cases get a
+  /// fresh id. Writes are manager-only and enforced by RLS.
+  Future<void> _editCaseSheet(TestCase? existing) async {
+    final inBase = existing != null &&
+        _baseCases.any((b) => b.testId == existing.testId);
+    final isNewCase = existing == null || !inBase;
+    final hasOverride =
+        existing != null && _overrides.any((o) => o.testId == existing.testId);
+
+    final idCtrl = TextEditingController(text: existing?.testId ?? '');
+    final nameCtrl = TextEditingController(text: existing?.testCasesName ?? '');
+    final tireTypeCtrl =
+        TextEditingController(text: existing?.tireType ?? 'SKU-21');
+    final tireCondCtrl =
+        TextEditingController(text: existing?.tireCondition ?? 'New');
+    final pressCtrl =
+        TextEditingController(text: existing?.tirePressure ?? 'Standard');
+    final surfaceCtrl =
+        TextEditingController(text: existing?.roadSurface ?? '');
+    final loadCtrl =
+        TextEditingController(text: existing?.load ?? 'Driver Only');
+    final descCtrl =
+        TextEditingController(text: existing?.testDescription ?? '');
+    final linkCtrl =
+        TextEditingController(text: existing?.testCaseLink ?? '');
+
+    const features = ['AQD', 'DFE', 'Leak Detection'];
+    const activities = ['Validation', 'Calibration'];
+    const drivetrains = ['Both', 'EV', 'ICE'];
+    const depths = ['N/A', '4mm', '8mm'];
+    const loadCats = ['Driver Only', 'Full', 'Unload', 'Driver + Ballast'];
+    final surfaceTypes = surfaceColors.keys.toList();
+
+    String feature =
+        features.contains(existing?.feature) ? existing!.feature : 'AQD';
+    String activity = activities.contains(existing?.activityType)
+        ? existing!.activityType
+        : 'Validation';
+    String drivetrain = drivetrains.contains(existing?.drivetrain)
+        ? existing!.drivetrain
+        : 'Both';
+    String waterDepth =
+        depths.contains(existing?.waterDepth) ? existing!.waterDepth : 'N/A';
+    String surfaceType = surfaceTypes.contains(existing?.roadSurfaceType)
+        ? existing!.roadSurfaceType
+        : 'N/A';
+    String loadCat = loadCats.contains(existing?.loadCategory)
+        ? existing!.loadCategory
+        : 'Driver Only';
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
+        Widget field(String label, TextEditingController c,
+                {int maxLines = 1, bool enabled = true}) =>
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: TextField(
+                controller: c,
+                maxLines: maxLines,
+                enabled: enabled,
+                style: TextStyle(
+                    color: enabled ? Colors.white : Colors.white38,
+                    fontSize: 13),
+                decoration: InputDecoration(
+                  labelText: label,
+                  labelStyle:
+                      const TextStyle(color: Colors.white54, fontSize: 12),
+                  enabledBorder: const OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white24)),
+                  focusedBorder: const OutlineInputBorder(
+                      borderSide: BorderSide(color: gold)),
+                  isDense: true,
+                ),
+              ),
+            );
+        Widget dropdown(String label, String value, List<String> items,
+                ValueChanged<String> onCh) =>
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: InputDecorator(
+                decoration: InputDecoration(
+                  labelText: label,
+                  labelStyle:
+                      const TextStyle(color: Colors.white54, fontSize: 12),
+                  enabledBorder: const OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white24)),
+                  isDense: true,
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: value,
+                    isDense: true,
+                    isExpanded: true,
+                    dropdownColor: darkNavy,
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    items: items
+                        .map((i) =>
+                            DropdownMenuItem(value: i, child: Text(i)))
+                        .toList(),
+                    onChanged: (v) => setSheet(() => onCh(v!)),
+                  ),
+                ),
+              ),
+            );
+        return Padding(
+          padding:
+              EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: Container(
+            constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(ctx).size.height * 0.92),
+            padding: const EdgeInsets.all(20),
+            decoration: const BoxDecoration(
+              color: Color(0xFF0A1025),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Text(existing == null ? 'Add Test Case' : 'Edit Test Case',
+                      style: GoogleFonts.spaceGrotesk(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white)),
+                  const Spacer(),
+                  IconButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      icon: const Icon(Icons.close, color: Colors.white54)),
+                ]),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(children: [
+                      field('Test ID', idCtrl, enabled: isNewCase),
+                      field('Test Case Name', nameCtrl),
+                      Row(children: [
+                        Expanded(
+                            child: dropdown('Feature', feature, features,
+                                (v) => feature = v)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                            child: dropdown('Activity', activity, activities,
+                                (v) => activity = v)),
+                      ]),
+                      Row(children: [
+                        Expanded(
+                            child: dropdown('Drivetrain', drivetrain,
+                                drivetrains, (v) => drivetrain = v)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                            child: dropdown('Water Depth', waterDepth, depths,
+                                (v) => waterDepth = v)),
+                      ]),
+                      Row(children: [
+                        Expanded(child: field('Tire Type', tireTypeCtrl)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                            child: field('Tire Condition', tireCondCtrl)),
+                      ]),
+                      field('Tire Pressure', pressCtrl),
+                      field('Road Surface', surfaceCtrl),
+                      dropdown('Surface Type (row colour)', surfaceType,
+                          surfaceTypes, (v) => surfaceType = v),
+                      Row(children: [
+                        Expanded(child: field('Load', loadCtrl)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                            child: dropdown('Load Category', loadCat,
+                                loadCats, (v) => loadCat = v)),
+                      ]),
+                      field('Test Description', descCtrl, maxLines: 3),
+                      field('Link (optional)', linkCtrl),
+                    ]),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(children: [
+                  // Generated case → Hide; new override → Delete; edited
+                  // generated → Revert to baseline.
+                  if (!isNewCase)
+                    TextButton.icon(
+                      onPressed: () async {
+                        final nav = Navigator.of(ctx);
+                        try {
+                          await _repo.hide(existing!);
+                          await _loadOverrides();
+                          nav.pop();
+                          _toast('Hidden');
+                        } catch (_) {
+                          _toast('Failed — managers only');
+                        }
+                      },
+                      icon: const Icon(Icons.visibility_off,
+                          size: 16, color: Color(0xFFFF6B6B)),
+                      label: const Text('Hide',
+                          style: TextStyle(color: Color(0xFFFF6B6B))),
+                    ),
+                  if (isNewCase && existing != null)
+                    TextButton.icon(
+                      onPressed: () async {
+                        final nav = Navigator.of(ctx);
+                        try {
+                          await _repo.revert(existing.testId);
+                          await _loadOverrides();
+                          nav.pop();
+                          _toast('Deleted');
+                        } catch (_) {
+                          _toast('Failed — managers only');
+                        }
+                      },
+                      icon: const Icon(Icons.delete_outline,
+                          size: 16, color: Color(0xFFFF6B6B)),
+                      label: const Text('Delete',
+                          style: TextStyle(color: Color(0xFFFF6B6B))),
+                    ),
+                  if (!isNewCase && hasOverride)
+                    TextButton.icon(
+                      onPressed: () async {
+                        final nav = Navigator.of(ctx);
+                        try {
+                          await _repo.revert(existing!.testId);
+                          await _loadOverrides();
+                          nav.pop();
+                          _toast('Reverted to baseline');
+                        } catch (_) {
+                          _toast('Failed — managers only');
+                        }
+                      },
+                      icon: const Icon(Icons.undo,
+                          size: 16, color: Colors.white54),
+                      label: const Text('Revert',
+                          style: TextStyle(color: Colors.white54)),
+                    ),
+                  const Spacer(),
+                  ElevatedButton(
+                    onPressed: () async {
+                      final id = idCtrl.text.trim();
+                      if (id.isEmpty) {
+                        _toast('Test ID required');
+                        return;
+                      }
+                      final tc = TestCase(
+                        testId: id,
+                        testCasesName: nameCtrl.text.trim(),
+                        tireType: tireTypeCtrl.text.trim(),
+                        tireCondition: tireCondCtrl.text.trim(),
+                        tirePressure: pressCtrl.text.trim(),
+                        roadSurface: surfaceCtrl.text.trim(),
+                        load: loadCtrl.text.trim(),
+                        testDescription: descCtrl.text.trim(),
+                        testCaseLink: linkCtrl.text.trim().isEmpty
+                            ? null
+                            : linkCtrl.text.trim(),
+                        feature: feature,
+                        activityType: activity,
+                        drivetrain: drivetrain,
+                        waterDepth: waterDepth,
+                        loadCategory: loadCat,
+                        roadSurfaceType: surfaceType,
+                      );
+                      final nav = Navigator.of(ctx);
+                      try {
+                        await _repo.save(tc, isNew: isNewCase);
+                        await _loadOverrides();
+                        nav.pop();
+                        _toast('Saved');
+                      } catch (_) {
+                        _toast('Save failed — managers only');
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(backgroundColor: gold),
+                    child: const Text('Save',
+                        style: TextStyle(
+                            color: Colors.black,
+                            fontWeight: FontWeight.bold)),
+                  ),
+                ]),
+              ],
+            ),
+          ),
+        );
+      }),
+    );
   }
 
   Widget _buildEmptyState() {

@@ -38,4 +38,44 @@ class TestCase {
     this.loadCategory = 'Driver Only',
     this.roadSurfaceType = 'N/A',
   });
+
+  TestCase copyWith({
+    String? testId,
+    String? testCasesName,
+    String? tireType,
+    String? tireCondition,
+    String? tirePressure,
+    String? roadSurface,
+    String? load,
+    String? testDescription,
+    String? testCaseLink,
+    String? testResult,
+    String? comments,
+    String? feature,
+    String? activityType,
+    String? drivetrain,
+    String? waterDepth,
+    String? loadCategory,
+    String? roadSurfaceType,
+  }) {
+    return TestCase(
+      testId: testId ?? this.testId,
+      testCasesName: testCasesName ?? this.testCasesName,
+      tireType: tireType ?? this.tireType,
+      tireCondition: tireCondition ?? this.tireCondition,
+      tirePressure: tirePressure ?? this.tirePressure,
+      roadSurface: roadSurface ?? this.roadSurface,
+      load: load ?? this.load,
+      testDescription: testDescription ?? this.testDescription,
+      testCaseLink: testCaseLink ?? this.testCaseLink,
+      testResult: testResult ?? this.testResult,
+      comments: comments ?? this.comments,
+      feature: feature ?? this.feature,
+      activityType: activityType ?? this.activityType,
+      drivetrain: drivetrain ?? this.drivetrain,
+      waterDepth: waterDepth ?? this.waterDepth,
+      loadCategory: loadCategory ?? this.loadCategory,
+      roadSurfaceType: roadSurfaceType ?? this.roadSurfaceType,
+    );
+  }
 }
