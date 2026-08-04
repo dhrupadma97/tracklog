@@ -3487,6 +3487,10 @@ class _SchematicPainter extends CustomPainter {
           ),
     ];
     final labels = <_WireLabel>[];
+    // Each distinct wire label is drawn only once — the parallel backbone
+    // repeats "CAN 1/2/3" (bus → GL2000 AND Raptor), which piled up in the
+    // centre of the canvas.
+    final seenLabels = <String>{};
 
     for (var i = 0; i < connections.length; i++) {
       final conn = connections[i];
@@ -3499,12 +3503,12 @@ class _SchematicPainter extends CustomPainter {
 
       final path = _linkPath(from, to, i);
 
-      // Glow layer
+      // Glow layer — subtle, so it reads as a wire rather than haze.
       final glowPaint = Paint()
-        ..color = color.withAlpha((26 + (animValue * 30).toInt()))
-        ..strokeWidth = 6
+        ..color = color.withAlpha((16 + (animValue * 20).toInt()))
+        ..strokeWidth = 4
         ..style = PaintingStyle.stroke
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
       canvas.drawPath(path, glowPaint);
 
       // Main line — animated dash. Heavier and more opaque than before so the
@@ -3519,8 +3523,12 @@ class _SchematicPainter extends CustomPainter {
       final metrics = path.computeMetrics().toList();
       if (metrics.isEmpty) continue;
       final m = metrics.first;
-      final mid = m.getTangentForOffset(m.length * 0.5)?.position;
-      if (mid != null && conn.label.trim().isNotEmpty) {
+      // Place the label toward the source end (not the centre) and only once
+      // per distinct label, so the middle of the canvas stays readable.
+      final mid = m.getTangentForOffset(m.length * 0.30)?.position;
+      if (mid != null &&
+          conn.label.trim().isNotEmpty &&
+          seenLabels.add(conn.label)) {
         labels.add(_WireLabel(conn.label, mid, color));
       }
     }

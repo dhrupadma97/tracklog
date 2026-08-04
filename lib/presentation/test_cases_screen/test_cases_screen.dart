@@ -98,6 +98,11 @@ class _TestCasesScreenState extends State<TestCasesScreen> {
              '(1000–30000) against Interval limits (375ms–13250ms). Test procedure is '
              'the same for EV and ICE — only the noise floor differs.',
     },
+    'Temp Spare': {
+      'All': 'Temp Spare Testing: Evaluate algorithm robustness (especially wheel-speed '
+             'differential logic in AQD and DFE) when a mismatched 18-inch temp spare '
+             'is paired with a standard 19-inch wheel on the same vehicle.',
+    },
     'All': {
       'EV':  'EV Strategy (Global): Across all features, EV-specific tests address '
              'regenerative braking and coast-down deceleration. These events are unique '
@@ -221,46 +226,11 @@ class _TestCasesScreenState extends State<TestCasesScreen> {
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          // Drivetrain
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            _sectionLabel('Drivetrain:'),
-            const SizedBox(width: 8),
-            _drivetrainToggle(),
-          ]),
-
-          // Feature
+          // Feature is the only filter — AQD / DFE / Leak Detection (+ All).
           Row(mainAxisSize: MainAxisSize.min, children: [
             _sectionLabel('Feature:'),
             const SizedBox(width: 8),
             _featureChips(),
-          ]),
-
-          // Activity
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            _sectionLabel('Activity:'),
-            const SizedBox(width: 8),
-            _activityChips(),
-          ]),
-
-          // Water Depth
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            _sectionLabel('Water Depth:'),
-            const SizedBox(width: 8),
-            _waterDepthChips(),
-          ]),
-
-          // Load
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            _sectionLabel('Load:'),
-            const SizedBox(width: 8),
-            _loadChips(),
-          ]),
-
-          // Road Surface
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            _sectionLabel('Surface:'),
-            const SizedBox(width: 8),
-            _surfaceChips(),
           ]),
 
           // Reset
@@ -742,6 +712,7 @@ class _TestCasesScreenState extends State<TestCasesScreen> {
       'AQD': const Color(0xFF0277BD),
       'DFE': const Color(0xFF2E7D32),
       'Leak Detection': const Color(0xFF6A1B9A),
+      'Temp Spare': const Color(0xFFD84315), // Deep Orange
     };
     final color = colors[feature] ?? Colors.grey;
     return DataCell(Container(

@@ -1034,9 +1034,9 @@ final VehicleProfile tataBetaProfile = VehicleProfile(
     SchematicConnection(fromNodeId: 'raptor', toNodeId: 'huf',     label: 'TMS_CAN', protocol: BusProtocol.can2A),
     SchematicConnection(fromNodeId: 'raptor', toNodeId: 'display', label: 'Display', protocol: BusProtocol.can2A),
     // GNSS / inertial → backbone
-    SchematicConnection(fromNodeId: 'imu',  toNodeId: 'vbox',   label: 'IMU fuse', protocol: BusProtocol.imu),
-    SchematicConnection(fromNodeId: 'vbox', toNodeId: 'raptor', label: 'GPS CAN',  protocol: BusProtocol.can2A),
-    SchematicConnection(fromNodeId: 'vbox', toNodeId: 'gl2000', label: 'GPS CAN',  protocol: BusProtocol.can2A),
+    // VBOX 3i (with the IMU fused in) is logged by CANoe for data logging.
+    SchematicConnection(fromNodeId: 'imu',  toNodeId: 'vbox',     label: 'IMU fuse', protocol: BusProtocol.imu),
+    SchematicConnection(fromNodeId: 'vbox', toNodeId: 'pc_canoe', label: 'GPS/INS',  protocol: BusProtocol.can2A),
     // PC software: CANape flashes/calibrates the Raptor (via Kvaser);
     // CANoe analyses the vehicle buses (via Kvaser)
     SchematicConnection(fromNodeId: 'pc_canape', toNodeId: 'raptor', label: 'Flash/XCP', protocol: BusProtocol.can2A),

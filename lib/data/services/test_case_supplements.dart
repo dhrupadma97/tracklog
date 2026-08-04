@@ -98,5 +98,127 @@ class TestCaseSupplements {
           roadSurfaceType: 'Dry Asphalt',
           comments: 'Upcoming-vehicle program',
         ),
+
+        // ══════════════════════════════════════════════════════════════════
+        //  FALSE-POSITIVE detection trials — one set per model (per Goodyear
+        //  DVP). Scenarios where the algorithm MUST NOT trigger.
+        // ══════════════════════════════════════════════════════════════════
+        // ── AQD false positives ──
+        TestCase(
+          testId: 'GY.SL.AQD.FP.1',
+          testCasesName: 'False Positive — Dry Road High Speed',
+          tireType: 'SKU-21',
+          tireCondition: 'New',
+          tirePressure: 'Standard',
+          roadSurface: 'Dry Asphalt',
+          load: 'Driver Only',
+          testDescription:
+              'High-speed run (100 kph) on fully dry asphalt. Expected: AQD raises NO '
+              'aquaplaning flag — there is no water film.',
+          feature: 'AQD',
+          activityType: 'Validation',
+          drivetrain: 'Both',
+          waterDepth: 'N/A',
+          loadCategory: 'Driver Only',
+          roadSurfaceType: 'Dry Asphalt',
+          comments: 'False-positive trial',
+        ),
+        TestCase(
+          testId: 'GY.SL.AQD.FP.2',
+          testCasesName: 'False Positive — Cleats & Rumble Strips',
+          tireType: 'SKU-21',
+          tireCondition: 'New',
+          tirePressure: 'Standard',
+          roadSurface: 'Cleats, rumble strips (dry)',
+          load: 'Full',
+          testDescription:
+              'Drive over cleats and rumble strips on a dry surface. Expected: vertical '
+              'vibration is NOT mis-classified as aquaplaning.',
+          feature: 'AQD',
+          activityType: 'Validation',
+          drivetrain: 'Both',
+          waterDepth: 'N/A',
+          loadCategory: 'Full',
+          roadSurfaceType: 'Dry',
+          comments: 'False-positive trial',
+        ),
+        // ── DFE false positives ──
+        TestCase(
+          testId: 'GY.SL.DFE.FP.1',
+          testCasesName: 'False Positive — Uniform Dry Grip',
+          tireType: 'SKU-21',
+          tireCondition: 'New',
+          tirePressure: 'Standard',
+          roadSurface: 'Dry Asphalt',
+          load: 'Driver Only',
+          testDescription:
+              'Steady cruise on a uniform high-grip dry surface. Expected: DFE reports a '
+              'stable friction estimate with NO false surface-change event.',
+          feature: 'DFE',
+          activityType: 'Validation',
+          drivetrain: 'Both',
+          waterDepth: 'N/A',
+          loadCategory: 'Driver Only',
+          roadSurfaceType: 'Dry Asphalt',
+          comments: 'False-positive trial',
+        ),
+        TestCase(
+          testId: 'GY.SL.DFE.FP.2',
+          testCasesName: 'False Positive — Rough-Road Vibration',
+          tireType: 'SKU-21',
+          tireCondition: 'Full Worn',
+          tirePressure: 'Standard',
+          roadSurface: 'Undulating asphalt (dry)',
+          load: 'Full',
+          testDescription:
+              'Rough/undulating dry road at speed. Expected: NVH and suspension motion do '
+              'NOT produce a false friction-drop estimate.',
+          feature: 'DFE',
+          activityType: 'Validation',
+          drivetrain: 'Both',
+          waterDepth: 'N/A',
+          loadCategory: 'Full',
+          roadSurfaceType: 'Dry',
+          comments: 'False-positive trial',
+        ),
+        // ── Leak Detection false positives ──
+        TestCase(
+          testId: 'GY.SL.LEAK.FP.1',
+          testCasesName: 'False Positive — Thermal Pressure Rise',
+          tireType: 'SKU-21',
+          tireCondition: 'New',
+          tirePressure: 'Standard (warmed)',
+          roadSurface: 'Dry Asphalt',
+          load: 'Driver Only',
+          testDescription:
+              'Sustained running warms the tire and raises pressure. Expected: the rising '
+              'trend is NOT reported as a leak (a leak is a pressure LOSS).',
+          feature: 'Leak Detection',
+          activityType: 'Validation',
+          drivetrain: 'Both',
+          waterDepth: 'N/A',
+          loadCategory: 'Driver Only',
+          roadSurfaceType: 'Dry Asphalt',
+          comments: 'False-positive trial',
+        ),
+        TestCase(
+          testId: 'GY.SL.LEAK.FP.2',
+          testCasesName: 'False Positive — Load / Ballast Change',
+          tireType: 'SKU-21',
+          tireCondition: 'New',
+          tirePressure: 'Standard',
+          roadSurface: 'Dry Asphalt',
+          load: 'Driver + Ballast',
+          testDescription:
+              'Add ballast between runs to shift the apparent pressure. Expected: the step '
+              'is NOT flagged as a slow leak.',
+          feature: 'Leak Detection',
+          activityType: 'Validation',
+          drivetrain: 'Both',
+          waterDepth: 'N/A',
+          loadCategory: 'Driver + Ballast',
+          roadSurfaceType: 'Dry Asphalt',
+          comments: 'False-positive trial',
+        ),
       ];
 }
