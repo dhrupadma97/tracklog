@@ -19,6 +19,7 @@ import '../presentation/admin_screen/admin_screen.dart';
 import '../presentation/project_updates_screen/project_updates_screen.dart';
 import '../presentation/tyre_trends_screen/tyre_trends_screen.dart';
 import '../presentation/instrumentation_screen/instrumentation_screen.dart';
+import '../presentation/test_cases_screen/test_cases_screen.dart';
 
 class AppRoutes {
   static const String initial = '/';
@@ -38,6 +39,7 @@ class AppRoutes {
   static const String projectUpdates = '/project-updates-screen';
   static const String tyreTrends = '/tyre-trends-screen';
   static const String instrumentation = '/instrumentation-screen';
+  static const String testCases = '/test-cases';
 }
 
 
@@ -217,6 +219,15 @@ final GoRouter appRouter = GoRouter(
             GoRoute(
               path: AppRoutes.projectSelection,
               builder: (context, state) => const ProjectSelectionScreen(),
+            ),
+          ],
+        ),
+        // Branch 11: Test Cases
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: AppRoutes.testCases,
+              builder: (context, state) => const TestCasesScreen(),
             ),
           ],
         ),

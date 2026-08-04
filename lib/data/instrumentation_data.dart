@@ -276,6 +276,26 @@ extension SchematicSectionExt on SchematicSection {
   }
 }
 
+/// Vertical band a section occupies on the schematic canvas, as fractions of
+/// canvas height. Bands are fixed and never overlap, so one section's zone can
+/// never swallow another's nodes — nodes are clamped to their own band.
+class SectionBand {
+  final double top;
+  final double bottom;
+  const SectionBand(this.top, this.bottom);
+
+  double get height => bottom - top;
+}
+
+const Map<SchematicSection, SectionBand> sectionBands = {
+  SchematicSection.base: SectionBand(0.0, 0.55),
+  SchematicSection.calibration: SectionBand(0.57, 0.755),
+  SchematicSection.validation: SectionBand(0.775, 1.0),
+};
+
+SectionBand bandFor(SchematicSection s) =>
+    sectionBands[s] ?? sectionBands[SchematicSection.base]!;
+
 /// Default schematic section for an instrument. CANape + Kvaser are the
 /// calibration tools; the validation chain is Raptor (models) → Display with
 /// CANoe for analysis. Everything else (buses, logger, sensors, power) = base.
@@ -907,25 +927,26 @@ final VehicleProfile tataBetaProfile = VehicleProfile(
     VehicleBus(id: 'adas_can', name: 'Vehicle CAN 3 · ADAS',     protocol: BusProtocol.can2A, obdPinHigh: 2, obdPinLow: 10, description: 'ADAS'),
   ],
   obdPinout: tataBetaOBDPinout,
+  // Each node sits inside its section's band (see [sectionBands]) so the
+  // Calibration / Validation zones never overlap. The schematic's "Tidy"
+  // action restores these positions by node id.
   schematicNodes: [
-    // Vehicle source + buses (fan out) — base wiring
-    SchematicNode(id: 'obd_port', label: 'Vehicle OBD', sublabel: 'TATA BETA', nodeType: InstrumentCategory.connector, x: 0.06, y: 0.50),
-    SchematicNode(id: 'can1_bus', label: 'CAN 1 · PT',  sublabel: 'CAN 2.0',  nodeType: InstrumentCategory.connector, x: 0.24, y: 0.22),
-    SchematicNode(id: 'can2_bus', label: 'CAN 2 · Body', sublabel: 'CAN 2.0', nodeType: InstrumentCategory.connector, x: 0.24, y: 0.50),
-    SchematicNode(id: 'can3_bus', label: 'CAN 3 · ADAS', sublabel: 'CAN 2.0', nodeType: InstrumentCategory.connector, x: 0.24, y: 0.78),
-    // Backbone: GL2000 logs everything (base); Raptor runs the models (Validation)
-    SchematicNode(id: 'gl2000', label: 'GL2000', sublabel: 'Logger', nodeType: InstrumentCategory.logger, instrumentId: 'gl2000', x: 0.52, y: 0.30),
-    SchematicNode(id: 'raptor', label: 'Raptor CAL', sublabel: 'Models', nodeType: InstrumentCategory.ecu, instrumentId: 'raptor_cal', x: 0.52, y: 0.68),
-    // GNSS / inertial — base sensing
-    SchematicNode(id: 'vbox', label: 'VBOX 3i', sublabel: 'Dual Antenna', nodeType: InstrumentCategory.sensor, instrumentId: 'vbox_3i_dual', x: 0.80, y: 0.20),
-    SchematicNode(id: 'imu', label: 'IMU', sublabel: 'Inertial', nodeType: InstrumentCategory.sensor, instrumentId: 'imu', x: 0.80, y: 0.42),
-    // Downstream accessories
-    SchematicNode(id: 'huf', label: 'HUF', sublabel: 'TPMS', nodeType: InstrumentCategory.receiver, instrumentId: 'huf_receiver', x: 0.80, y: 0.64),
-    SchematicNode(id: 'display', label: 'Display', sublabel: 'UI/UX', nodeType: InstrumentCategory.display, instrumentId: 'display_uiux', x: 0.80, y: 0.86),
-    // PC software (CANape = Calibration section, CANoe = Validation section)
-    SchematicNode(id: 'pc_canape', label: 'CANape', sublabel: 'via Kvaser', nodeType: InstrumentCategory.software, instrumentId: 'canape', x: 0.24, y: 0.94),
-    SchematicNode(id: 'pc_canoe', label: 'CANoe', sublabel: 'via Kvaser', nodeType: InstrumentCategory.software, instrumentId: 'canoe', x: 0.62, y: 0.94),
-    SchematicNode(id: 'power_bar', label: 'Power Breakout', sublabel: 'Distribution', nodeType: InstrumentCategory.power, instrumentId: 'power_breakout', x: 0.52, y: 0.04),
+    // ── Base band: vehicle → buses → logger, plus sensing and power ──
+    SchematicNode(id: 'obd_port', label: 'Vehicle OBD', sublabel: 'TATA BETA', nodeType: InstrumentCategory.connector, x: 0.06, y: 0.20),
+    SchematicNode(id: 'can1_bus', label: 'CAN 1 · PT',  sublabel: 'CAN 2.0',  nodeType: InstrumentCategory.connector, x: 0.19, y: 0.07),
+    SchematicNode(id: 'can2_bus', label: 'CAN 2 · Body', sublabel: 'CAN 2.0', nodeType: InstrumentCategory.connector, x: 0.19, y: 0.20),
+    SchematicNode(id: 'can3_bus', label: 'CAN 3 · ADAS', sublabel: 'CAN 2.0', nodeType: InstrumentCategory.connector, x: 0.19, y: 0.33),
+    SchematicNode(id: 'gl2000', label: 'GL2000', sublabel: 'Logger', nodeType: InstrumentCategory.logger, instrumentId: 'gl2000', x: 0.44, y: 0.20),
+    SchematicNode(id: 'imu', label: 'IMU', sublabel: 'Inertial', nodeType: InstrumentCategory.sensor, instrumentId: 'imu', x: 0.30, y: 0.47),
+    SchematicNode(id: 'vbox', label: 'VBOX 3i', sublabel: 'Dual Antenna', nodeType: InstrumentCategory.sensor, instrumentId: 'vbox_3i_dual', x: 0.46, y: 0.47),
+    SchematicNode(id: 'huf', label: 'HUF', sublabel: 'TPMS', nodeType: InstrumentCategory.receiver, instrumentId: 'huf_receiver', x: 0.84, y: 0.34),
+    SchematicNode(id: 'power_bar', label: 'Power Breakout', sublabel: 'Distribution', nodeType: InstrumentCategory.power, instrumentId: 'power_breakout', x: 0.84, y: 0.07),
+    // ── Calibration band ──
+    SchematicNode(id: 'pc_canape', label: 'CANape', sublabel: 'via Kvaser', nodeType: InstrumentCategory.software, instrumentId: 'canape', x: 0.30, y: 0.66),
+    // ── Validation band ──
+    SchematicNode(id: 'pc_canoe', label: 'CANoe', sublabel: 'via Kvaser', nodeType: InstrumentCategory.software, instrumentId: 'canoe', x: 0.10, y: 0.89),
+    SchematicNode(id: 'raptor', label: 'Raptor CAL', sublabel: 'Models', nodeType: InstrumentCategory.ecu, instrumentId: 'raptor_cal', x: 0.46, y: 0.89),
+    SchematicNode(id: 'display', label: 'Display', sublabel: 'UI/UX', nodeType: InstrumentCategory.display, instrumentId: 'display_uiux', x: 0.74, y: 0.89),
   ],
   schematicConnections: [
     // OBD → buses
@@ -949,7 +970,7 @@ final VehicleProfile tataBetaProfile = VehicleProfile(
     // PC software: CANape flashes/calibrates the Raptor (via Kvaser);
     // CANoe analyses the vehicle buses (via Kvaser)
     SchematicConnection(fromNodeId: 'pc_canape', toNodeId: 'raptor', label: 'Flash/XCP', protocol: BusProtocol.can2A),
-    SchematicConnection(fromNodeId: 'can1_bus', toNodeId: 'pc_canoe', label: 'Analysis', protocol: BusProtocol.can2A, busIndex: 1),
+    SchematicConnection(fromNodeId: 'can3_bus', toNodeId: 'pc_canoe', label: 'Analysis', protocol: BusProtocol.can2A, busIndex: 3),
     // Power
     SchematicConnection(fromNodeId: 'power_bar', toNodeId: 'gl2000', label: 'Power', protocol: BusProtocol.analog),
     SchematicConnection(fromNodeId: 'power_bar', toNodeId: 'raptor', label: 'Power', protocol: BusProtocol.analog),

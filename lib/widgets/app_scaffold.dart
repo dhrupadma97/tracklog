@@ -174,6 +174,14 @@ class _WideScaffoldState extends State<_WideScaffold> {
       ]);
     }
 
+    // 8. Test Cases
+    items.add(const _NavItem(
+      icon: Icons.checklist_rtl_outlined,
+      activeIcon: Icons.checklist_rtl,
+      label: 'Test Cases',
+      branch: 11,
+    ));
+
     return items;
   }
 

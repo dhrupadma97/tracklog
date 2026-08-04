@@ -118,39 +118,8 @@ class _InstrumentationScreenState extends State<InstrumentationScreen>
                       ),
                     ),
                   ),
-                  const Spacer(),
-                  // Owned-gear list (replaces the old Catalog tab)
-                  GestureDetector(
-                    onTap: () => _showInstrumentsSheet(context),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 7),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
-                        color: _kTeal.withAlpha(15),
-                        border: Border.all(color: _kTeal.withAlpha(60)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.inventory_2_outlined,
-                              size: 14, color: _kTeal),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Instruments',
-                            style: GoogleFonts.spaceGrotesk(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: _kTeal,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Icon(Icons.precision_manufacturing,
-                      color: _kTeal.withAlpha(180), size: 28),
+                  // Right side is deliberately empty — the persistent SightLine
+                  // brand mark is overlaid at top-right by AppBackgroundWrapper.
                 ],
               ),
             ),
@@ -161,9 +130,9 @@ class _InstrumentationScreenState extends State<InstrumentationScreen>
             // full-width banner competing with the canvas.
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Container(
+              child: Row(
+                children: [
+                  Container(
                   width: 260,
                   height: 32,
                   decoration: BoxDecoration(
@@ -194,6 +163,38 @@ class _InstrumentationScreenState extends State<InstrumentationScreen>
                     ],
                   ),
                 ),
+                  const SizedBox(width: 10),
+                  // Owned-gear list (replaces the old Catalog tab). Lives here
+                  // rather than top-right, which the brand mark occupies.
+                  GestureDetector(
+                    onTap: () => _showInstrumentsSheet(context),
+                    child: Container(
+                      height: 32,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(9),
+                        color: _kTeal.withAlpha(15),
+                        border: Border.all(color: _kTeal.withAlpha(60)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.inventory_2_outlined,
+                              size: 13, color: _kTeal),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Instruments',
+                            style: GoogleFonts.spaceGrotesk(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: _kTeal,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 6),
@@ -1072,43 +1073,101 @@ class _SchematicTabState extends State<_SchematicTab>
   bool _nodeLocked(SchematicNode n) =>
       _config?.isSectionLocked(n.section) ?? false;
 
+  /// Keep a node inside its section's band while dragging — a node card is
+  /// 60px tall, so leave half a card of padding at each band edge.
+  double _clampToBand(SchematicNode n, double y, double h) {
+    final band = bandFor(n.section);
+    final pad = h <= 0 ? 0.06 : 36.0 / h;
+    final lo = band.top + pad;
+    final hi = band.bottom - pad;
+    if (hi <= lo) return (band.top + band.bottom) / 2;
+    return y.clamp(lo, hi);
+  }
+
+  /// Snap stray nodes back into their section's band. Configs saved before
+  /// bands existed can have nodes anywhere on the canvas, which would render
+  /// them inside another section's zone. Known ids get their template spot;
+  /// anything else is centred in its band. Display-only — persists on next Save.
+  void _normalizeLayout(InstrConfig c) {
+    final template = {
+      for (final n in allVehicleProfiles.first.schematicNodes) n.id: n
+    };
+    for (final n in c.nodes) {
+      final band = bandFor(n.section);
+      if (n.y > band.top + 0.02 && n.y < band.bottom - 0.02) continue;
+      final t = template[n.id];
+      if (t != null && t.section == n.section) {
+        n.x = t.x;
+        n.y = t.y;
+      } else {
+        n.y = (band.top + band.bottom) / 2;
+      }
+    }
+  }
+
+  /// Restore an orderly layout: known nodes snap back to their template spot,
+  /// anything else is grid-placed inside its own band. Positions only — the
+  /// wiring is untouched. Needs a Save to persist.
+  void _tidyLayout() {
+    final c = _config;
+    if (c == null || c.isLocked) return;
+    final template = {
+      for (final n in allVehicleProfiles.first.schematicNodes) n.id: n
+    };
+    final extrasPerSection = <SchematicSection, int>{};
+    for (final n in c.nodes) {
+      if (_nodeLocked(n)) continue;
+      final t = template[n.id];
+      if (t != null && t.section == n.section) {
+        n.x = t.x;
+        n.y = t.y;
+        continue;
+      }
+      // Unknown node: drop it into the next free grid slot of its band.
+      final band = bandFor(n.section);
+      final i = extrasPerSection.update(n.section, (v) => v + 1,
+          ifAbsent: () => 0);
+      const perRow = 5;
+      final rows = (band.height / 0.13).floor().clamp(1, 4);
+      n.x = 0.10 + (i % perRow) * 0.19;
+      n.y = band.top + band.height * (((i ~/ perRow) % rows) + 0.5) / rows;
+    }
+    setState(() => _dirty = true);
+    _toast('Layout tidied — Save to keep it');
+  }
+
   // ── Section zones on the canvas ───────────────────────────────────────────
-  /// Outlined regions bounding each section's nodes, with a heading chip that
-  /// opens the section's Validate & Lock sheet.
+  static const Color _kCalColor = Color(0xFFFFB547);
+
+  Color _sectionColor(SchematicSection s) =>
+      s == SchematicSection.calibration ? _kCalColor : _kPurple;
+
+  /// Fixed, full-width bands — one per lockable section. Because the bands come
+  /// from [sectionBands] rather than the nodes' bounding box, they can never
+  /// overlap each other or swallow a node from another section.
   List<Widget> _sectionZones(double w, double h) {
-    const nw = 120.0, nh = 60.0;
     final out = <Widget>[];
     for (final s in const [
       SchematicSection.calibration,
       SchematicSection.validation,
     ]) {
-      final members =
-          _profile.schematicNodes.where((n) => n.section == s).toList();
-      if (members.isEmpty) continue;
-      double minX = members.map((n) => n.x).reduce(min) * w - nw / 2 - 14;
-      double maxX = members.map((n) => n.x).reduce(max) * w + nw / 2 + 14;
-      double minY = members.map((n) => n.y).reduce(min) * h - nh / 2 - 12;
-      double maxY = members.map((n) => n.y).reduce(max) * h + nh / 2 + 12;
-      minX = minX.clamp(2.0, w - 60.0);
-      maxX = maxX.clamp(minX + 60.0, w - 2.0);
-      minY = minY.clamp(20.0, h - 44.0);
-      maxY = maxY.clamp(minY + 40.0, h - 2.0);
+      final band = bandFor(s);
+      final top = band.top * h;
+      final height = band.height * h;
       final locked = _config?.isSectionLocked(s) ?? false;
-      final col = s == SchematicSection.calibration
-          ? const Color(0xFFFFB547)
-          : _kPurple;
+      final col = _sectionColor(s);
       out.add(Positioned(
-        left: minX,
-        top: minY,
-        width: maxX - minX,
-        height: maxY - minY,
+        left: 6,
+        top: top,
+        width: w - 12,
+        height: height,
         child: IgnorePointer(
           child: Container(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              color: col.withAlpha(locked ? 14 : 8),
+              borderRadius: BorderRadius.circular(14),
+              color: col.withAlpha(locked ? 16 : 8),
               border: Border.all(
-                color: col.withAlpha(locked ? 130 : 60),
+                color: col.withAlpha(locked ? 130 : 55),
                 width: locked ? 1.4 : 1,
               ),
             ),
@@ -1116,8 +1175,8 @@ class _SchematicTabState extends State<_SchematicTab>
         ),
       ));
       out.add(Positioned(
-        left: minX + 10,
-        top: minY - 11,
+        left: 18,
+        top: top - 10,
         child: GestureDetector(
           onTap: () => _sectionLockSheet(s),
           child: Container(
@@ -1180,6 +1239,9 @@ class _SchematicTabState extends State<_SchematicTab>
         configs = [seeded];
       }
       if (!mounted) return;
+      for (final c in configs) {
+        _normalizeLayout(c);
+      }
       setState(() {
         _configs = configs;
         final keepId = _config?.id;
@@ -1386,11 +1448,13 @@ class _SchematicTabState extends State<_SchematicTab>
                                               node.x = ((node.x * w +
                                                           d.delta.dx) /
                                                       w)
-                                                  .clamp(0.04, 0.96);
-                                              node.y = ((node.y * h +
+                                                  .clamp(0.05, 0.95);
+                                              node.y = _clampToBand(
+                                                  node,
+                                                  (node.y * h +
                                                           d.delta.dy) /
-                                                      h)
-                                                  .clamp(0.04, 0.96);
+                                                      h,
+                                                  h);
                                               _dirty = true;
                                             })
                                         : null,
@@ -1718,6 +1782,8 @@ class _SchematicTabState extends State<_SchematicTab>
         }),
         const SizedBox(width: 8),
         _tbBtn(Icons.cable, 'Wires', false, _connectionsSheet),
+        const SizedBox(width: 8),
+        _tbBtn(Icons.auto_fix_high, 'Tidy', false, _tidyLayout),
       ],
       const SizedBox(width: 8),
       _tbBtn(Icons.settings_ethernet, 'Buses', false, _busesSheet),
@@ -3282,6 +3348,14 @@ class _SchematicTabState extends State<_SchematicTab>
 // ═════════════════════════════════════════════════════════════════════════════
 //  SCHEMATIC PAINTER
 // ═════════════════════════════════════════════════════════════════════════════
+/// A wire label waiting to be placed once every wire has been drawn.
+class _WireLabel {
+  final String text;
+  final Offset anchor;
+  final Color color;
+  const _WireLabel(this.text, this.anchor, this.color);
+}
+
 class _SchematicPainter extends CustomPainter {
   final List<SchematicNode> nodes;
   final List<SchematicConnection> connections;
@@ -3299,32 +3373,62 @@ class _SchematicPainter extends CustomPainter {
     this.selectedNodeId,
   });
 
-  Offset _nodeCenter(String nodeId) {
-    final n = nodes.firstWhere((n) => n.id == nodeId);
-    return Offset(n.x * canvasWidth, n.y * canvasHeight);
+  /// Null when the connection points at a node that no longer exists — such an
+  /// edge is skipped rather than crashing the canvas.
+  Offset? _nodeCenter(String nodeId) {
+    for (final n in nodes) {
+      if (n.id == nodeId) return Offset(n.x * canvasWidth, n.y * canvasHeight);
+    }
+    return null;
+  }
+
+  /// Node-editor style link: the wire leaves and enters its endpoints along a
+  /// single axis, so runs read as schematic wiring instead of arcs cutting
+  /// diagonally across the canvas.
+  Path _linkPath(Offset from, Offset to, int index) {
+    final dx = to.dx - from.dx;
+    final dy = to.dy - from.dy;
+    // Fan parallel runs apart a little so stacked wires stay countable.
+    final spread = ((index % 3) - 1) * 9.0;
+    final path = Path()..moveTo(from.dx, from.dy);
+    if (dx.abs() > 60) {
+      final k = max(48.0, dx.abs() * 0.45);
+      final s = dx.isNegative ? -k : k;
+      path.cubicTo(from.dx + s, from.dy + spread, to.dx - s, to.dy + spread,
+          to.dx, to.dy);
+    } else {
+      final k = max(48.0, dy.abs() * 0.45);
+      final s = dy.isNegative ? -k : k;
+      path.cubicTo(from.dx + spread, from.dy + s, to.dx + spread, to.dy - s,
+          to.dx, to.dy);
+    }
+    return path;
   }
 
   @override
   void paint(Canvas canvas, Size size) {
-    for (final conn in connections) {
+    // Node cards sit above this canvas as widgets, so a label placed under one
+    // would simply vanish. Treat them as blocked space.
+    final blocked = <Rect>[
+      for (final n in nodes)
+        Rect.fromCenter(
+          center: Offset(n.x * canvasWidth, n.y * canvasHeight),
+          width: 132,
+          height: 72,
+        ),
+    ];
+    final labels = <_WireLabel>[];
+
+    for (var i = 0; i < connections.length; i++) {
+      final conn = connections[i];
       final from = _nodeCenter(conn.fromNodeId);
       final to = _nodeCenter(conn.toNodeId);
+      if (from == null || to == null) continue;
       // Colour by bus identity — see wireColorValue(). Protocol-based colouring
       // made every classic-CAN wire the same red.
       final color = Color(wireColorValue(conn));
 
-      // Curved path
-      final path = Path()..moveTo(from.dx, from.dy);
-      final midX = (from.dx + to.dx) / 2;
-      final midY = (from.dy + to.dy) / 2;
-      final dx = to.dx - from.dx;
-      final dy = to.dy - from.dy;
-      // Control point offset perpendicular to the line
-      final dist = sqrt(dx * dx + dy * dy);
-      final curvature = dist * 0.15;
-      final cpX = midX - (dy / dist) * curvature;
-      final cpY = midY + (dx / dist) * curvature;
-      path.quadraticBezierTo(cpX, cpY, to.dx, to.dy);
+      final path = _linkPath(from, to, i);
 
       // Glow layer
       final glowPaint = Paint()
@@ -3343,10 +3447,72 @@ class _SchematicPainter extends CustomPainter {
         ..style = PaintingStyle.stroke;
       _drawDashedPath(canvas, path, linePaint, 8, 4, animValue);
 
-      // Label on the midpoint
-      final labelOffset = Offset(cpX, cpY - 8);
-      _drawLabel(canvas, conn.label, labelOffset, color);
+      final metrics = path.computeMetrics().toList();
+      if (metrics.isEmpty) continue;
+      final m = metrics.first;
+      final mid = m.getTangentForOffset(m.length * 0.5)?.position;
+      if (mid != null && conn.label.trim().isNotEmpty) {
+        labels.add(_WireLabel(conn.label, mid, color));
+      }
     }
+
+    // Labels go last so no later wire paints over them, and each is nudged to
+    // the nearest clear spot instead of stacking on its neighbours.
+    final placed = <Rect>[];
+    for (final l in labels) {
+      final spot = _labelSpot(l.text, l.anchor, blocked, placed);
+      if (spot == null) continue; // nowhere clear — the wire colour still reads
+      _drawLabel(canvas, l.text, spot.center, l.color);
+      placed.add(spot);
+    }
+  }
+
+  static const List<Offset> _labelNudges = [
+    Offset(0, -14),
+    Offset(0, 16),
+    Offset(0, -34),
+    Offset(0, 36),
+    Offset(48, -14),
+    Offset(-48, -14),
+    Offset(48, 16),
+    Offset(-48, 16),
+    Offset(0, -54),
+    Offset(0, 56),
+  ];
+
+  TextPainter _layoutLabel(String text) => TextPainter(
+        text: TextSpan(
+          text: text,
+          style: const TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFFFFFFFF),
+            fontFamily: 'Space Grotesk',
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+  /// First candidate position that clears the node cards, the labels already
+  /// placed, and the canvas edges. Null when every candidate collides.
+  Rect? _labelSpot(
+      String text, Offset anchor, List<Rect> blocked, List<Rect> placed) {
+    final tp = _layoutLabel(text);
+    final w = tp.width + 12;
+    final h = tp.height + 7;
+    for (final nudge in _labelNudges) {
+      final r = Rect.fromCenter(
+          center: anchor + nudge, width: w, height: h);
+      if (r.left < 2 ||
+          r.top < 2 ||
+          r.right > canvasWidth - 2 ||
+          r.bottom > canvasHeight - 2) {
+        continue;
+      }
+      if (blocked.any(r.overlaps) || placed.any(r.overlaps)) continue;
+      return r;
+    }
+    return null;
   }
 
   void _drawDashedPath(Canvas canvas, Path path, Paint paint, double dashLen,
@@ -3383,6 +3549,7 @@ class _SchematicPainter extends CustomPainter {
       ),
       textDirection: TextDirection.ltr,
     )..layout();
+
 
     // Background — near-opaque chip with a hairline in the wire's own colour,
     // so a label is always tied back to the line it belongs to.

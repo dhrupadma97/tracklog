@@ -112,6 +112,14 @@ class _AppNavigationState extends State<AppNavigation>
       branchIndex: 9,
     ));
 
+    // 9. Test Cases
+    list.add(const _TabSpec(
+      icon: 'checklist_rtl_outlined',
+      selectedIcon: 'checklist_rtl',
+      label: 'Test Cases',
+      branchIndex: 11,
+    ));
+
     return list;
   }
 

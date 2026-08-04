@@ -15,6 +15,30 @@ class _CarDetail {
   const _CarDetail(this.name, this.icon);
 }
 
+/// Explicit lifecycle state for a PoC. Set per project below rather than
+/// inferred from session count, so a finished project (Mahindra EV) can read
+/// "Completed" while keeping its billing history.
+enum ProjectStatus { active, upcoming, completed }
+
+extension ProjectStatusExt on ProjectStatus {
+  String get label {
+    switch (this) {
+      case ProjectStatus.active: return 'ACTIVE';
+      case ProjectStatus.upcoming: return 'UPCOMING';
+      case ProjectStatus.completed: return 'COMPLETED';
+    }
+  }
+
+  /// Badge colour. Active/Upcoming follow the card accent; Completed is green.
+  Color color(Color accent) {
+    switch (this) {
+      case ProjectStatus.active: return accent;
+      case ProjectStatus.upcoming: return accent;
+      case ProjectStatus.completed: return const Color(0xFF22C55E);
+    }
+  }
+}
+
 class _ProjectMeta {
   final String displayName;
   final String vehicle;
@@ -25,6 +49,7 @@ class _ProjectMeta {
   final Color glowColor;
   final List<String> specs;
   final List<_CarDetail> details;
+  final ProjectStatus status;
   const _ProjectMeta({
     required this.displayName,
     required this.vehicle,
@@ -35,6 +60,7 @@ class _ProjectMeta {
     required this.glowColor,
     this.specs = const [],
     this.details = const [],
+    this.status = ProjectStatus.upcoming,
   });
 }
 
@@ -47,6 +73,7 @@ const _knownProjects = {
         'Real-time tire-road friction estimation, aquaplaning onset detection and tire health '
         'monitoring integrated with the vehicle\'s ADAS stack at NATRAX proving ground.',
     imagePath: 'assets/images/mahindra_xev9e_hero.png',
+    status: ProjectStatus.completed,
     accentColor: Color(0xFFE8002D),
     glowColor: Color(0xFFE8002D),
     specs: ['INGLO Architecture', '79 kWh Battery', 'AWD · 285 kW'],
@@ -66,6 +93,7 @@ const _knownProjects = {
         'Validating pressure & load sensing, predictive maintenance alerts, and tire wear state '
         'measurement across dynamic handling tracks.',
     imagePath: 'assets/images/mahindra_7xo.webp',
+    status: ProjectStatus.active,
     accentColor: Color(0xFF4A9EFF),
     glowColor: Color(0xFF4A9EFF),
     specs: ['mStallion 3.0 Turbo', 'AdrenoX 5.0', '4WD · 206 kW'],
@@ -85,6 +113,7 @@ const _knownProjects = {
         'Evaluating aquaplaning detection speed recommendations, real-time inflation pressure '
         'monitoring, and predictive maintenance data relay to fleet management systems.',
     imagePath: 'assets/images/hyundai_creta_ev.png',
+    status: ProjectStatus.upcoming,
     accentColor: Color(0xFF00F3FF),
     glowColor: Color(0xFF00B4D8),
     specs: ['51.4 kWh Battery', 'Smart Regen', 'ADAS Level 2+'],
@@ -451,7 +480,8 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
     // Compute totals across all loaded projects
     final totalSessions = _projects.fold(0, (s, p) => s + p.sessions);
     final totalSpendInclGst = _projects.fold(0.0, (s, p) => s + p.totalInclGst);
-    final activeCount = _projects.where((p) => p.sessions > 0).length;
+    final activeCount =
+        _projects.where((p) => p.meta.status == ProjectStatus.active).length;
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       // Label
@@ -873,32 +903,41 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
             ),
           ),
 
-          // Status badge
-          Positioned(
-            left: 18, top: 14,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: accent.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: accent.withOpacity(0.4)),
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Container(
-                  width: 5, height: 5,
-                  decoration: BoxDecoration(
-                    color: accent, shape: BoxShape.circle,
-                    boxShadow: [BoxShadow(color: accent, blurRadius: 4)],
-                  ),
+          // Status badge — driven by the project's explicit lifecycle status.
+          Builder(builder: (_) {
+            final statusColor = meta.status.color(accent);
+            return Positioned(
+              left: 18, top: 14,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: statusColor.withOpacity(0.4)),
                 ),
-                const SizedBox(width: 6),
-                Text(p.sessions > 0 ? 'ACTIVE' : 'UPCOMING',
-                    style: GoogleFonts.spaceGrotesk(
-                        fontSize: 8, fontWeight: FontWeight.w700,
-                        color: accent, letterSpacing: 1.5)),
-              ]),
-            ),
-          ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  meta.status == ProjectStatus.completed
+                      ? Icon(Icons.check_circle,
+                          size: 9, color: statusColor)
+                      : Container(
+                          width: 5, height: 5,
+                          decoration: BoxDecoration(
+                            color: statusColor, shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(color: statusColor, blurRadius: 4)
+                            ],
+                          ),
+                        ),
+                  const SizedBox(width: 6),
+                  Text(meta.status.label,
+                      style: GoogleFonts.spaceGrotesk(
+                          fontSize: 8, fontWeight: FontWeight.w700,
+                          color: statusColor, letterSpacing: 1.5)),
+                ]),
+              ),
+            );
+          }),
 
           // INR value badge (top right)
           if (p.totalInclGst > 0)

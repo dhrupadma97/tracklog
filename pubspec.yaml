@@ -4,7 +4,7 @@ publish_to: none
 version: 1.2.0+6
 
 environment:
-  sdk: ^3.9.0
+  sdk: '>=3.5.0 <4.0.0'
 
 dependencies:
   flutter:       # CRITICAL: Required for every Flutter project - DO NOT REMOVE
@@ -14,7 +14,7 @@ dependencies:
   supabase_flutter: ^2.9.1
   sizer: ^2.0.15              # Required for responsive design system
   flutter_svg: ^2.0.9        # Required for SVG icon support
-  google_fonts: ^6.1.0       # Required for typography (replaces local fonts)
+  google_fonts: ^8.2.1       # Required for typography (replaces local fonts)
   shared_preferences: ^2.2.2 # Required for local data storage
   web: ^1.1.1
   excel: ^4.0.6
@@ -30,7 +30,7 @@ dependencies:
   go_router: ^14.6.1
   intl: ^0.19.0
   flutter_local_notifications: ^19.5.0
-  google_maps_flutter: ^2.12.3
+  google_maps_flutter: ^2.10.0
   geolocator: ^14.0.2
 
 
