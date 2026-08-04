@@ -117,21 +117,114 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
   @override
   void initState() {
     super.initState();
+    // The Analyser is vehicle-scoped and INDEPENDENT of the globally selected
+    // project — default to the active one, then ask which vehicle to analyse as
+    // soon as the screen opens.
     _activeProject = ProjectManager.instance.activeProject;
-    ProjectManager.instance.addListener(_onProjectChanged);
     _loadData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _pickVehicle();
+    });
   }
 
-  @override
-  void dispose() {
-    ProjectManager.instance.removeListener(_onProjectChanged);
-    super.dispose();
-  }
+  // Vehicles the Analyser can scope to. Kept here (not from ProjectManager) so
+  // the Analyser selection stays independent of the global project.
+  static const List<Map<String, String>> _analyserVehicles = [
+    {'project': 'Mahindra EV PoC', 'vehicle': 'Mahindra XEV 9e', 'type': 'BEV'},
+    {'project': 'Mahindra ICE PoC', 'vehicle': 'Mahindra XUV 7XO', 'type': 'ICE SUV'},
+    {'project': 'Hyundai PoC', 'vehicle': 'Hyundai CRETA EV', 'type': 'BEV'},
+  ];
 
-  void _onProjectChanged() {
-    if (mounted && _activeProject != ProjectManager.instance.activeProject) {
+  /// Ask which vehicle's expenses to analyse. Shown on open and via "Change".
+  Future<void> _pickVehicle() async {
+    final chosen = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: const BoxDecoration(
+          color: Color(0xFF0A1025),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(2))),
+            ),
+            const SizedBox(height: 14),
+            Text('Analyse which vehicle?',
+                style: GoogleFonts.spaceGrotesk(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white)),
+            const SizedBox(height: 2),
+            Text('Pick the vehicle whose expenses you want to review.',
+                style: GoogleFonts.spaceGrotesk(
+                    fontSize: 11, color: Colors.white54)),
+            const SizedBox(height: 14),
+            ..._analyserVehicles.map((v) {
+              final sel = v['project'] == _activeProject;
+              final isIce = v['type'] == 'ICE SUV';
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: GestureDetector(
+                  onTap: () => Navigator.pop(ctx, v['project']),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      color: sel
+                          ? primaryColor.withOpacity(0.12)
+                          : Colors.white.withOpacity(0.04),
+                      border: Border.all(
+                          color: sel ? primaryColor : Colors.white24,
+                          width: sel ? 1.4 : 1),
+                    ),
+                    child: Row(children: [
+                      Icon(
+                          isIce
+                              ? Icons.local_fire_department
+                              : Icons.electric_bolt,
+                          size: 18,
+                          color: sel ? primaryColor : Colors.white54),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(v['vehicle']!,
+                                  style: GoogleFonts.spaceGrotesk(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white)),
+                              Text('${v['project']} · ${v['type']}',
+                                  style: GoogleFonts.spaceGrotesk(
+                                      fontSize: 10.5, color: Colors.white54)),
+                            ]),
+                      ),
+                      if (sel)
+                        Icon(Icons.check_circle,
+                            size: 18, color: primaryColor),
+                    ]),
+                  ),
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+    if (chosen != null && chosen != _activeProject) {
       setState(() {
-        _activeProject = ProjectManager.instance.activeProject;
+        _activeProject = chosen;
         _selectedMonthIdx = 0;
       });
       _loadData();
@@ -461,9 +554,12 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
                       fontSize: 10, fontWeight: FontWeight.w800,
                       color: primaryColor, letterSpacing: 1.5)),
               Row(children: [
-                Text(_activeProject,
-                    style: GoogleFonts.spaceGrotesk(
-                        fontSize: 16, fontWeight: FontWeight.w800, color: const Color(0xFFdfe2f0))),
+                Flexible(
+                  child: Text(_activeProject,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.spaceGrotesk(
+                          fontSize: 16, fontWeight: FontWeight.w800, color: const Color(0xFFdfe2f0))),
+                ),
                 const SizedBox(width: 6),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -472,6 +568,25 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
                   ),
                   child: Text('NATRAX',
                       style: GoogleFonts.spaceGrotesk(fontSize: 8, color: Colors.white70, fontWeight: FontWeight.w600)),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: _pickVehicle,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: primaryColor.withOpacity(0.14),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: primaryColor.withOpacity(0.5)),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.directions_car_filled, size: 11, color: primaryColor),
+                      const SizedBox(width: 4),
+                      Text('Change',
+                          style: GoogleFonts.spaceGrotesk(
+                              fontSize: 9, fontWeight: FontWeight.w700, color: primaryColor)),
+                    ]),
+                  ),
                 ),
               ]),
             ])),
