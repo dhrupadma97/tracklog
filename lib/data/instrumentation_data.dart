@@ -296,6 +296,76 @@ const Map<SchematicSection, SectionBand> sectionBands = {
 SectionBand bandFor(SchematicSection s) =>
     sectionBands[s] ?? sectionBands[SchematicSection.base]!;
 
+// ─── Layered schematic columns (left → right signal flow) ───────────────────
+// The clean "standard" layout places every node in a fixed column so the
+// diagram reads left→right and wires can be routed orthogonally without the
+// old free-floating tangle.
+const int schematicColumnCount = 5;
+
+const List<String> schematicColumnLabels = [
+  'Vehicle',
+  'Vehicle Buses',
+  'Sensors & Power',
+  'Loggers & ECU',
+  'Software & Display',
+];
+
+/// Preferred top-to-bottom order within a column (by node id) to reduce wire
+/// crossings. Unknown ids sort after these.
+const List<String> schematicNodeOrder = [
+  'obd_port',
+  'can1_bus', 'can2_bus', 'can3_bus',
+  'imu', 'vbox', 'power_bar',
+  'gl2000', 'raptor',
+  'pc_canoe', 'display', 'huf', 'pc_canape',
+];
+
+/// Column (layer) index 0..[schematicColumnCount]-1 for a node.
+int schematicColumn(SchematicNode n) {
+  switch (n.id) {
+    case 'obd_port':
+      return 0;
+    case 'can1_bus':
+    case 'can2_bus':
+    case 'can3_bus':
+      return 1;
+    case 'imu':
+    case 'vbox':
+    case 'power_bar':
+      return 2;
+    case 'gl2000':
+    case 'raptor':
+      return 3;
+    case 'pc_canape':
+    case 'pc_canoe':
+    case 'huf':
+    case 'display':
+      return 4;
+  }
+  // Fallback for user-added nodes, by category.
+  switch (n.nodeType) {
+    case InstrumentCategory.connector:
+      return 1;
+    case InstrumentCategory.sensor:
+    case InstrumentCategory.power:
+      return 2;
+    case InstrumentCategory.logger:
+    case InstrumentCategory.ecu:
+    case InstrumentCategory.interfaceDevice:
+      return 3;
+    case InstrumentCategory.software:
+    case InstrumentCategory.display:
+    case InstrumentCategory.receiver:
+      return 4;
+  }
+}
+
+/// Sort key within a column — index in [schematicNodeOrder]; unknowns last.
+int schematicRow(SchematicNode n) {
+  final i = schematicNodeOrder.indexOf(n.id);
+  return i < 0 ? 900 : i;
+}
+
 /// Default schematic section for an instrument. CANape + Kvaser are the
 /// calibration tools; the validation chain is Raptor (models) → Display with
 /// CANoe for analysis. Everything else (buses, logger, sensors, power) = base.

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../data/models/test_case_model.dart';
 import '../../data/services/test_case_service.dart';
+import '../../data/services/test_case_supplements.dart';
 
 class TestCasesScreen extends StatefulWidget {
   const TestCasesScreen({Key? key}) : super(key: key);
@@ -116,11 +117,13 @@ class _TestCasesScreenState extends State<TestCasesScreen> {
   @override
   void initState() {
     super.initState();
-    // Drop curve-based cases up front so every count, filter and the strategy
-    // banner reflect only what NATRAX can actually test.
-    _allTestCases = TestCaseService.getMockTestCases()
-        .where((t) => !_isCurveCase(t))
-        .toList();
+    // Generated DVP cases + manually-maintained supplements (e.g. the temp
+    // spare-wheel program). Drop curve-based cases up front so every count,
+    // filter and the strategy banner reflect only what NATRAX can actually test.
+    _allTestCases = [
+      ...TestCaseService.getMockTestCases(),
+      ...TestCaseSupplements.cases,
+    ].where((t) => !_isCurveCase(t)).toList();
   }
 
   List<TestCase> get _filteredCases {

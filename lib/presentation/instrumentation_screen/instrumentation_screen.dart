@@ -6,7 +6,6 @@
 
 import 'dart:convert';
 import 'dart:ui';
-import 'dart:math';
 import 'package:file_picker/file_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/app_export.dart';
@@ -1142,6 +1141,74 @@ class _SchematicTabState extends State<_SchematicTab>
   Color _sectionColor(SchematicSection s) =>
       s == SchematicSection.calibration ? _kCalColor : _kPurple;
 
+  /// Accent colour for a node, by its lockable section (base = teal,
+  /// calibration = amber, validation = purple) — replaces the old full-width
+  /// section bands with a per-node cue.
+  Color _sectionAccent(SchematicNode n) {
+    switch (n.section) {
+      case SchematicSection.calibration:
+        return _kCalColor;
+      case SchematicSection.validation:
+        return _kPurple;
+      case SchematicSection.base:
+        return _kTeal;
+    }
+  }
+
+  /// Fixed left→right column positions for the clean schematic. Nodes are
+  /// grouped by [schematicColumn] and spaced evenly down their column (ordered
+  /// by [schematicRow] to reduce wire crossings). Computed each build, so the
+  /// layout is always tidy regardless of any stored x/y.
+  Map<String, Offset> _layeredCenters(double w, double h) {
+    const topPad = 46.0; // room for the column headers
+    const botPad = 18.0;
+    final usableH = (h - topPad - botPad).clamp(80.0, h);
+    final colW = w / schematicColumnCount;
+
+    final byCol = <int, List<SchematicNode>>{};
+    for (final n in _profile.schematicNodes) {
+      byCol.putIfAbsent(schematicColumn(n), () => []).add(n);
+    }
+    final centers = <String, Offset>{};
+    byCol.forEach((col, list) {
+      list.sort((a, b) => schematicRow(a).compareTo(schematicRow(b)));
+      final k = list.length;
+      final cx = colW * (col + 0.5);
+      for (var i = 0; i < k; i++) {
+        centers[list[i].id] =
+            Offset(cx, topPad + usableH * (i + 0.5) / k);
+      }
+    });
+    return centers;
+  }
+
+  /// Column heading chips across the top of the canvas.
+  List<Widget> _columnHeaders(double w) {
+    final colW = w / schematicColumnCount;
+    return [
+      for (var col = 0; col < schematicColumnCount; col++)
+        Positioned(
+          left: colW * col,
+          top: 8,
+          width: colW,
+          child: Center(
+            child: Text(
+              schematicColumnLabels[col].toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.spaceGrotesk(
+                fontSize: 8.5,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.8,
+                color: Colors.white38,
+              ),
+            ),
+          ),
+        ),
+    ];
+  }
+
   /// Fixed, full-width bands — one per lockable section. Because the bands come
   /// from [sectionBands] rather than the nodes' bounding box, they can never
   /// overlap each other or swallow a node from another section.
@@ -1405,6 +1472,10 @@ class _SchematicTabState extends State<_SchematicTab>
                     builder: (context, constraints) {
                       final w = constraints.maxWidth;
                       final h = constraints.maxHeight;
+                      // Clean layered layout: nodes are placed in fixed
+                      // left→right columns, computed each build (see
+                      // _layeredCenters), so the diagram is always tidy.
+                      final centers = _layeredCenters(w, h);
                       return AnimatedBuilder(
                         animation: _glowCtrl,
                         builder: (context, _) {
@@ -1417,22 +1488,26 @@ class _SchematicTabState extends State<_SchematicTab>
                                   nodes: _profile.schematicNodes,
                                   connections:
                                       _profile.schematicConnections,
+                                  centers: centers,
                                   canvasWidth: w,
                                   canvasHeight: h,
                                   animValue: _glowCtrl.value,
                                   selectedNodeId: _selectedNodeId,
                                 ),
                               ),
-                              // Lockable section zones (Calibration / Validation)
-                              ..._sectionZones(w, h),
+                              // Column headers along the top
+                              ..._columnHeaders(w),
                               // Interactive node overlays
                               ..._profile.schematicNodes.map((node) {
-                                final nx = node.x * w;
-                                final ny = node.y * h;
-                                const nw = 120.0;
-                                const nh = 60.0;
+                                final c = centers[node.id] ??
+                                    Offset(node.x * w, node.y * h);
+                                final nx = c.dx;
+                                final ny = c.dy;
+                                const nw = 116.0;
+                                const nh = 54.0;
                                 final isSel = _selectedNodeId == node.id ||
                                     _linkFromId == node.id;
+                                final accent = _sectionAccent(node);
                                 return Positioned(
                                   left: nx - nw / 2,
                                   top: ny - nh / 2,
@@ -1441,23 +1516,6 @@ class _SchematicTabState extends State<_SchematicTab>
                                   child: GestureDetector(
                                     onTap: () =>
                                         _onNodeTap(context, node),
-                                    onPanUpdate: (_editMode &&
-                                            _canEdit &&
-                                            !_nodeLocked(node))
-                                        ? (d) => setState(() {
-                                              node.x = ((node.x * w +
-                                                          d.delta.dx) /
-                                                      w)
-                                                  .clamp(0.05, 0.95);
-                                              node.y = _clampToBand(
-                                                  node,
-                                                  (node.y * h +
-                                                          d.delta.dy) /
-                                                      h,
-                                                  h);
-                                              _dirty = true;
-                                            })
-                                        : null,
                                     child: AnimatedContainer(
                                       duration: const Duration(
                                           milliseconds: 200),
@@ -1465,19 +1523,19 @@ class _SchematicTabState extends State<_SchematicTab>
                                         borderRadius:
                                             BorderRadius.circular(12),
                                         color: isSel
-                                            ? _kTeal.withAlpha(12)
+                                            ? accent.withAlpha(20)
                                             : const Color(0xFF0A1025),
                                         border: Border.all(
                                           color: isSel
-                                              ? _kTeal
-                                              : _kTeal.withAlpha(60),
-                                          width: isSel ? 1.5 : 0.8,
+                                              ? accent
+                                              : accent.withAlpha(75),
+                                          width: isSel ? 1.6 : 1.0,
                                         ),
                                         boxShadow: isSel
                                             ? [
                                                 BoxShadow(
-                                                  color: _kTeal
-                                                      .withAlpha(30),
+                                                  color: accent
+                                                      .withAlpha(40),
                                                   blurRadius: 16,
                                                 ),
                                               ]
@@ -1491,7 +1549,7 @@ class _SchematicTabState extends State<_SchematicTab>
                                             _mapIcon(
                                                 node.nodeType.icon),
                                             size: 14,
-                                            color: _kTeal,
+                                            color: accent,
                                           ),
                                           const SizedBox(height: 2),
                                           Text(
@@ -1784,20 +1842,20 @@ class _SchematicTabState extends State<_SchematicTab>
         _tbBtn(Icons.cable, 'Wires', false, _connectionsSheet),
         const SizedBox(width: 8),
         _tbBtn(Icons.auto_fix_high, 'Tidy', false, _tidyLayout),
+        const SizedBox(width: 8),
+        _tbBtn(Icons.settings_ethernet, 'Buses', false, _busesSheet),
+        const SizedBox(width: 8),
+        _tbBtn(
+          _saving ? Icons.hourglass_top : Icons.save_outlined,
+          _saving ? 'Saving…' : (_dirty ? 'Save*' : 'Save'),
+          _dirty,
+          _saveNow,
+        ),
+        const SizedBox(width: 8),
+        _sectionBtn(SchematicSection.calibration),
+        const SizedBox(width: 8),
+        _sectionBtn(SchematicSection.validation),
       ],
-      const SizedBox(width: 8),
-      _tbBtn(Icons.settings_ethernet, 'Buses', false, _busesSheet),
-      const SizedBox(width: 8),
-      _tbBtn(
-        _saving ? Icons.hourglass_top : Icons.save_outlined,
-        _saving ? 'Saving…' : (_dirty ? 'Save*' : 'Save'),
-        _dirty,
-        _saveNow,
-      ),
-      const SizedBox(width: 8),
-      _sectionBtn(SchematicSection.calibration),
-      const SizedBox(width: 8),
-      _sectionBtn(SchematicSection.validation),
     ];
   }
 
@@ -3359,6 +3417,7 @@ class _WireLabel {
 class _SchematicPainter extends CustomPainter {
   final List<SchematicNode> nodes;
   final List<SchematicConnection> connections;
+  final Map<String, Offset> centers; // computed layered pixel positions
   final double canvasWidth;
   final double canvasHeight;
   final double animValue;
@@ -3367,42 +3426,51 @@ class _SchematicPainter extends CustomPainter {
   _SchematicPainter({
     required this.nodes,
     required this.connections,
+    required this.centers,
     required this.canvasWidth,
     required this.canvasHeight,
     required this.animValue,
     this.selectedNodeId,
   });
 
+  // Half the node-card width, so wires exit/enter at the card edge.
+  static const double _halfW = 58.0;
+
   /// Null when the connection points at a node that no longer exists — such an
   /// edge is skipped rather than crashing the canvas.
-  Offset? _nodeCenter(String nodeId) {
-    for (final n in nodes) {
-      if (n.id == nodeId) return Offset(n.x * canvasWidth, n.y * canvasHeight);
-    }
-    return null;
-  }
+  Offset? _nodeCenter(String nodeId) => centers[nodeId];
 
-  /// Node-editor style link: the wire leaves and enters its endpoints along a
-  /// single axis, so runs read as schematic wiring instead of arcs cutting
-  /// diagonally across the canvas.
+  /// Orthogonal (right-angle) wire — the standard schematic look. Leaves the
+  /// side of the source facing the target, runs to a vertical channel between
+  /// the columns, then into the target. Parallel runs are fanned so they stay
+  /// countable.
   Path _linkPath(Offset from, Offset to, int index) {
-    final dx = to.dx - from.dx;
-    final dy = to.dy - from.dy;
-    // Fan parallel runs apart a little so stacked wires stay countable.
-    final spread = ((index % 3) - 1) * 9.0;
-    final path = Path()..moveTo(from.dx, from.dy);
-    if (dx.abs() > 60) {
-      final k = max(48.0, dx.abs() * 0.45);
-      final s = dx.isNegative ? -k : k;
-      path.cubicTo(from.dx + s, from.dy + spread, to.dx - s, to.dy + spread,
-          to.dx, to.dy);
-    } else {
-      final k = max(48.0, dy.abs() * 0.45);
-      final s = dy.isNegative ? -k : k;
-      path.cubicTo(from.dx + spread, from.dy + s, to.dx + spread, to.dy - s,
-          to.dx, to.dy);
+    final sameColumn = (from.dx - to.dx).abs() < 1.0;
+    if (sameColumn) {
+      // Loop out the right edge and back — used for in-column links (e.g. IMU→VBOX).
+      final channel = from.dx + _halfW + 20 + (index % 3) * 9.0;
+      return Path()
+        ..moveTo(from.dx + _halfW, from.dy)
+        ..lineTo(channel, from.dy)
+        ..lineTo(channel, to.dy)
+        ..lineTo(to.dx + _halfW, to.dy);
     }
-    return path;
+    final forward = to.dx > from.dx;
+    final p0 = Offset(from.dx + (forward ? _halfW : -_halfW), from.dy);
+    final p1 = Offset(to.dx + (forward ? -_halfW : _halfW), to.dy);
+    if ((p0.dy - p1.dy).abs() < 1.0) {
+      return Path()
+        ..moveTo(p0.dx, p0.dy)
+        ..lineTo(p1.dx, p1.dy);
+    }
+    // Vertical channel between the ports, fanned a little per-edge.
+    final spread = ((index % 5) - 2) * 7.0;
+    final midX = (p0.dx + p1.dx) / 2 + spread;
+    return Path()
+      ..moveTo(p0.dx, p0.dy)
+      ..lineTo(midX, p0.dy)
+      ..lineTo(midX, p1.dy)
+      ..lineTo(p1.dx, p1.dy);
   }
 
   @override
@@ -3411,11 +3479,12 @@ class _SchematicPainter extends CustomPainter {
     // would simply vanish. Treat them as blocked space.
     final blocked = <Rect>[
       for (final n in nodes)
-        Rect.fromCenter(
-          center: Offset(n.x * canvasWidth, n.y * canvasHeight),
-          width: 132,
-          height: 72,
-        ),
+        if (centers[n.id] != null)
+          Rect.fromCenter(
+            center: centers[n.id]!,
+            width: 132,
+            height: 72,
+          ),
     ];
     final labels = <_WireLabel>[];
 
@@ -3580,7 +3649,8 @@ class _SchematicPainter extends CustomPainter {
       old.animValue != animValue ||
       old.selectedNodeId != selectedNodeId ||
       old.nodes != nodes ||
-      old.connections != connections;
+      old.connections != connections ||
+      old.centers != centers;
 }
 
 
