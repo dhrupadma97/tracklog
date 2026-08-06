@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../data/models/test_case_model.dart';
 import '../../data/services/test_case_service.dart';
+import '../../data/services/test_case_india_v01.dart';
 import '../../data/services/test_case_supplements.dart';
 import '../../data/services/test_case_repository.dart';
 import '../../services/engineer_auth_service.dart';
@@ -131,13 +132,15 @@ class _TestCasesScreenState extends State<TestCasesScreen> {
   @override
   void initState() {
     super.initState();
-    // Generated DVP cases + manually-maintained supplements (e.g. the temp
-    // spare-wheel program). Drop curve-based cases up front so every count,
-    // filter and the strategy banner reflect only what NATRAX can actually test.
+    // AQD comes from the detailed Sightline India V01 vehicle-validation
+    // matrix; DFE/Leak stay from the generated baseline; supplements add
+    // temp-spare + false-positive trials. Curved cases ARE included — the
+    // India plan runs curved & one-sided AQD on the wet track.
     _baseCases = [
-      ...TestCaseService.getMockTestCases(),
+      ...TestCaseService.getMockTestCases().where((t) => t.feature != 'AQD'),
+      ...TestCaseIndiaV01.cases,
       ...TestCaseSupplements.cases,
-    ].where((t) => !_isCurveCase(t)).toList();
+    ];
     _allTestCases = _baseCases;
     _loadOverrides();
     _resolveManager();
@@ -608,11 +611,11 @@ class _TestCasesScreenState extends State<TestCasesScreen> {
 
   Widget _buildMainTitle() {
     return Container(
-      width: 1450,
+      width: 1650,
       padding: const EdgeInsets.all(12),
       color: darkNavy,
       child: Text(
-        'GOODYEAR DVP TEST CASE GENERATION & MAPPING SUMMARY',
+        'GOODYEAR SIGHTLINE — TIRE-INTELLIGENCE VEHICLE VALIDATION MATRIX',
         style: TextStyle(
           fontFamily: 'Arial',
           fontSize: 13,
@@ -625,11 +628,11 @@ class _TestCasesScreenState extends State<TestCasesScreen> {
 
   Widget _buildSubtitle() {
     return Container(
-      width: 1450,
+      width: 1650,
       padding: const EdgeInsets.all(8),
       color: navy,
       child: const Text(
-        'Summary of logic, mappings, and formatting rules established for Goodyear DVP — NATRAX Test Track',
+        'Embedded tire-intelligence model (AQD) — ASPICE VAL.1 / Final Acceptance · ISO 26262 ASIL B · NATRAX wet-track proving ground',
         style: TextStyle(fontFamily: 'Arial', fontSize: 9, color: Colors.white),
       ),
     );
@@ -642,7 +645,7 @@ class _TestCasesScreenState extends State<TestCasesScreen> {
     final wdLabel = _selectedWaterDepth == 'All' ? 'All' : _selectedWaterDepth;
 
     return Container(
-      width: 1450,
+      width: 1650,
       decoration: BoxDecoration(border: Border.all(color: Colors.black26)),
       child: Row(
         children: [
@@ -689,54 +692,157 @@ class _TestCasesScreenState extends State<TestCasesScreen> {
 
   // ─── Data Table ───────────────────────────────────────────────────────────────
 
+  // ─── Maneuver category (drives the row colour + Category badge) ─────────────
+  static const Map<String, Color> _categoryColors = {
+    'Constant Speed': Color(0xFF0277BD),
+    'Acceleration': Color(0xFF2E7D32),
+    'Braking': Color(0xFFC62828),
+    'Coast / Regen': Color(0xFF00838F),
+    'Curved': Color(0xFF6A1B9A),
+    'One-Sided': Color(0xFFAD1457),
+    'NVH': Color(0xFF827717),
+    'Wet Handling': Color(0xFF1565C0),
+    'Safety / System': Color(0xFF455A64),
+  };
+
+  String _maneuverCategory(TestCase t) {
+    final n = t.testCasesName.toLowerCase();
+    if (n.contains('one sided') || n.contains('one-sided')) return 'One-Sided';
+    if (n.contains('brak') || n.contains('abs')) return 'Braking';
+    if (n.contains('coast') || n.contains('regen')) return 'Coast / Regen';
+    if (n.contains('acceleration')) return 'Acceleration';
+    if (n.contains('constant speed')) return 'Constant Speed';
+    if (n.contains('nvh')) return 'NVH';
+    if (n.contains('wet handling')) return 'Wet Handling';
+    if (n.contains('curve')) return 'Curved';
+    return 'Safety / System';
+  }
+
+  Color _categoryColor(String c) =>
+      _categoryColors[c] ?? const Color(0xFF455A64);
+
+  Color _rowTint(TestCase t) => Color.alphaBlend(
+      _categoryColor(_maneuverCategory(t)).withOpacity(0.10), Colors.white);
+
+  bool _isCurved(TestCase t) =>
+      t.testCasesName.toLowerCase().contains('curve');
+
+  String _conditionText(TestCase t) => t.condition.isNotEmpty
+      ? t.condition
+      : [t.tireCondition, t.tirePressure, t.load]
+          .where((s) => s.trim().isNotEmpty)
+          .join(' · ');
+
+  String _acceptanceText(TestCase t) =>
+      t.acceptanceCriteria.isNotEmpty ? t.acceptanceCriteria : t.testDescription;
+
+  Widget _pill(String text, Color color) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: color.withOpacity(0.5)),
+        ),
+        child: Text(text,
+            style: TextStyle(
+                fontFamily: 'Arial',
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: color)),
+      );
+
+  static const _dash = DataCell(
+      Text('—', style: TextStyle(color: Colors.black38, fontSize: 11)));
+
   Widget _buildDataTable(List<TestCase> cases) {
     return Container(
-      width: 1450,
+      width: 1650,
       decoration: BoxDecoration(border: Border.all(color: Colors.black26)),
       child: DataTable(
         headingRowColor: WidgetStateProperty.all(navy),
+        headingRowHeight: 40,
         border: TableBorder.all(color: Colors.black12, width: 1),
-        columnSpacing: 10,
+        columnSpacing: 12,
         columns: [
-          _col('Test ID'),
-          _col('Test Case Name'),
+          _col('Val ID'),
+          _col('Test Case'),
           _col('Feature'),
-          _col('Activity'),
-          _col('Drivetrain'),
-          _col('Water\nDepth'),
-          _col('Tire Type'),
-          _col('Tire Condition'),
-          _col('Tire Pressure'),
-          _col('Road Surface'),
-          _col('Load'),
-          _col('Test Description'),
-          _col('Link'),
+          _col('Category'),
+          _col('ASIL'),
+          _col('Method'),
+          _col('Test Site'),
+          _col('Condition / Drive Cycle'),
+          _col('Acceptance Criteria'),
+          _col('Status'),
         ],
-        rows: cases.map((tc) => DataRow(
-          // Row tinted by road surface so a surface change is obvious while
-          // scrolling the full, unfiltered sheet.
-          color: WidgetStateProperty.all(_surfaceRowTint(tc.roadSurfaceType)),
-          // Managers tap a row to edit it (RLS enforces the write).
-          onSelectChanged:
-              _isManager ? (_) => _editCaseSheet(tc) : null,
-          cells: [
-            _cell(tc.testId, bold: true),
-            _cell(tc.testCasesName),
-            _featureCell(tc.feature),
-            _activityCell(tc.activityType),
-            _drivetrainCell(tc.drivetrain),
-            _waterDepthCell(tc.waterDepth),
-            _cell(tc.tireType),
-            _cell(tc.tireCondition),
-            _cell(tc.tirePressure),
-            _surfaceCell(tc.roadSurface, tc.roadSurfaceType),
-            _cell(tc.load),
-            _cell(tc.testDescription, maxWidth: 240),
-            _cell(tc.testCaseLink ?? '—'),
-          ],
-        )).toList(),
+        rows: cases.map((tc) {
+          final cat = _maneuverCategory(tc);
+          return DataRow(
+            // Row tinted by maneuver category — the group is obvious at a glance.
+            color: WidgetStateProperty.all(_rowTint(tc)),
+            // Managers tap a row to edit it (RLS enforces the write).
+            onSelectChanged: _isManager ? (_) => _editCaseSheet(tc) : null,
+            cells: [
+              _cell(tc.testId, bold: true),
+              DataCell(SizedBox(
+                width: 230,
+                child: Row(children: [
+                  Flexible(
+                    child: Text(tc.testCasesName,
+                        style: const TextStyle(
+                            fontFamily: 'Calibri',
+                            fontSize: 11,
+                            color: Colors.black87),
+                        softWrap: true),
+                  ),
+                  if (_isCurved(tc)) ...[
+                    const SizedBox(width: 4),
+                    _pill('Curved', const Color(0xFF6A1B9A)),
+                  ],
+                ]),
+              )),
+              _featureCell(tc.feature),
+              DataCell(_pill(cat, _categoryColor(cat))),
+              tc.asil.isEmpty
+                  ? _dash
+                  : DataCell(_pill(
+                      tc.asil,
+                      tc.asil.toUpperCase().contains('B')
+                          ? const Color(0xFFC62828)
+                          : const Color(0xFF607D8B))),
+              (tc.method.isEmpty && tc.activityType.isEmpty)
+                  ? _dash
+                  : DataCell(_pill(
+                      tc.method.isNotEmpty ? tc.method : tc.activityType,
+                      const Color(0xFF37474F))),
+              DataCell(SizedBox(
+                  width: 150,
+                  child: Text(
+                      tc.testSite.isNotEmpty
+                          ? tc.testSite
+                          : (tc.roadSurface.isNotEmpty ? tc.roadSurface : '—'),
+                      style: const TextStyle(
+                          fontFamily: 'Calibri',
+                          fontSize: 10.5,
+                          color: Colors.black87),
+                      softWrap: true))),
+              _cell(_conditionText(tc), maxWidth: 210),
+              _cell(_acceptanceText(tc), maxWidth: 300),
+              tc.status.isEmpty ? _dash : DataCell(_statusPill(tc.status)),
+            ],
+          );
+        }).toList(),
       ),
     );
+  }
+
+  Widget _statusPill(String status) {
+    final s = status.toLowerCase();
+    Color color = const Color(0xFF607D8B);
+    if (s.contains('met') && !s.contains('not')) color = const Color(0xFF2E7D32);
+    else if (s.contains('not') || s.contains('fail')) color = const Color(0xFFC62828);
+    else if (s.contains('progress') || s.contains('plan') || s.contains('valid')) color = const Color(0xFFF9A825);
+    return _pill(status, color);
   }
 
   DataColumn _col(String text) => DataColumn(
@@ -1176,7 +1282,7 @@ class _TestCasesScreenState extends State<TestCasesScreen> {
 
   Widget _buildEmptyState() {
     return Container(
-      width: 1450,
+      width: 1650,
       height: 200,
       alignment: Alignment.center,
       decoration: BoxDecoration(

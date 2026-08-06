@@ -19,6 +19,19 @@ class TestCase {
   final String loadCategory;     // 'Driver Only', 'Full', 'Unload', 'Driver + Ballast'
   final String roadSurfaceType;  // 'Jump Mu', 'Split Mu', 'Wet Basalt', 'Wet Ceramic', 'Dry', 'Wet Asphalt', 'N/A'
 
+  // Vehicle Validation Matrix columns (Sightline India V01). Empty for the
+  // legacy DFE/Leak calibration cases; populated for the AQD validation cases.
+  final String reqId;              // Stakeholder / Req ID (e.g. TIR-041)
+  final String asil;               // 'ASIL B', 'QM', ''
+  final String method;             // 'Vehicle Test', 'Test', 'Demonstration'
+  final String testSite;           // 'Proving Ground (wet basin)', 'Public Road'
+  final String condition;          // Vehicle / Tire Condition, Road & Drive Cycle
+  final String acceptanceCriteria; // incl. FTTI / safe state
+  final String safetyMechanism;    // Safety Mechanism
+  final String specRef;            // Standard / Spec Ref
+  final String status;             // Status
+  final String remarks;            // Remarks / Disposition
+
   TestCase({
     required this.testId,
     required this.testCasesName,
@@ -37,6 +50,16 @@ class TestCase {
     this.waterDepth = 'N/A',
     this.loadCategory = 'Driver Only',
     this.roadSurfaceType = 'N/A',
+    this.reqId = '',
+    this.asil = '',
+    this.method = '',
+    this.testSite = '',
+    this.condition = '',
+    this.acceptanceCriteria = '',
+    this.safetyMechanism = '',
+    this.specRef = '',
+    this.status = '',
+    this.remarks = '',
   });
 
   TestCase copyWith({
@@ -57,6 +80,16 @@ class TestCase {
     String? waterDepth,
     String? loadCategory,
     String? roadSurfaceType,
+    String? reqId,
+    String? asil,
+    String? method,
+    String? testSite,
+    String? condition,
+    String? acceptanceCriteria,
+    String? safetyMechanism,
+    String? specRef,
+    String? status,
+    String? remarks,
   }) {
     return TestCase(
       testId: testId ?? this.testId,
@@ -76,6 +109,16 @@ class TestCase {
       waterDepth: waterDepth ?? this.waterDepth,
       loadCategory: loadCategory ?? this.loadCategory,
       roadSurfaceType: roadSurfaceType ?? this.roadSurfaceType,
+      reqId: reqId ?? this.reqId,
+      asil: asil ?? this.asil,
+      method: method ?? this.method,
+      testSite: testSite ?? this.testSite,
+      condition: condition ?? this.condition,
+      acceptanceCriteria: acceptanceCriteria ?? this.acceptanceCriteria,
+      safetyMechanism: safetyMechanism ?? this.safetyMechanism,
+      specRef: specRef ?? this.specRef,
+      status: status ?? this.status,
+      remarks: remarks ?? this.remarks,
     );
   }
 }
