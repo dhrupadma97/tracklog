@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../data/models/test_case_model.dart';
-import '../../data/services/test_case_service.dart';
-import '../../data/services/test_case_india_v01.dart';
+import '../../data/services/test_case_india_v02.dart';
 import '../../data/services/test_case_supplements.dart';
 import '../../data/services/test_case_repository.dart';
 import '../../services/engineer_auth_service.dart';
@@ -69,6 +68,11 @@ class _TestCasesScreenState extends State<TestCasesScreen> {
   String _selectedLoad = 'All';       // 'Driver Only' | 'Full' | 'Unload' | 'Driver + Ballast' | 'All'
   String _selectedSurface = 'All';    // 'Jump Mu' | 'Split Mu' | 'Wet Basalt' | etc. | 'All'
 
+  /// DataTable builds every row up front, so the full V02 set (1,400+ cases)
+  /// would be ~14k widgets in one frame. Render a page at a time instead.
+  static const int _pageSize = 250;
+  int _visibleCount = _pageSize;
+
   // ─── Strategy info — accurate NATRAX / India context ─────────────────────────
   // EV vs ICE key difference: EV has regen + coast-down; ICE has downshift/upshift.
   // Most test cases are IDENTICAL for both drivetrains at NATRAX.
@@ -122,23 +126,22 @@ class _TestCasesScreenState extends State<TestCasesScreen> {
              'downshift/upshift gear-change transients and engine braking behaviour. '
              'These are unique to ICE drivetrains. All other test cases are shared '
              'with EV.',
-      'All': 'NATRAX DVP Strategy: Most test cases (836/926) apply identically to both '
-             'EV and ICE. Key difference — EV: regen + coast-down events. ICE: '
-             'downshift + upshift transients. Select EV or ICE above to see the '
-             'drivetrain-specific strategy.',
+      'All': 'Sightline India V02: 1,433 cases — AQD (calibration, EV & ICE '
+             'validation, vehicle-validation matrix), DFE, DLE, Leak Detection '
+             'and the winter campaign. 967 apply to both drivetrains; AQD '
+             'validation is split into 224 EV-specific and 242 ICE-specific '
+             'cases. Select EV or ICE above for the drivetrain-specific set.',
     },
   };
 
   @override
   void initState() {
     super.initState();
-    // AQD comes from the detailed Sightline India V01 vehicle-validation
-    // matrix; DFE/Leak stay from the generated baseline; supplements add
-    // temp-spare + false-positive trials. Curved cases ARE included — the
-    // India plan runs curved & one-sided AQD on the wet track.
+    // Everything comes from the Sightline India V02 workbook: AQD (CAL +
+    // EV/ICE validation + the vehicle-validation matrix), DFE, Leak, DLE and
+    // the winter campaign. Supplements add temp-spare + false-positive trials.
     _baseCases = [
-      ...TestCaseService.getMockTestCases().where((t) => t.feature != 'AQD'),
-      ...TestCaseIndiaV01.cases,
+      ...TestCaseIndiaV02.cases,
       ...TestCaseSupplements.cases,
     ];
     _allTestCases = _baseCases;
@@ -238,12 +241,51 @@ class _TestCasesScreenState extends State<TestCasesScreen> {
                       const SizedBox(height: 12),
                       filtered.isEmpty
                           ? _buildEmptyState()
-                          : _buildDataTable(filtered),
+                          : _buildDataTable(
+                              filtered.take(_visibleCount).toList()),
+                      if (filtered.length > _visibleCount)
+                        _buildShowMore(filtered.length),
                     ],
                   ),
                 ),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Footer under a truncated table: how many are shown, and a way to add the
+  /// next page (or the rest).
+  Widget _buildShowMore(int total) {
+    final remaining = total - _visibleCount;
+    return Container(
+      width: 1650,
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      alignment: Alignment.center,
+      child: Wrap(
+        spacing: 12,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(
+            'Showing $_visibleCount of $total cases',
+            style: const TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+          OutlinedButton(
+            onPressed: () =>
+                setState(() => _visibleCount += _pageSize),
+            style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: gold),
+                foregroundColor: gold),
+            child: Text(
+                'Show ${remaining < _pageSize ? remaining : _pageSize} more',
+                style: const TextStyle(fontSize: 12)),
+          ),
+          TextButton(
+            onPressed: () => setState(() => _visibleCount = total),
+            child: const Text('Show all',
+                style: TextStyle(color: Colors.white70, fontSize: 12)),
           ),
         ],
       ),
@@ -280,6 +322,7 @@ class _TestCasesScreenState extends State<TestCasesScreen> {
               _selectedWaterDepth = 'All';
               _selectedLoad = 'All';
               _selectedSurface = 'All';
+              _visibleCount = _pageSize;
             }),
             icon: const Icon(Icons.refresh, size: 14, color: Colors.white54),
             label: const Text('Reset',
@@ -365,7 +408,8 @@ class _TestCasesScreenState extends State<TestCasesScreen> {
   Widget _featureChips() {
     return Row(
       mainAxisSize: MainAxisSize.min,
-      children: ['All', 'AQD', 'DFE', 'Leak Detection'].map((f) {
+      children: ['All', 'AQD', 'DFE', 'DLE', 'Leak Detection', 'Winter']
+          .map((f) {
         final selected = _selectedFeature == f;
         return Padding(
           padding: const EdgeInsets.only(right: 6),
@@ -382,6 +426,7 @@ class _TestCasesScreenState extends State<TestCasesScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             onSelected: (_) => setState(() {
               _selectedFeature = f;
+              _visibleCount = _pageSize;
               // Reset water depth when switching away from AQD
               if (f != 'AQD' && f != 'All') _selectedWaterDepth = 'All';
             }),
