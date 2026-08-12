@@ -127,8 +127,8 @@ feedback)*
   Remove; removing a bus also deletes its DBC row; `dbcFile` name persists on the bus JSON.
 
 ## Build / run / deploy notes (this machine)
-- **Flutter SDK lives at `C:\Users\AE12230\src\flutter\bin`** (not on PATH by default). Prepend it
-  per-command in PowerShell: `$env:PATH = "C:\Users\AE12230\src\flutter\bin;$env:PATH"` then
+- **Flutter SDK lives at `C:\flutter\bin`** (moved from `~\src\flutter`; not on PATH by default).
+  Prepend it per-command in PowerShell: `$env:PATH = "C:\flutter\bin;$env:PATH"` then
   `flutter analyze <files>` or `flutter build web --release`. Verified 2026-07-17: analyze = 0
   errors, `flutter build web --release` succeeds (~90s). Ignore the wasm dry-run / font warnings.
 - The Instruments UI is **login-gated** (router redirects to /login when signed out), so it can't be

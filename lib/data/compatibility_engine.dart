@@ -319,14 +319,13 @@ class CompatibilityEngine {
   static String _recommendFDUpgrade(Instrument instrument) {
     if (instrument.category == InstrumentCategory.logger) {
       return 'The GL2000 is classic-CAN only. Log the CAN FD bus via the Raptor CAL '
-          '(FD-capable) or CANoe/CANape with an FD-capable interface instead.';
+          '(FD-capable) instead.';
     }
     if (instrument.category == InstrumentCategory.interfaceDevice) {
       return 'This interface is classic-CAN only. Use an FD-capable interface '
           '(e.g. Kvaser U-series / Vector VN16xx) for the CAN FD bus.';
     }
-    return 'Route the CAN FD bus through an FD-capable device '
-        '(Raptor CAL, or CANoe/CANape + FD interface).';
+    return 'Route the CAN FD bus through an FD-capable device (Raptor CAL).';
   }
 
   /// Quick check: does a single instrument support a given protocol?
@@ -377,7 +376,7 @@ class CompatibilityEngine {
             instrumentId: l.id,
             relatedProtocol: BusProtocol.canFD,
             recommendation:
-                'Log this FD bus via the Raptor CAL, or CANoe/CANape + an FD interface.',
+                'Log this FD bus via the Raptor CAL (FD-capable).',
           ));
         }
       } else {

@@ -3,7 +3,7 @@
 /// Source of truth: .claude/skills/instrumentation-intelligence/reference/instrument-knowledge.md
 ///
 /// Owned gear (confirmed 2026-07-17): GL2000 ("GLM 2000"), Kvaser, Raptor CAL,
-/// CANoe, CANape, VBOX 3i Dual Antenna, IMU. Everything else was dropped.
+/// CANoe, VBOX 3i Dual Antenna, IMU. Everything else was dropped.
 
 // ─── Protocol Enum ──────────────────────────────────────────────────────────
 enum BusProtocol {
@@ -316,8 +316,8 @@ const List<String> schematicNodeOrder = [
   'obd_port',
   'can1_bus', 'can2_bus', 'can3_bus',
   'imu', 'vbox', 'power_bar',
-  'gl2000', 'raptor',
-  'pc_canoe', 'display', 'huf', 'pc_canape',
+  'gl2000', 'raptor', 'kvaser',
+  'pc_canoe', 'display', 'huf',
 ];
 
 /// Column (layer) index 0..[schematicColumnCount]-1 for a node.
@@ -336,7 +336,6 @@ int schematicColumn(SchematicNode n) {
     case 'gl2000':
     case 'raptor':
       return 3;
-    case 'pc_canape':
     case 'pc_canoe':
     case 'huf':
     case 'display':
@@ -366,16 +365,15 @@ int schematicRow(SchematicNode n) {
   return i < 0 ? 900 : i;
 }
 
-/// Default schematic section for an instrument. CANape + Kvaser are the
-/// calibration tools; the validation chain is Raptor (models) → Display with
-/// CANoe for analysis. Everything else (buses, logger, sensors, power) = base.
+/// Default schematic section for an instrument. Kvaser is the calibration tool
+/// (it flashes the Raptor ECUs); the validation chain is Raptor (models) →
+/// Display. Everything else — buses, logger, sensors, power, and CANoe (which
+/// only stores the VBOX/IMU stream) — is base.
 SchematicSection sectionForInstrument(String? instrumentId) {
   switch (instrumentId) {
-    case 'canape':
     case 'kvaser':
       return SchematicSection.calibration;
     case 'raptor_cal':
-    case 'canoe':
     case 'display_uiux':
       return SchematicSection.validation;
     default:
@@ -396,7 +394,7 @@ SchematicSection schematicSectionFromName(String? name, {String? instrumentId}) 
 
 const Map<InstrumentVertical, Set<String>> verticalInstrumentIds = {
   // Calibration — Raptor is OPTIONAL here. Kvaser flashes the Raptor ECU firmware.
-  InstrumentVertical.calibration: {'canape', 'kvaser', 'raptor_cal', 'power_breakout'},
+  InstrumentVertical.calibration: {'kvaser', 'raptor_cal', 'power_breakout'},
   // Validation — Raptor is MANDATORY (runs the tire-intelligence models → Display).
   InstrumentVertical.validation: {
     'raptor_cal', 'display_uiux', 'gl2000', 'canoe',
@@ -508,7 +506,7 @@ class Instrument {
 
   // ── Capability flags (drive the physics rules R1–R9) ──
   /// Software that cannot reach the vehicle bus on its own — needs a hardware
-  /// interface (VN / Kvaser). E.g. CANoe, CANape. (Rule R2/R3)
+  /// interface (VN / Kvaser). E.g. CANoe. (Rule R2/R3)
   final bool requiresInterface;
 
   /// Part of the fixed backbone: every captured bus must reach this device.
@@ -553,7 +551,7 @@ class Instrument {
       .fold(0, (sum, e) => sum + e.value);
 
   /// True if this device is a hardware bus interface (Kvaser / VN) that
-  /// software like CANoe/CANape can connect through. (R2)
+  /// software like CANoe can connect through. (R2)
   bool get isBusInterface => category == InstrumentCategory.interfaceDevice;
 }
 
@@ -792,10 +790,10 @@ final List<Instrument> instrumentCatalog = [
     quantity: 1,
     mustReceiveAllSignals: true,
     notes: 'Backbone: every captured bus must also reach the GL2000 (R8). '
-        'Classic CAN only → FD buses must be logged elsewhere (CANoe/CANape/Raptor).',
+        'Classic CAN only → FD buses must be logged elsewhere (Raptor/CANoe).',
   ),
 
-  // ── Kvaser interface (PC bus access for CANoe/CANape) ──
+  // ── Kvaser interface (flashes the Raptor ECUs) ──
   Instrument(
     id: 'kvaser',
     name: 'Kvaser Interface',
@@ -838,7 +836,7 @@ final List<Instrument> instrumentCatalog = [
         'Flashed via Kvaser. Connector J2 (Black Key): 64319211.',
   ),
 
-  // ── Vector CANoe — analysis/simulation software (needs interface) ──
+  // ── Vector CANoe — PC software for storage / analysis ──
   Instrument(
     id: 'canoe',
     name: 'CANoe',
@@ -849,46 +847,17 @@ final List<Instrument> instrumentCatalog = [
       BusProtocol.can2B,
       BusProtocol.canFD,
       BusProtocol.lin,
-      BusProtocol.flexRay,
-      BusProtocol.ethernet,
     },
     supportsCAnFD: true,
     channelCount: {},
     description:
-        'Bus simulation, analysis and test. Supports CAN FD — but only through an '
-        'FD-capable hardware interface. Cannot touch the vehicle without an interface.',
+        'PC software used to store and analyse VBOX/IMU data streams and logged CAN data.',
     status: InstrumentStatus.available,
     quantity: 1,
-    requiresInterface: true,
-    notes: 'Needs a Vector VN (or Kvaser via CANlib) interface to reach the bus (R2/R3).',
+    notes: 'Stores VBOX 3i data alongside the GL2000.',
   ),
 
-  // ── Vector CANape — ECU measurement + calibration (needs interface) ──
-  Instrument(
-    id: 'canape',
-    name: 'CANape',
-    brand: 'Vector',
-    category: InstrumentCategory.software,
-    supportedProtocols: {
-      BusProtocol.can2A,
-      BusProtocol.can2B,
-      BusProtocol.canFD,
-      BusProtocol.lin,
-      BusProtocol.flexRay,
-      BusProtocol.ethernet,
-    },
-    supportsCAnFD: true,
-    channelCount: {},
-    description:
-        'ECU measurement & calibration (XCP/CCP, A2L). Supports CAN FD; can run XCP on '
-        'CAN FD with the same A2L (CANoe handles this differently).',
-    status: InstrumentStatus.available,
-    quantity: 1,
-    requiresInterface: true,
-    notes: 'Needs a Vector VN/VX (or Kvaser) interface to reach the bus (R2/R3).',
-  ),
-
-  // ── Racelogic VBOX 3i Dual Antenna — GNSS (slip angle, true heading) ──
+  // ── Racelogic VBOX 3i Dual Antenna — standalone GNSS (slip angle, heading) ──
   Instrument(
     id: 'vbox_3i_dual',
     name: 'VBOX 3i Dual Antenna',
@@ -898,12 +867,13 @@ final List<Instrument> instrumentCatalog = [
     supportsCAnFD: false,
     channelCount: {BusProtocol.gpsGnss: 1, BusProtocol.can2A: 2, BusProtocol.analog: 4},
     description:
-        '100 Hz GPS+GLONASS logger. Dual antenna → TRUE heading + slip angle + pitch/roll '
-        '+ yaw rate, valid even at rest. CAN out to feed the logger/Raptor.',
+        'Standalone 100 Hz GPS+GLONASS unit. Dual antenna → TRUE heading + slip angle + '
+        'pitch/roll + yaw rate, valid even at rest. Gets IMU values; is NOT fed any '
+        'vehicle CAN. Its data is stored in the GL2000 and CANoe.',
     status: InstrumentStatus.inUse,
     quantity: 1,
     dualAntenna: true,
-    notes: 'Dual antenna is essential for vehicle-dynamics/tire work (slip angle).',
+    notes: 'Separate entity: IMU → VBOX → GL2000 / CANoe (PC). No vehicle CAN input.',
   ),
 
   // ── Racelogic IMU (integrated with VBOX 3i) ──
@@ -1011,10 +981,11 @@ final VehicleProfile tataBetaProfile = VehicleProfile(
     SchematicNode(id: 'vbox', label: 'VBOX 3i', sublabel: 'Dual Antenna', nodeType: InstrumentCategory.sensor, instrumentId: 'vbox_3i_dual', x: 0.46, y: 0.47),
     SchematicNode(id: 'huf', label: 'HUF', sublabel: 'TPMS', nodeType: InstrumentCategory.receiver, instrumentId: 'huf_receiver', x: 0.84, y: 0.34),
     SchematicNode(id: 'power_bar', label: 'Power Breakout', sublabel: 'Distribution', nodeType: InstrumentCategory.power, instrumentId: 'power_breakout', x: 0.84, y: 0.07),
-    // ── Calibration band ──
-    SchematicNode(id: 'pc_canape', label: 'CANape', sublabel: 'via Kvaser', nodeType: InstrumentCategory.software, instrumentId: 'canape', x: 0.30, y: 0.66),
+    // ── VBOX storage: CANoe stores the VBOX/IMU data stream ──
+    SchematicNode(id: 'pc_canoe', label: 'CANoe', sublabel: 'VBOX Storage', nodeType: InstrumentCategory.software, instrumentId: 'canoe', x: 0.64, y: 0.47),
+    // ── Calibration band: Kvaser flashes the Raptor ECU ──
+    SchematicNode(id: 'kvaser', label: 'Kvaser', sublabel: 'ECU Flashing', nodeType: InstrumentCategory.interfaceDevice, instrumentId: 'kvaser', x: 0.46, y: 0.66),
     // ── Validation band ──
-    SchematicNode(id: 'pc_canoe', label: 'CANoe', sublabel: 'via Kvaser', nodeType: InstrumentCategory.software, instrumentId: 'canoe', x: 0.10, y: 0.89),
     SchematicNode(id: 'raptor', label: 'Raptor CAL', sublabel: 'Models', nodeType: InstrumentCategory.ecu, instrumentId: 'raptor_cal', x: 0.46, y: 0.89),
     SchematicNode(id: 'display', label: 'Display', sublabel: 'UI/UX', nodeType: InstrumentCategory.display, instrumentId: 'display_uiux', x: 0.74, y: 0.89),
   ],
@@ -1033,14 +1004,13 @@ final VehicleProfile tataBetaProfile = VehicleProfile(
     // Raptor → accessories
     SchematicConnection(fromNodeId: 'raptor', toNodeId: 'huf',     label: 'TMS_CAN', protocol: BusProtocol.can2A),
     SchematicConnection(fromNodeId: 'raptor', toNodeId: 'display', label: 'Display', protocol: BusProtocol.can2A),
-    // GNSS / inertial → backbone
-    // VBOX 3i (with the IMU fused in) is logged by CANoe for data logging.
-    SchematicConnection(fromNodeId: 'imu',  toNodeId: 'vbox',     label: 'IMU fuse', protocol: BusProtocol.imu),
-    SchematicConnection(fromNodeId: 'vbox', toNodeId: 'pc_canoe', label: 'GPS/INS',  protocol: BusProtocol.can2A),
-    // PC software: CANape flashes/calibrates the Raptor (via Kvaser);
-    // CANoe analyses the vehicle buses (via Kvaser)
-    SchematicConnection(fromNodeId: 'pc_canape', toNodeId: 'raptor', label: 'Flash/XCP', protocol: BusProtocol.can2A),
-    SchematicConnection(fromNodeId: 'can3_bus', toNodeId: 'pc_canoe', label: 'Analysis', protocol: BusProtocol.can2A, busIndex: 3),
+    // VBOX chain — separate entity: IMU → VBOX; VBOX data is STORED in the
+    // GL2000 and CANoe. No vehicle CAN is fed into the VBOX.
+    SchematicConnection(fromNodeId: 'imu',  toNodeId: 'vbox',     label: 'IMU',       protocol: BusProtocol.imu),
+    SchematicConnection(fromNodeId: 'vbox', toNodeId: 'gl2000',   label: 'VBOX data', protocol: BusProtocol.can2A),
+    SchematicConnection(fromNodeId: 'vbox', toNodeId: 'pc_canoe', label: 'VBOX data', protocol: BusProtocol.gpsGnss),
+    // Calibration: Kvaser flashes the Raptor ECU firmware
+    SchematicConnection(fromNodeId: 'kvaser', toNodeId: 'raptor', label: 'Flash', protocol: BusProtocol.can2A),
     // Power
     SchematicConnection(fromNodeId: 'power_bar', toNodeId: 'gl2000', label: 'Power', protocol: BusProtocol.analog),
     SchematicConnection(fromNodeId: 'power_bar', toNodeId: 'raptor', label: 'Power', protocol: BusProtocol.analog),

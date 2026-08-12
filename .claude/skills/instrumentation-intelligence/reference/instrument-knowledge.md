@@ -18,9 +18,11 @@ U100, VBOX Touch, dSPACE MicroAutoBox, GeneSys ADMA, RT3000, CANalyzer).
 | gl2000 | Vector **GL2000** ("GLM 2000") | Logger (standalone) | up to 4ch CAN 2.0, LIN | **No** | Classic CAN only. The **primary data logger** — every signal must reach it (see R8). Cannot log CAN FD → the key conflict. |
 | kvaser | **Kvaser** interface | Flashing tool | CAN | — | **Used to FLASH the Raptor ECUs — its one main function.** Not in the live capture path. Vertical: Calibration. ⚠ confirm model. |
 | raptor_cal | New Eagle **Raptor CAL** (RCM80) | ECU / rapid-proto controller | CAN/CAN FD, analog, DIO | **Yes** | Runs the SightLine models (AQD, Leak, Friction, Load) → Display. **MANDATORY for Validation, OPTIONAL for Calibration.** Flashed via Kvaser. |
-| canoe | Vector **CANoe** | Software | simulation + analysis + test | via HW | Needs a Vector VN interface to reach the bus (or Kvaser?). FD only with FD-capable HW. |
-| canape | Vector **CANape** | Software | ECU measure + calibrate | via HW | XCP/CCP, A2L. Needs VN/VX HW. Can do **XCP on CAN FD w/ same A2L** (CANoe cannot). |
-| vbox_3i_dual | Racelogic **VBOX 3i Dual Antenna** | GNSS logger (standalone) | GNSS, CAN in/out, analog | n/a | 100 Hz GPS+GLONASS. Dual antenna ⇒ **true heading + slip angle + pitch/roll + yaw**, valid at rest. |
+| canoe | Vector **CANoe** | Software | stores/analyses VBOX + CAN data | via HW | Used to **store the VBOX/IMU data stream** alongside the GL2000. |
+| vbox_3i_dual | Racelogic **VBOX 3i Dual Antenna** | GNSS (standalone) | GNSS, CAN out, analog | n/a | 100 Hz GPS+GLONASS. Dual antenna ⇒ **true heading + slip angle + pitch/roll + yaw**, valid at rest. **SEPARATE ENTITY — takes IMU values, is NOT fed any vehicle CAN.** Its data is stored in the GL2000 and CANoe. |
+
+> **CANape was dropped entirely** (2026-08-12, Dhrupad: "don't use any CANape and all, make it
+> simple"). Do not reintroduce it.
 | imu | Racelogic **IMU** (integrated w/ VBOX 3i) | Inertial sensor | accel/gyro | n/a | Kalman-fused with VBOX 3i for better slip/attitude + dropout bridging. ⚠ confirm model (IMU04?). |
 
 **Setup components (confirm if in scope):** HUF Receiver (TPMS → tire pressure/temp, CAN), custom
@@ -29,8 +31,8 @@ Display, Power Breakout Bar. Vehicle-specific accessories, not core instruments.
 **Open hardware gap:** Kvaser is used to **flash the Raptor** (not for bus capture), so CANoe/CANape
 still need a Vector **VN** interface to touch the bus. ⚠ Confirm what interface CANoe/CANape use.
 
-## Verticals & tire-intelligence models (2026-07-17, from Dhrupad)
-- **Calibration** → CANape, Kvaser (flashes Raptor), Raptor (**OPTIONAL**), Power.
+## Verticals & tire-intelligence models (from Dhrupad)
+- **Calibration** → Kvaser (flashes Raptor ECUs), Raptor (**OPTIONAL**), Power.
 - **Validation** → Raptor (**MANDATORY** — runs models → Display), Display, GL2000, CANoe,
   VBOX 3i dual, IMU, HUF, Power.
 - **Data Collection** → GL2000, HUF, VBOX 3i dual, IMU, Display, Power.
