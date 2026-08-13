@@ -1,11 +1,17 @@
 import 'dart:ui';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../services/engineer_auth_service.dart';
+import '../../services/invoice_opener.dart';
+import '../../services/invoice_service.dart';
+import '../../services/natrax_invoice_parser.dart';
+import '../../services/project_manager.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../routes/app_routes.dart';
@@ -36,10 +42,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // Export
   String _exportFreq = 'monthly';
 
+  // Original NATRAX invoices
+  List<NatraxInvoice> _invoices = [];
+  List<String> _poNumbers = [];
+  List<String> _activeMonths = []; // 'YYYY-MM', newest first
+  bool _loadingInvoices = true;
+  bool _uploadingInvoice = false;
+  bool _scanning = false;
+
+  static final _inr = NumberFormat.currency(
+      locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+
+  bool get _canEditInvoices => !(_profile?.isReadOnly ?? true);
+
   @override
   void initState() {
     super.initState();
     _loadProfile();
+    _loadInvoices();
   }
 
   @override
@@ -92,6 +112,595 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (_) {
       _snack('Could not send reset email', error: true);
     }
+  }
+
+  // ─── Original NATRAX invoices ──────────────────────────────────────────────
+
+  Future<void> _loadInvoices() async {
+    try {
+      final client = SupabaseService.instance.client;
+      final invoices = await InvoiceService.instance.list();
+      final poRows =
+          await client.from('po_trackers').select('po_number').order('created_at');
+
+      // Months that actually had track activity — these are the months an
+      // invoice is expected for, so a missing one is visible rather than
+      // simply absent from the list.
+      final sessionRows = await client
+          .from('engineer_sessions')
+          .select('started_at, project_name')
+          .eq('session_status', 'completed');
+
+      final pm = ProjectManager.instance;
+      final months = <String>{};
+      for (final row in sessionRows as List) {
+        if (!pm.sessionBelongsToProject(row['project_name'] as String?)) continue;
+        final started = DateTime.tryParse(row['started_at'] as String? ?? '');
+        if (started != null) {
+          months.add('${started.year}-'
+              '${started.month.toString().padLeft(2, '0')}');
+        }
+      }
+      months.addAll(invoices
+          .map((i) => i.periodMonth ?? '')
+          .where((m) => m.isNotEmpty));
+
+      if (!mounted) return;
+      setState(() {
+        _invoices = invoices;
+        _poNumbers = (poRows as List)
+            .map((r) => (r['po_number'] as String?) ?? '')
+            .where((p) => p.isNotEmpty)
+            .toList();
+        _activeMonths = months.toList()..sort((a, b) => b.compareTo(a));
+        _loadingInvoices = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingInvoices = false);
+      _snack('Could not load invoices — $e', error: true);
+    }
+  }
+
+  Future<void> _openInvoice(NatraxInvoice inv) async {
+    final err = await openInvoice(inv);
+    if (err != null) _snack(err, error: true);
+  }
+
+  Future<void> _confirmDeleteInvoice(NatraxInvoice inv) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0A1025),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.redAccent.withAlpha(60)),
+        ),
+        title: Text('Remove invoice?',
+            style: GoogleFonts.spaceGrotesk(
+                color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+        content: Text(
+          'Invoice ${inv.invoiceNumber} (${_inr.format(inv.totalAmount)}) and its '
+          'stored PDF will be deleted. The PO reconciliation will change.',
+          style: GoogleFonts.spaceGrotesk(
+              color: const Color(0xFF8A94B0), fontSize: 12, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel',
+                style: GoogleFonts.spaceGrotesk(color: Colors.white70)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await InvoiceService.instance.delete(inv);
+      if (!mounted) return;
+      setState(() => _invoices.removeWhere((i) => i.id == inv.id));
+      _snack('Invoice ${inv.invoiceNumber} removed');
+    } catch (e) {
+      _snack('Delete failed — $e', error: true);
+    }
+  }
+
+  /// Picks the original PDF and reads the figures straight off it.
+  ///
+  /// Nothing needs typing: the parser fills every field, and the review sheet
+  /// exists so a bad scan cannot silently feed wrong numbers into the PO
+  /// reconciliation — not to make anyone re-key the invoice.
+  Future<void> _uploadInvoice() async {
+    if (!_canEditInvoices) {
+      return _snack('Managers have read-only access to billing records',
+          error: true);
+    }
+
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg'],
+      withData: true, // required so web gets bytes
+    );
+    if (picked == null || picked.files.isEmpty) return;
+
+    final file = picked.files.first;
+    if (file.bytes == null) {
+      return _snack('Could not read that file', error: true);
+    }
+
+    setState(() => _scanning = true);
+    final parsed = file.name.toLowerCase().endsWith('.pdf')
+        ? NatraxInvoiceParser.parse(file.bytes!)
+        : const ParsedInvoice(
+            missingFields: ['everything — image files cannot be read'],
+          );
+    if (!mounted) return;
+    setState(() => _scanning = false);
+
+    if (parsed.isUnreadable) {
+      final proceed = await _showUnreadableDialog(file.name);
+      if (proceed != true) return;
+    }
+
+    final details = await _invoiceReviewSheet(file.name, parsed);
+    if (details == null) return;
+
+    setState(() => _uploadingInvoice = true);
+    try {
+      final created = await InvoiceService.instance.upload(
+        invoiceNumber: details.invoiceNumber,
+        projectName: details.projectName,
+        amountExclGst: details.exclGst,
+        gstAmount: details.gst,
+        totalAmount: details.total,
+        invoiceDate: details.invoiceDate,
+        periodMonth: details.periodMonth,
+        poNumber: details.poNumber,
+        notes: details.notes,
+        fileBytes: file.bytes,
+        fileName: file.name,
+        uploadedBy: _profile?.email,
+      );
+      if (!mounted) return;
+      setState(() {
+        _invoices = [created, ..._invoices];
+        _uploadingInvoice = false;
+      });
+      _snack('Invoice ${created.invoiceNumber} uploaded ✓');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _uploadingInvoice = false);
+      final msg = e.toString();
+      _snack(
+        msg.contains('natrax_invoices_unique_per_project')
+            ? 'That invoice number is already uploaded for this project'
+            : 'Upload failed — $msg',
+        error: true,
+      );
+    }
+  }
+
+  /// Shown when a PDF carries no text layer — almost always a scan.
+  Future<bool?> _showUnreadableDialog(String fileName) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0A1025),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: const Color(0xFFFFB547).withAlpha(70)),
+        ),
+        title: Row(children: [
+          const Icon(Icons.document_scanner_outlined,
+              color: Color(0xFFFFB547), size: 19),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text('Nothing to read',
+                style: GoogleFonts.spaceGrotesk(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15)),
+          ),
+        ]),
+        content: Text(
+          '$fileName has no text layer, so it is a scanned image rather than a '
+          'digital invoice. The figures cannot be read from it automatically.\n\n'
+          'Ask NATRAX for the original PDF from Tally — that one reads itself. '
+          'Otherwise you can continue and fill the amounts in by hand.',
+          style: GoogleFonts.spaceGrotesk(
+              color: const Color(0xFF8A94B0), fontSize: 12, height: 1.55),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel',
+                style: GoogleFonts.spaceGrotesk(color: Colors.white70)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFFB547)),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Enter by hand',
+                style: TextStyle(color: Color(0xFF1A1200))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Shows what was read off the invoice for confirmation.
+  ///
+  /// Every field arrives pre-filled from [parsed]; the fields stay editable
+  /// only as a correction path, not as the expected way in.
+  Future<_InvoiceDraft?> _invoiceReviewSheet(
+      String fileName, ParsedInvoice parsed) async {
+    final formKey = GlobalKey<FormState>();
+    final numCtrl = TextEditingController(text: parsed.invoiceNumber ?? '');
+    final exclCtrl = TextEditingController(
+        text: parsed.amountExclGst?.toStringAsFixed(2) ?? '');
+    final gstCtrl =
+        TextEditingController(text: parsed.gstAmount?.toStringAsFixed(2) ?? '');
+    final totalCtrl = TextEditingController(
+        text: parsed.totalAmount?.toStringAsFixed(2) ?? '');
+    final notesCtrl = TextEditingController(text: parsed.testingPeriod ?? '');
+
+    var invoiceDate = parsed.invoiceDate ?? DateTime.now();
+    // The billing period is what the work belongs to, which is not the month
+    // the invoice was raised in — April testing was billed on 24 June. Keep
+    // the period the parser read off "Terms of Delivery" and only fall back to
+    // the invoice month when the invoice does not state one.
+    var periodMonth = parsed.periodMonth ??
+        DateFormat('yyyy-MM').format(invoiceDate);
+    final periodWasStated = parsed.periodMonth != null;
+    var project = ProjectManager.instance.activeProject;
+    String? poNumber = parsed.poNumber != null &&
+            _poNumbers.contains(parsed.poNumber)
+        ? parsed.poNumber
+        : (_poNumbers.isNotEmpty ? _poNumbers.first : null);
+    var gstTouched = parsed.gstAmount != null;
+    var totalTouched = parsed.totalAmount != null;
+
+    double parse(TextEditingController c) =>
+        double.tryParse(c.text.replaceAll(RegExp(r'[^0-9.\-]'), '')) ?? 0;
+
+    void recompute(void Function(void Function()) setLocal) {
+      final excl = parse(exclCtrl);
+      if (!gstTouched) gstCtrl.text = (excl * 0.18).toStringAsFixed(2);
+      if (!totalTouched) {
+        totalCtrl.text = (excl + parse(gstCtrl)).toStringAsFixed(2);
+      }
+      setLocal(() {});
+    }
+
+    return showDialog<_InvoiceDraft>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF0A1025),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: AppTheme.primary.withAlpha(50)),
+            ),
+            title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(parsed.isUnreadable ? 'Invoice details' : 'Read from invoice',
+                  style: GoogleFonts.spaceGrotesk(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16)),
+              const SizedBox(height: 2),
+              Text(fileName,
+                  style: GoogleFonts.spaceGrotesk(
+                      color: AppTheme.primary, fontSize: 11),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
+              if (!parsed.isUnreadable) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: (parsed.missingFields.isEmpty
+                            ? const Color(0xFF4CAF50)
+                            : const Color(0xFFFFB547))
+                        .withAlpha(22),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: (parsed.missingFields.isEmpty
+                                ? const Color(0xFF4CAF50)
+                                : const Color(0xFFFFB547))
+                            .withAlpha(80)),
+                  ),
+                  child: Row(children: [
+                    Icon(
+                        parsed.missingFields.isEmpty
+                            ? Icons.auto_awesome_rounded
+                            : Icons.error_outline_rounded,
+                        size: 14,
+                        color: parsed.missingFields.isEmpty
+                            ? const Color(0xFF4CAF50)
+                            : const Color(0xFFFFB547)),
+                    const SizedBox(width: 7),
+                    Expanded(
+                      child: Text(
+                        parsed.missingFields.isEmpty
+                            ? 'All fields read automatically — check and confirm'
+                            : 'Could not read: ${parsed.missingFields.join(', ')}',
+                        style: GoogleFonts.spaceGrotesk(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600,
+                          color: parsed.missingFields.isEmpty
+                              ? const Color(0xFF4CAF50)
+                              : const Color(0xFFFFB547),
+                        ),
+                      ),
+                    ),
+                  ]),
+                ),
+              ],
+            ]),
+            content: SizedBox(
+              width: 420,
+              child: SingleChildScrollView(
+                child: Form(
+                  key: formKey,
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    _dialogField(
+                      controller: numCtrl,
+                      label: 'Invoice Number *',
+                      validator: (v) =>
+                          (v == null || v.trim().isEmpty) ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 4),
+                    // When the invoice was raised.
+                    InkWell(
+                      onTap: () async {
+                        final d = await showDatePicker(
+                          context: ctx,
+                          initialDate: invoiceDate,
+                          firstDate: DateTime(2025),
+                          lastDate: DateTime(2030),
+                        );
+                        if (d != null) setLocal(() => invoiceDate = d);
+                      },
+                      child: InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'Invoice Date (raised on)',
+                          labelStyle: TextStyle(color: Colors.white70),
+                          enabledBorder: UnderlineInputBorder(
+                              borderSide: BorderSide(color: Colors.white24)),
+                        ),
+                        child: Row(children: [
+                          Text(DateFormat('dd MMM yyyy').format(invoiceDate),
+                              style: const TextStyle(color: Colors.white)),
+                          const Spacer(),
+                          const Icon(Icons.calendar_today,
+                              size: 14, color: Colors.white38),
+                        ]),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Which month the work belongs to — this is what the
+                    // month-wise status and the reconciliation key off.
+                    DropdownButtonFormField<String>(
+                      value: periodMonth,
+                      dropdownColor: const Color(0xFF0A1025),
+                      style: const TextStyle(color: Colors.white),
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: 'Billing Period (work done in)',
+                        labelStyle: const TextStyle(color: Colors.white70),
+                        helperText: periodWasStated
+                            ? 'From the invoice: ${parsed.testingPeriod ?? ''}'
+                            : 'Not stated on the invoice — defaulted to the '
+                                'invoice month, check this',
+                        helperMaxLines: 2,
+                        helperStyle: TextStyle(
+                          color: periodWasStated
+                              ? const Color(0xFF4CAF50)
+                              : const Color(0xFFFFB547),
+                          fontSize: 10,
+                        ),
+                        enabledBorder: const UnderlineInputBorder(
+                            borderSide: BorderSide(color: Colors.white24)),
+                      ),
+                      items: _periodOptions(periodMonth)
+                          .map((m) => DropdownMenuItem(
+                                value: m,
+                                child: Text(_monthLabel(m)),
+                              ))
+                          .toList(),
+                      onChanged: (v) =>
+                          setLocal(() => periodMonth = v ?? periodMonth),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: project,
+                      dropdownColor: const Color(0xFF0A1025),
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        labelText: 'Project',
+                        labelStyle: TextStyle(color: Colors.white70),
+                        enabledBorder: UnderlineInputBorder(
+                            borderSide: BorderSide(color: Colors.white24)),
+                      ),
+                      items: const [
+                        'Mahindra EV PoC',
+                        'Mahindra ICE PoC',
+                        'Hyundai PoC',
+                      ]
+                          .map((p) =>
+                              DropdownMenuItem(value: p, child: Text(p)))
+                          .toList(),
+                      onChanged: (v) =>
+                          setLocal(() => project = v ?? project),
+                    ),
+                    const SizedBox(height: 8),
+                    if (_poNumbers.isNotEmpty)
+                      DropdownButtonFormField<String>(
+                        value: poNumber,
+                        dropdownColor: const Color(0xFF0A1025),
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(
+                          labelText: 'Draws down PO',
+                          labelStyle: TextStyle(color: Colors.white70),
+                          enabledBorder: UnderlineInputBorder(
+                              borderSide: BorderSide(color: Colors.white24)),
+                        ),
+                        items: _poNumbers
+                            .map((p) => DropdownMenuItem(
+                                value: p, child: Text('PO # $p')))
+                            .toList(),
+                        onChanged: (v) => setLocal(() => poNumber = v),
+                      ),
+                    const SizedBox(height: 8),
+                    _dialogField(
+                      controller: exclCtrl,
+                      label: 'Amount excl. GST (₹) *',
+                      keyboard: true,
+                      onChanged: (_) => recompute(setLocal),
+                      validator: (v) => (double.tryParse(
+                                  (v ?? '').replaceAll(RegExp(r'[^0-9.\-]'), '')) ??
+                              0) <=
+                              0
+                          ? 'Enter the ex-GST amount'
+                          : null,
+                    ),
+                    _dialogField(
+                      controller: gstCtrl,
+                      label: 'GST (₹)',
+                      keyboard: true,
+                      onChanged: (_) {
+                        gstTouched = true;
+                        recompute(setLocal);
+                      },
+                    ),
+                    _dialogField(
+                      controller: totalCtrl,
+                      label: 'Invoice Total (₹) *',
+                      keyboard: true,
+                      onChanged: (_) {
+                        totalTouched = true;
+                        setLocal(() {});
+                      },
+                      validator: (v) => (double.tryParse(
+                                  (v ?? '').replaceAll(RegExp(r'[^0-9.\-]'), '')) ??
+                              0) <=
+                              0
+                          ? 'Enter the invoice total'
+                          : null,
+                    ),
+                    _dialogField(
+                      controller: notesCtrl,
+                      label: 'Notes (optional)',
+                    ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Bills ${_monthLabel(periodMonth)} · '
+                        '${(parse(exclCtrl) + parse(gstCtrl) - parse(totalCtrl)).abs() > 1 ? "⚠ excl + GST ≠ total" : "excl + GST = total ✓"}',
+                        style: GoogleFonts.spaceGrotesk(
+                          fontSize: 10.5,
+                          color: (parse(exclCtrl) +
+                                          parse(gstCtrl) -
+                                          parse(totalCtrl))
+                                      .abs() >
+                                  1
+                              ? const Color(0xFFFFB547)
+                              : const Color(0xFF6B7490),
+                        ),
+                      ),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text('Cancel',
+                    style: GoogleFonts.spaceGrotesk(color: Colors.white70)),
+              ),
+              ElevatedButton(
+                style:
+                    ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
+                onPressed: () {
+                  if (formKey.currentState?.validate() != true) return;
+                  Navigator.pop(
+                    ctx,
+                    _InvoiceDraft(
+                      invoiceNumber: numCtrl.text.trim(),
+                      invoiceDate: invoiceDate,
+                      periodMonth: periodMonth,
+                      projectName: project,
+                      poNumber: poNumber,
+                      exclGst: parse(exclCtrl),
+                      gst: parse(gstCtrl),
+                      total: parse(totalCtrl),
+                      notes: notesCtrl.text.trim().isEmpty
+                          ? null
+                          : notesCtrl.text.trim(),
+                    ),
+                  );
+                },
+                child: Text(parsed.isUnreadable ? 'Upload' : 'Confirm & Upload'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// Months offered as the billing period: every month with track activity,
+  /// plus a couple either side, with [selected] guaranteed present.
+  List<String> _periodOptions(String selected) {
+    final options = <String>{..._activeMonths, selected};
+    final now = DateTime.now();
+    for (var back = 0; back < 18; back++) {
+      final d = DateTime(now.year, now.month - back);
+      options.add('${d.year}-${d.month.toString().padLeft(2, '0')}');
+    }
+    return options.toList()..sort((a, b) => b.compareTo(a));
+  }
+
+  String _monthLabel(String yyyyMm) {
+    final parts = yyyyMm.split('-');
+    if (parts.length != 2) return yyyyMm;
+    final y = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    if (y == null || m == null) return yyyyMm;
+    return DateFormat('MMMM yyyy').format(DateTime(y, m));
+  }
+
+  Widget _dialogField({
+    required TextEditingController controller,
+    required String label,
+    bool keyboard = false,
+    void Function(String)? onChanged,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      style: const TextStyle(color: Colors.white),
+      keyboardType: keyboard
+          ? const TextInputType.numberWithOptions(decimal: true)
+          : TextInputType.text,
+      onChanged: onChanged,
+      validator: validator,
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.white70),
+        enabledBorder: const UnderlineInputBorder(
+            borderSide: BorderSide(color: Colors.white24)),
+      ),
+    );
   }
 
   void _snack(String msg, {bool error = false}) {
@@ -164,6 +773,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       SliverToBoxAdapter(child: _sectionLabel('PREFERENCES')),
                       SliverToBoxAdapter(child: _buildNotificationsSection()),
                       SliverToBoxAdapter(child: _buildExportSection()),
+                      SliverToBoxAdapter(child: _sectionLabel('BILLING')),
+                      SliverToBoxAdapter(child: _buildInvoicesSection()),
                       SliverToBoxAdapter(child: _sectionLabel('SECURITY')),
                       SliverToBoxAdapter(child: _buildSecuritySection()),
                       const SliverToBoxAdapter(child: SizedBox(height: 120)),
@@ -568,6 +1179,329 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  // ─── Original invoices ─────────────────────────────────────────────────────
+
+  Widget _buildInvoicesSection() {
+    final totals = InvoiceTotals.from(_invoices);
+
+    return _card(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(
+              child: _cardTitle(
+                  Icons.receipt_long_rounded, 'Original NATRAX Invoices')),
+          if (_canEditInvoices)
+            GestureDetector(
+              onTap: (_uploadingInvoice || _scanning) ? null : _uploadInvoice,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withAlpha(22),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.primary.withAlpha(90)),
+                ),
+                child: (_uploadingInvoice || _scanning)
+                    ? Row(mainAxisSize: MainAxisSize.min, children: [
+                        const SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: AppTheme.primary)),
+                        const SizedBox(width: 7),
+                        Text(_scanning ? 'Reading…' : 'Uploading…',
+                            style: GoogleFonts.spaceGrotesk(
+                                color: AppTheme.primary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700)),
+                      ])
+                    : Row(mainAxisSize: MainAxisSize.min, children: [
+                        const Icon(Icons.document_scanner_outlined,
+                            size: 13, color: AppTheme.primary),
+                        const SizedBox(width: 5),
+                        Text('Scan & Upload',
+                            style: GoogleFonts.spaceGrotesk(
+                                color: AppTheme.primary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700)),
+                      ]),
+              ),
+            ),
+        ]),
+        const SizedBox(height: 6),
+        Text(
+          _canEditInvoices
+              ? 'Pick the PDF and the figures are read off it — no typing. The '
+                  'PO Tracker reconciles its computed spend against these '
+                  'billed amounts.'
+              : 'Invoices raised by NATRAX. Read-only for managers.',
+          style: GoogleFonts.spaceGrotesk(
+              fontSize: 11, color: const Color(0xFF6B7490), height: 1.45),
+        ),
+        const SizedBox(height: 14),
+
+        if (!_loadingInvoices && _activeMonths.isNotEmpty) ...[
+          _buildMonthStatusGrid(),
+          const SizedBox(height: 16),
+        ],
+
+        if (_loadingInvoices)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 18),
+            child: Center(
+                child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: AppTheme.primary))),
+          )
+        else if (_invoices.isEmpty && _activeMonths.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 14),
+            decoration: BoxDecoration(
+              color: Colors.white.withAlpha(5),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white.withAlpha(15)),
+            ),
+            child: Column(children: [
+              Icon(Icons.description_outlined,
+                  size: 26, color: Colors.white.withAlpha(50)),
+              const SizedBox(height: 8),
+              Text('No invoices uploaded yet',
+                  style: GoogleFonts.spaceGrotesk(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF8A94B0))),
+              const SizedBox(height: 3),
+              Text(
+                  'Until an original is uploaded, the PO balance rests on '
+                  'app-computed costs alone.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.spaceGrotesk(
+                      fontSize: 10.5, color: const Color(0xFF6B7490))),
+            ]),
+          )
+        else ...[
+          ..._invoices.map(_invoiceTile),
+          const SizedBox(height: 12),
+          const Divider(color: Color(0xFF2A3450), height: 1),
+          const SizedBox(height: 12),
+          Row(children: [
+            Text('${totals.count} invoice${totals.count == 1 ? '' : 's'}',
+                style: GoogleFonts.spaceGrotesk(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF8A94B0))),
+            const Spacer(),
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Text('Total billed  ${_inr.format(totals.total)}',
+                  style: GoogleFonts.spaceGrotesk(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.primary)),
+              Text(
+                  '${_inr.format(totals.exclGst)} excl. GST  ·  '
+                  '${_inr.format(totals.gst)} GST',
+                  style: GoogleFonts.spaceGrotesk(
+                      fontSize: 10, color: const Color(0xFF6B7490))),
+            ]),
+          ]),
+        ],
+      ]),
+    );
+  }
+
+  /// One row per month that had track activity, so a month with no invoice
+  /// reads as a gap rather than simply being absent from the list.
+  Widget _buildMonthStatusGrid() {
+    final byMonth = <String, List<NatraxInvoice>>{};
+    for (final inv in _invoices) {
+      final m = inv.periodMonth;
+      if (m == null || m.isEmpty) continue;
+      byMonth.putIfAbsent(m, () => []).add(inv);
+    }
+
+    final covered = _activeMonths.where(byMonth.containsKey).length;
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Text('MONTH-WISE STATUS',
+            style: GoogleFonts.spaceGrotesk(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.0,
+                color: const Color(0xFF6B7490))),
+        const Spacer(),
+        Text('$covered of ${_activeMonths.length} invoiced',
+            style: GoogleFonts.spaceGrotesk(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w700,
+                color: covered == _activeMonths.length
+                    ? const Color(0xFF4CAF50)
+                    : const Color(0xFFFFB547))),
+      ]),
+      const SizedBox(height: 9),
+      ..._activeMonths.map((month) => _monthRow(month, byMonth[month])),
+    ]);
+  }
+
+  Widget _monthRow(String month, List<NatraxInvoice>? invoices) {
+    final has = invoices != null && invoices.isNotEmpty;
+    final total = has ? invoices.fold(0.0, (s, i) => s + i.totalAmount) : 0.0;
+    final accent =
+        has ? const Color(0xFF4CAF50) : const Color(0xFFFFB547);
+
+    final parts = month.split('-');
+    final label = parts.length == 2
+        ? DateFormat('MMM yyyy').format(
+            DateTime(int.parse(parts[0]), int.parse(parts[1])))
+        : month;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: GestureDetector(
+        onTap: has && invoices.first.hasFile
+            ? () => _openInvoice(invoices.first)
+            : null,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: accent.withAlpha(has ? 14 : 10),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: accent.withAlpha(has ? 55 : 45)),
+          ),
+          child: Row(children: [
+            Icon(has ? Icons.check_circle_rounded : Icons.error_outline_rounded,
+                size: 15, color: accent),
+            const SizedBox(width: 10),
+            SizedBox(
+              width: 66,
+              child: Text(label,
+                  style: GoogleFonts.spaceGrotesk(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700)),
+            ),
+            Expanded(
+              child: Text(
+                has
+                    ? invoices.map((i) => i.invoiceNumber).join(', ')
+                    : 'No invoice uploaded',
+                style: GoogleFonts.spaceGrotesk(
+                    color: has ? const Color(0xFF8A94B0) : accent,
+                    fontSize: 10.5,
+                    fontWeight: has ? FontWeight.w500 : FontWeight.w600),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(has ? _inr.format(total) : '—',
+                style: GoogleFonts.spaceGrotesk(
+                    color: has ? Colors.white : const Color(0xFF4A5470),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800)),
+            if (has && invoices.first.hasFile) ...[
+              const SizedBox(width: 6),
+              Icon(Icons.remove_red_eye_outlined,
+                  size: 13, color: AppTheme.primary.withAlpha(160)),
+            ],
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _invoiceTile(NatraxInvoice inv) {
+    final flagged = inv.isInternallyInconsistent;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white.withAlpha(6),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: flagged
+                  ? const Color(0xFFFFB547).withAlpha(90)
+                  : Colors.white.withAlpha(15)),
+        ),
+        child: Row(children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppTheme.primary.withAlpha(20),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+                inv.hasFile
+                    ? Icons.picture_as_pdf_rounded
+                    : Icons.receipt_outlined,
+                size: 17,
+                color: AppTheme.primary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Invoice ${inv.invoiceNumber}',
+                  style: GoogleFonts.spaceGrotesk(
+                      color: Colors.white,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
+              Text(
+                [
+                  if (inv.invoiceDate != null)
+                    DateFormat('dd MMM yyyy').format(inv.invoiceDate!),
+                  if ((inv.periodMonth ?? '').isNotEmpty) inv.periodMonth!,
+                  if ((inv.poNumber ?? '').isNotEmpty) 'PO ${inv.poNumber}',
+                ].join(' · '),
+                style: GoogleFonts.spaceGrotesk(
+                    fontSize: 10, color: const Color(0xFF6B7490)),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (flagged)
+                Text('⚠ excl + GST ≠ total',
+                    style: GoogleFonts.spaceGrotesk(
+                        fontSize: 9.5, color: const Color(0xFFFFB547))),
+            ]),
+          ),
+          const SizedBox(width: 8),
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text(_inr.format(inv.totalAmount),
+                style: GoogleFonts.spaceGrotesk(
+                    color: Colors.white,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800)),
+            Text('${_inr.format(inv.amountExclGst)} + GST',
+                style: GoogleFonts.spaceGrotesk(
+                    fontSize: 9.5, color: const Color(0xFF6B7490))),
+          ]),
+          if (inv.hasFile)
+            IconButton(
+              onPressed: () => _openInvoice(inv),
+              icon: const Icon(Icons.remove_red_eye_outlined, size: 16),
+              color: AppTheme.primary,
+              tooltip: 'View original',
+              visualDensity: VisualDensity.compact,
+            ),
+          if (_canEditInvoices)
+            IconButton(
+              onPressed: () => _confirmDeleteInvoice(inv),
+              icon: const Icon(Icons.delete_outline_rounded, size: 16),
+              color: Colors.redAccent.withAlpha(180),
+              tooltip: 'Remove',
+              visualDensity: VisualDensity.compact,
+            ),
+        ]),
+      ),
+    );
+  }
+
   // ─── Security / Forgot Password ────────────────────────────────────────────
 
   Widget _buildSecuritySection() {
@@ -693,4 +1627,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
           color: const Color(0xFFdfe2f0))),
     ]);
   }
+}
+
+/// What the upload dialog collected off the printed invoice.
+class _InvoiceDraft {
+  final String invoiceNumber;
+  final DateTime invoiceDate;
+  final String periodMonth;
+  final String projectName;
+  final String? poNumber;
+  final double exclGst;
+  final double gst;
+  final double total;
+  final String? notes;
+
+  const _InvoiceDraft({
+    required this.invoiceNumber,
+    required this.invoiceDate,
+    required this.periodMonth,
+    required this.projectName,
+    required this.poNumber,
+    required this.exclGst,
+    required this.gst,
+    required this.total,
+    required this.notes,
+  });
 }

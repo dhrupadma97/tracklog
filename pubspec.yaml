@@ -18,6 +18,7 @@ dependencies:
   shared_preferences: ^2.2.2 # Required for local data storage
   web: ^1.1.1
   excel: ^4.0.6
+  archive: ^3.6.1            # pure-Dart inflate — used to read PDF text layers on web
   file_picker: ^8.1.7
   spreadsheet_decoder: ^2.1.1
   

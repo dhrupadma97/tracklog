@@ -8,8 +8,11 @@ import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/app_export.dart';
+import '../../routes/app_routes.dart';
 import '../../services/supabase_service.dart';
 import '../../services/project_manager.dart';
+import '../../services/invoice_service.dart';
+import '../../services/invoice_opener.dart';
 
 class PoTrackerScreen extends StatefulWidget {
   const PoTrackerScreen({super.key});
@@ -34,6 +37,14 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
   double _vehicleValidationSpend = 0;
   double _instrumentationSpend = 0;
   int _totalSessions = 0;
+
+  /// GST rate the computed spend is grossed up at. Session costs and the
+  /// hardcoded overrides are all stored ex-GST, while PO values carry tax
+  /// separately — the two must be compared on the same basis.
+  static const double _gstRate = 0.18;
+
+  /// Originals raised by NATRAX, uploaded via Settings → Billing.
+  List<NatraxInvoice> _invoices = [];
 
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
@@ -143,6 +154,15 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
       _additionalServicesSpend = servicesTotal;
       _totalSessions = sessionCount;
 
+      // Originals raised by NATRAX for this project — the figure the PO is
+      // actually drawn down by.
+      try {
+        _invoices =
+            await InvoiceService.instance.list(projectName: pm.activeProject);
+      } catch (_) {
+        _invoices = [];
+      }
+
       setState(() => _loading = false);
       _animController.forward();
     } catch (e) {
@@ -153,12 +173,25 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
     }
   }
 
+  /// Everything the app has costed, **before tax** — session `total_cost`, the
+  /// additional-services rows and the historical overrides are all ex-GST.
   double get _totalSpend =>
       _trackSessionsSpend +
       _additionalServicesSpend +
       _workshopSpend +
       _vehicleValidationSpend +
       _instrumentationSpend;
+
+  /// The same spend grossed up, so it can be set against a tax-inclusive PO.
+  double get _totalSpendInclGst => _totalSpend * (1 + _gstRate);
+
+  double get _totalPoExclTax {
+    double total = 0;
+    for (final po in _poList) {
+      total += (po['total_po_value'] as num?)?.toDouble() ?? 0;
+    }
+    return total;
+  }
 
   double get _totalPoWithTax {
     double total = 0;
@@ -170,10 +203,24 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
     return total;
   }
 
-  double get _remainingBalance => _totalPoWithTax - _totalSpend;
+  InvoiceTotals get _invoiceTotals => InvoiceTotals.from(_invoices);
+  bool get _hasInvoices => _invoices.isNotEmpty;
+
+  /// What the PO has actually been drawn down by, tax inclusive.
+  ///
+  /// Uploaded originals are authoritative whenever they exist — they are what
+  /// NATRAX billed. Without them we fall back to the app's computed spend,
+  /// which is an estimate built from durations and rate cards.
+  double get _drawdownInclGst =>
+      _hasInvoices ? _invoiceTotals.total : _totalSpendInclGst;
+
+  /// Positive when NATRAX has billed more than the app computed.
+  double get _invoiceVariance => _invoiceTotals.total - _totalSpendInclGst;
+
+  double get _remainingBalance => _totalPoWithTax - _drawdownInclGst;
 
   double get _utilizationPercent => _totalPoWithTax > 0
-      ? (_totalSpend / _totalPoWithTax).clamp(0.0, 1.0)
+      ? (_drawdownInclGst / _totalPoWithTax).clamp(0.0, 1.0)
       : 0.0;
 
   Future<void> _showAddPoDialog() async {
@@ -350,6 +397,8 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                                 child: _buildPoInfoCard(po),
                               )),
                               _buildBalanceSummaryCard(),
+                              const SizedBox(height: 16),
+                              _buildReconciliationCard(),
                               const SizedBox(height: 16),
                               _buildProgressBar(),
                               const SizedBox(height: 16),
@@ -663,11 +712,13 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                 children: [
                   Expanded(
                     child: _buildSummaryMetric(
-                      label: 'Total Spend',
-                      value: '₹${_formatAmount(_totalSpend)}',
+                      label: _hasInvoices ? 'Invoiced' : 'Total Spend',
+                      value: '₹${_formatAmount(_drawdownInclGst)}',
                       icon: Icons.payments_outlined,
                       color: const Color(0xFFFF6B6B),
-                      subtitle: '$_totalSessions sessions',
+                      subtitle: _hasInvoices
+                          ? '${_invoiceTotals.count} invoices · incl. GST'
+                          : '$_totalSessions sessions · incl. GST',
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -683,6 +734,19 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                _hasInvoices
+                    ? 'Balance = PO incl. tax − invoices raised by NATRAX.'
+                    : 'Balance = PO incl. tax − computed spend grossed up at '
+                        '${(_gstRate * 100).toStringAsFixed(0)}% GST. Upload the '
+                        'originals in Settings → Billing to verify it.',
+                style: GoogleFonts.spaceGrotesk(
+                  color: const Color(0xFF6B7490),
+                  fontSize: 10,
+                  height: 1.45,
+                ),
               ),
             ],
           ),
@@ -742,6 +806,368 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ─── Invoice reconciliation ────────────────────────────────────────────────
+
+  /// Sets the app's computed spend against the originals NATRAX raised, so a
+  /// gap between the two is visible rather than buried in the balance.
+  Widget _buildReconciliationCard() {
+    final totals = _invoiceTotals;
+    final variance = _invoiceVariance;
+    final matched = variance.abs() < 1.0;
+    final varianceColor = !_hasInvoices
+        ? const Color(0xFF6B7490)
+        : matched
+            ? const Color(0xFF4CAF50)
+            : const Color(0xFFFFB547);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0A1025).withAlpha(200),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFF849495).withAlpha(120)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                const Icon(Icons.fact_check_outlined,
+                    color: Color(0xFF6B7490), size: 15),
+                const SizedBox(width: 8),
+                Text(
+                  'Invoice Reconciliation',
+                  style: GoogleFonts.spaceGrotesk(
+                    color: const Color(0xFF6B7490),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: varianceColor.withAlpha(25),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: varianceColor.withAlpha(80)),
+                  ),
+                  child: Text(
+                    !_hasInvoices
+                        ? 'UNVERIFIED'
+                        : matched
+                            ? 'MATCHED'
+                            : 'VARIANCE',
+                    style: GoogleFonts.spaceGrotesk(
+                        color: varianceColor,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 14),
+
+              _reconRow(
+                'App-computed spend (excl. GST)',
+                _totalSpend,
+                const Color(0xFF8A94B0),
+              ),
+              _reconRow(
+                'GST @ ${(_gstRate * 100).toStringAsFixed(0)}%',
+                _totalSpendInclGst - _totalSpend,
+                const Color(0xFF8A94B0),
+              ),
+              _reconRow(
+                'App-computed spend (incl. GST)',
+                _totalSpendInclGst,
+                Colors.white,
+                bold: true,
+              ),
+              const SizedBox(height: 10),
+
+              // Headroom on both bases. Comparing ex-GST spend against a
+              // tax-inclusive PO is what made the balance look healthier than
+              // it is, so both are shown side by side.
+              Row(children: [
+                Expanded(
+                  child: _headroomChip(
+                    'vs PO excl. GST',
+                    _totalPoExclTax - _totalSpend,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _headroomChip(
+                    'vs PO incl. GST',
+                    _totalPoWithTax - _totalSpendInclGst,
+                  ),
+                ),
+              ]),
+
+              const SizedBox(height: 12),
+              const Divider(color: Color(0xFF2A3450), height: 1),
+              const SizedBox(height: 10),
+
+              if (!_hasInvoices) ...[
+                Text(
+                  'No original invoices uploaded for '
+                  '${ProjectManager.instance.activeProject}. The balance above '
+                  'is an estimate from session durations and rate cards — it '
+                  'has not been checked against what NATRAX actually billed.',
+                  style: GoogleFonts.spaceGrotesk(
+                    color: const Color(0xFF8A94B0),
+                    fontSize: 11,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                GestureDetector(
+                  onTap: () => context.push(AppRoutes.settings),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 11),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withAlpha(22),
+                      borderRadius: BorderRadius.circular(10),
+                      border:
+                          Border.all(color: AppTheme.primary.withAlpha(90)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.upload_file_rounded,
+                            size: 14, color: AppTheme.primary),
+                        const SizedBox(width: 7),
+                        Text(
+                          'Upload originals in Settings → Billing',
+                          style: GoogleFonts.spaceGrotesk(
+                            color: AppTheme.primary,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ] else ...[
+                _reconRow(
+                  'Invoiced by NATRAX (${totals.count} invoice'
+                  '${totals.count == 1 ? '' : 's'})',
+                  totals.total,
+                  AppTheme.primary,
+                  bold: true,
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: varianceColor.withAlpha(18),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: varianceColor.withAlpha(60)),
+                  ),
+                  child: Row(children: [
+                    Icon(
+                        matched
+                            ? Icons.check_circle_outline
+                            : Icons.report_problem_outlined,
+                        color: varianceColor,
+                        size: 17),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            matched
+                                ? 'Invoices match the computed spend'
+                                : variance > 0
+                                    ? 'NATRAX billed ₹${_formatAmount(variance.abs())} more than computed'
+                                    : 'NATRAX billed ₹${_formatAmount(variance.abs())} less than computed',
+                            style: GoogleFonts.spaceGrotesk(
+                              color: varianceColor,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          if (!matched)
+                            Text(
+                              'Balance is drawn from the invoices, not the '
+                              'computed figure.',
+                              style: GoogleFonts.spaceGrotesk(
+                                color: const Color(0xFF8A94B0),
+                                fontSize: 10,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ]),
+                ),
+                const SizedBox(height: 12),
+                ..._invoices.map(_reconInvoiceTile),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _headroomChip(String label, double headroom) {
+    final over = headroom < 0;
+    final c = over ? const Color(0xFFFF6B6B) : const Color(0xFF4CAF50);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        color: c.withAlpha(18),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: c.withAlpha(60)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.spaceGrotesk(
+              color: const Color(0xFF8A94B0),
+              fontSize: 9.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            '${over ? '−' : '+'}₹${_formatAmount(headroom.abs())}',
+            style: GoogleFonts.spaceGrotesk(
+              color: c,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          Text(
+            over ? 'over PO' : 'headroom',
+            style: GoogleFonts.spaceGrotesk(
+              color: c.withAlpha(170),
+              fontSize: 9,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _reconRow(String label, double amount, Color color,
+      {bool bold = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: GoogleFonts.spaceGrotesk(
+                color: bold ? color : const Color(0xFF8A94B0),
+                fontSize: bold ? 12.5 : 11.5,
+                fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '₹${_formatAmount(amount)}',
+            style: GoogleFonts.spaceGrotesk(
+              color: color,
+              fontSize: bold ? 13.5 : 12,
+              fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _reconInvoiceTile(NatraxInvoice inv) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: GestureDetector(
+        onTap: inv.hasFile
+            ? () async {
+                final err = await openInvoice(inv);
+                if (err != null && mounted) {
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(SnackBar(content: Text(err)));
+                }
+              }
+            : null,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.white.withAlpha(6),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.white.withAlpha(15)),
+          ),
+          child: Row(children: [
+            Icon(
+                inv.hasFile
+                    ? Icons.picture_as_pdf_rounded
+                    : Icons.receipt_outlined,
+                size: 15,
+                color: AppTheme.primary.withAlpha(190)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Invoice ${inv.invoiceNumber}',
+                    style: GoogleFonts.spaceGrotesk(
+                      color: Colors.white,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    [
+                      if (inv.invoiceDate != null)
+                        DateFormat('dd MMM yyyy').format(inv.invoiceDate!),
+                      if ((inv.poNumber ?? '').isNotEmpty)
+                        'PO ${inv.poNumber}',
+                    ].join(' · '),
+                    style: GoogleFonts.spaceGrotesk(
+                        color: const Color(0xFF6B7490), fontSize: 9.5),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '₹${_formatAmount(inv.totalAmount)}',
+              style: GoogleFonts.spaceGrotesk(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            if (inv.hasFile) ...[
+              const SizedBox(width: 6),
+              Icon(Icons.remove_red_eye_outlined,
+                  size: 13, color: AppTheme.primary.withAlpha(160)),
+            ],
+          ]),
+        ),
       ),
     );
   }
