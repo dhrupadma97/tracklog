@@ -315,9 +315,9 @@ const List<String> schematicColumnLabels = [
 const List<String> schematicNodeOrder = [
   'obd_port',
   'can1_bus', 'can2_bus', 'can3_bus',
-  'imu', 'vbox', 'power_bar',
+  'imu', 'vbox', 'huf', 'power_bar',
   'gl2000', 'raptor', 'kvaser',
-  'pc_canoe', 'display', 'huf',
+  'pc_canoe', 'display',
 ];
 
 /// Column (layer) index 0..[schematicColumnCount]-1 for a node.
@@ -332,12 +332,14 @@ int schematicColumn(SchematicNode n) {
     case 'imu':
     case 'vbox':
     case 'power_bar':
+    case 'huf':
+      // The HUF receiver is a signal source feeding the Raptor, so it belongs
+      // with the sensors rather than downstream with the display.
       return 2;
     case 'gl2000':
     case 'raptor':
       return 3;
     case 'pc_canoe':
-    case 'huf':
     case 'display':
       return 4;
   }
@@ -979,7 +981,7 @@ final VehicleProfile tataBetaProfile = VehicleProfile(
     SchematicNode(id: 'gl2000', label: 'GL2000', sublabel: 'Logger', nodeType: InstrumentCategory.logger, instrumentId: 'gl2000', x: 0.44, y: 0.20),
     SchematicNode(id: 'imu', label: 'IMU', sublabel: 'Inertial', nodeType: InstrumentCategory.sensor, instrumentId: 'imu', x: 0.30, y: 0.47),
     SchematicNode(id: 'vbox', label: 'VBOX 3i', sublabel: 'Dual Antenna', nodeType: InstrumentCategory.sensor, instrumentId: 'vbox_3i_dual', x: 0.46, y: 0.47),
-    SchematicNode(id: 'huf', label: 'HUF', sublabel: 'TPMS', nodeType: InstrumentCategory.receiver, instrumentId: 'huf_receiver', x: 0.84, y: 0.34),
+    SchematicNode(id: 'huf', label: 'HUF', sublabel: 'TPMS', nodeType: InstrumentCategory.receiver, instrumentId: 'huf_receiver', x: 0.30, y: 0.33),
     SchematicNode(id: 'power_bar', label: 'Power Breakout', sublabel: 'Distribution', nodeType: InstrumentCategory.power, instrumentId: 'power_breakout', x: 0.84, y: 0.07),
     // ── VBOX storage: CANoe stores the VBOX/IMU data stream ──
     SchematicNode(id: 'pc_canoe', label: 'CANoe', sublabel: 'Alt logger / PC', nodeType: InstrumentCategory.software, instrumentId: 'canoe', x: 0.64, y: 0.47),
@@ -1001,8 +1003,9 @@ final VehicleProfile tataBetaProfile = VehicleProfile(
     SchematicConnection(fromNodeId: 'can2_bus', toNodeId: 'raptor', label: 'CAN 2', protocol: BusProtocol.can2A, busIndex: 2),
     SchematicConnection(fromNodeId: 'can3_bus', toNodeId: 'gl2000', label: 'CAN 3', protocol: BusProtocol.can2A, busIndex: 3),
     SchematicConnection(fromNodeId: 'can3_bus', toNodeId: 'raptor', label: 'CAN 3', protocol: BusProtocol.can2A, busIndex: 3),
-    // Raptor → accessories
-    SchematicConnection(fromNodeId: 'raptor', toNodeId: 'huf',     label: 'TMS_CAN', protocol: BusProtocol.can2A),
+    // HUF TPMS receiver feeds tire pressure/temperature INTO the Raptor, which
+    // runs the models and drives the Display.
+    SchematicConnection(fromNodeId: 'huf',    toNodeId: 'raptor',  label: 'TMS_CAN', protocol: BusProtocol.can2A),
     SchematicConnection(fromNodeId: 'raptor', toNodeId: 'display', label: 'Display', protocol: BusProtocol.can2A),
     // VBOX chain — separate entity: IMU → VBOX. The VBOX (with the IMU fused
     // in) arrives on its OWN CAN channel into the logger, alongside the three
