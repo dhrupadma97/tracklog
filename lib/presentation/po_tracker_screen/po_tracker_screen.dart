@@ -49,8 +49,12 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
   /// separately — the two must be compared on the same basis.
   static const double _gstRate = 0.18;
 
-  /// Originals raised by NATRAX, uploaded via Settings → Billing.
+  /// Originals for the active project — used against the monthly baseline.
   List<NatraxInvoice> _invoices = [];
+
+  /// Every original on file, whichever vehicle it was raised for. POs are
+  /// shared funding pools, so their drawdown must count all of them.
+  List<NatraxInvoice> _allInvoices = [];
 
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
@@ -159,12 +163,21 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
       _totalSessions = sessionCount;
       _costedSessions = costedSessions;
 
-      // Originals raised by NATRAX for this project — the figure the PO is
-      // actually drawn down by.
+      // Two views of the same invoices, and the distinction matters.
+      //
+      // A PO is drawn down by every invoice that names it, whichever vehicle
+      // was on test — that is what makes the remaining amount bookable. The
+      // month-by-month reconciliation, by contrast, compares against a
+      // baseline that only exists for this project, so it uses the scoped set.
       try {
-        _invoices =
-            await InvoiceService.instance.list(projectName: pm.activeProject);
+        _allInvoices = await InvoiceService.instance.list();
+        _invoices = _allInvoices
+            .where((i) =>
+                i.projectName.toLowerCase().trim() ==
+                pm.activeProject.toLowerCase().trim())
+            .toList();
       } catch (_) {
+        _allInvoices = [];
         _invoices = [];
       }
 
@@ -190,9 +203,33 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
   /// The same spend grossed up, so it can be set against a tax-inclusive PO.
   double get _totalSpendInclGst => _totalSpend * (1 + _gstRate);
 
+  /// Every PO is a funding pool, not a programme allocation.
+  ///
+  /// Track booking runs back to back against whatever is left, so a PO is
+  /// drawn down by whichever vehicle is on test at the time. Only the original
+  /// Mahindra EV PoC PO was raised against a named programme. Scoping the
+  /// balance by project would therefore hide funding that is genuinely
+  /// available for the next booking.
+  List<Map<String, dynamic>> get _projectPos => _poList;
+
+  /// The PO that uninvoiced work will be billed against.
+  ///
+  /// Only inferred when the programme has exactly one funded PO — with more
+  /// than one it is genuinely ambiguous which will be drawn on, and guessing
+  /// would put a forecast on the wrong PO.
+  String? get _forecastPo {
+    final funded = _projectPos.where((p) {
+      final val = (p['total_po_value'] as num?)?.toDouble() ?? 0;
+      final tax = (p['tax_amount'] as num?)?.toDouble() ?? 0;
+      return val + tax > 0;
+    }).toList();
+    if (funded.length != 1) return null;
+    return (funded.first['po_number'] as String? ?? '').trim();
+  }
+
   double get _totalPoWithTax {
     double total = 0;
-    for (final po in _poList) {
+    for (final po in _projectPos) {
       final val = (po['total_po_value'] as num?)?.toDouble() ?? 0;
       final tax = (po['tax_amount'] as num?)?.toDouble() ?? 0;
       total += val + tax;
@@ -200,14 +237,15 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
     return total;
   }
 
-  InvoiceTotals get _invoiceTotals => InvoiceTotals.from(_invoices);
-  bool get _hasInvoices => _invoices.isNotEmpty;
+  /// Drawdown across every PO — all invoices, all vehicles.
+  InvoiceTotals get _invoiceTotals => InvoiceTotals.from(_allInvoices);
+  bool get _hasInvoices => _allInvoices.isNotEmpty;
 
   /// Invoices grouped by the PO they name, so each PO's own drawdown is
   /// visible. Tally prints this as "Buyer's Order No."; the parser stores it.
   Map<String, List<NatraxInvoice>> get _invoicesByPo {
     final map = <String, List<NatraxInvoice>>{};
-    for (final inv in _invoices) {
+    for (final inv in _allInvoices) {
       final po = (inv.poNumber ?? '').trim();
       if (po.isEmpty) continue;
       map.putIfAbsent(po, () => []).add(inv);
@@ -226,7 +264,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
         .map((p) => (p['po_number'] as String? ?? '').trim())
         .where((p) => p.isNotEmpty)
         .toSet();
-    return _invoices
+    return _allInvoices
         .where((i) => !known.contains((i.poNumber ?? '').trim()))
         .toList();
   }
@@ -464,7 +502,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                                 Center(
                                   child: Text('No POs found', style: GoogleFonts.spaceGrotesk(color: Colors.white54)),
                                 ),
-                              ..._poList.map((po) => Padding(
+                              ..._projectPos.map((po) => Padding(
                                 padding: const EdgeInsets.only(bottom: 16),
                                 child: _buildPoInfoCard(po),
                               )),
@@ -816,13 +854,52 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                   fontWeight: FontWeight.w600)),
         ),
         Text(
-          '${over ? 'Over by' : 'Balance'}  ₹${_formatAmount(balance.abs())}',
+          '${over ? 'Over by' : 'Available'}  ₹${_formatAmount(balance.abs())}',
           style: GoogleFonts.spaceGrotesk(
               color: over ? const Color(0xFFFF6B6B) : const Color(0xFF4CAF50),
               fontSize: 11.5,
               fontWeight: FontWeight.w800),
         ),
       ]),
+
+      // Work already done but not yet invoiced will come off this PO when
+      // NATRAX raises it, so the forecast sits beside the current figure
+      // rather than being a surprise later.
+      if (_forecastPo == number && _notYetBilledInclGst > 0) ...[
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFB547).withAlpha(18),
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(color: const Color(0xFFFFB547).withAlpha(60)),
+          ),
+          child: Row(children: [
+            const Icon(Icons.schedule_rounded,
+                size: 13, color: Color(0xFFFFB547)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '${_uninvoicedMonths.map((m) => _monthShort(m.month)).join(', ')} '
+                'not yet invoiced — ₹${_formatAmount(_notYetBilledInclGst)}',
+                style: GoogleFonts.spaceGrotesk(
+                    color: const Color(0xFFFFB547),
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600),
+              ),
+            ),
+            Text(
+              'then ₹${_formatAmount(balance - _notYetBilledInclGst)}',
+              style: GoogleFonts.spaceGrotesk(
+                  color: (balance - _notYetBilledInclGst) < 0
+                      ? const Color(0xFFFF6B6B)
+                      : const Color(0xFF4CAF50),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800),
+            ),
+          ]),
+        ),
+      ],
       if (invoices.isNotEmpty) ...[
         const SizedBox(height: 8),
         ...invoices.map((i) => Padding(
