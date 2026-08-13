@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/app_export.dart';
 import '../../services/email_report_service.dart';
+import '../../services/management_report_service.dart';
 import '../../services/supabase_service.dart';
 import '../../services/project_manager.dart';
 
@@ -19,6 +20,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
     with SingleTickerProviderStateMixin {
   bool _loading = true;
   bool _sending = false;
+  bool _buildingUpdate = false;
   String? _error;
   List<EmailReportSubscription> _subscriptions = [];
   List<EmailSendLog> _logs = [];
@@ -280,6 +282,8 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                             children: [
                               _buildHeader(),
                               const SizedBox(height: 20),
+                              _buildManagementUpdateCard(),
+                              const SizedBox(height: 16),
                               _buildSendNowCard(),
                               const SizedBox(height: 16),
                               _buildNatraxReportCard(),
@@ -296,6 +300,248 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                   ),
                 ),
               ),
+      ),
+    );
+  }
+
+  // ─── Management update ─────────────────────────────────────────────────────
+
+  /// Builds the as-on-date pack from live data and previews it before sending.
+  /// Preview first is deliberate — this goes to management, so nothing leaves
+  /// the app without being seen.
+  Future<void> _previewManagementUpdate() async {
+    setState(() => _buildingUpdate = true);
+    try {
+      final update = await ManagementReportService.instance.generate(
+        projectName: ProjectManager.instance.activeProject,
+      );
+      if (!mounted) return;
+      setState(() => _buildingUpdate = false);
+      await _showUpdatePreview(update);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _buildingUpdate = false);
+      _showSnack('Could not build the update — $e', isError: true);
+    }
+  }
+
+  Future<void> _showUpdatePreview(ManagementUpdate update) async {
+    final inr = NumberFormat.currency(
+        locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0A1025),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: AppTheme.primary.withAlpha(60)),
+        ),
+        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Send to management?',
+              style: GoogleFonts.spaceGrotesk(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16)),
+          const SizedBox(height: 3),
+          Text(update.subject,
+              style: GoogleFonts.spaceGrotesk(
+                  color: AppTheme.primary, fontSize: 11)),
+        ]),
+        content: SizedBox(
+          width: 460,
+          child: SingleChildScrollView(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _previewLine('Total PO value', inr.format(update.poTotal)),
+                  _previewLine(
+                      'Invoiced to date', inr.format(update.invoicedTotal)),
+                  _previewLine('Balance available', inr.format(update.balance),
+                      color: update.balance < 0
+                          ? Colors.redAccent
+                          : const Color(0xFF4CAF50)),
+                  if (update.unbilledTotal > 0)
+                    _previewLine('Not yet billed',
+                        inr.format(update.unbilledTotal),
+                        color: const Color(0xFFFFB547)),
+                  _previewLine('Projected balance',
+                      inr.format(update.projectedBalance)),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(11),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFB547).withAlpha(20),
+                      borderRadius: BorderRadius.circular(9),
+                      border: Border.all(
+                          color: const Color(0xFFFFB547).withAlpha(70)),
+                    ),
+                    child: Text(
+                      '${update.attentionCount} point'
+                      '${update.attentionCount == 1 ? '' : 's'} flagged for '
+                      'attention in the mail.',
+                      style: GoogleFonts.spaceGrotesk(
+                          color: const Color(0xFFFFB547),
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'To: praharshithkumar_komaragiri@goodyear.com\n'
+                    'Cc: vimal, ashish, yeswanth, niranjan',
+                    style: GoogleFonts.spaceGrotesk(
+                        color: const Color(0xFF6B7490),
+                        fontSize: 10.5,
+                        height: 1.5),
+                  ),
+                ]),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel',
+                style: GoogleFonts.spaceGrotesk(color: Colors.white70)),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.send_rounded, size: 15),
+            label: const Text('Send'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _buildingUpdate = true);
+    final result = await ManagementReportService.instance.send(update: update);
+    if (!mounted) return;
+    setState(() => _buildingUpdate = false);
+
+    if (result['success'] == true) {
+      _showSnack('Management update sent ✓');
+      _loadData();
+    } else {
+      _showSnack('Send failed — ${result['error']}', isError: true);
+    }
+  }
+
+  Widget _previewLine(String label, String value, {Color? color}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(children: [
+        Expanded(
+          child: Text(label,
+              style: GoogleFonts.spaceGrotesk(
+                  color: const Color(0xFF8A94B0), fontSize: 12)),
+        ),
+        Text(value,
+            style: GoogleFonts.spaceGrotesk(
+                color: color ?? Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w700)),
+      ]),
+    );
+  }
+
+  Widget _buildManagementUpdateCard() {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0A1025).withAlpha(200),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppTheme.primary.withAlpha(90)),
+          ),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withAlpha(24),
+                      borderRadius: BorderRadius.circular(10),
+                      border:
+                          Border.all(color: AppTheme.primary.withAlpha(70)),
+                    ),
+                    child: const Icon(Icons.summarize_rounded,
+                        color: AppTheme.primary, size: 17),
+                  ),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Management Update',
+                              style: GoogleFonts.spaceGrotesk(
+                                  color: Colors.white,
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w800)),
+                          Text(
+                              'PO position, invoices, unbilled work, track and '
+                              'resource utilisation',
+                              style: GoogleFonts.spaceGrotesk(
+                                  color: const Color(0xFF6B7490),
+                                  fontSize: 10.5)),
+                        ]),
+                  ),
+                ]),
+                const SizedBox(height: 13),
+                GestureDetector(
+                  onTap: _buildingUpdate ? null : _previewManagementUpdate,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: [
+                        AppTheme.primary.withAlpha(_buildingUpdate ? 60 : 210),
+                        AppTheme.primary.withAlpha(_buildingUpdate ? 40 : 150),
+                      ]),
+                      borderRadius: BorderRadius.circular(11),
+                    ),
+                    child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          if (_buildingUpdate)
+                            const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
+                          else
+                            const Icon(Icons.auto_awesome_rounded,
+                                size: 15, color: Colors.white),
+                          const SizedBox(width: 8),
+                          Text(
+                              _buildingUpdate
+                                  ? 'Building from live data…'
+                                  : 'Generate update as on today',
+                              style: GoogleFonts.spaceGrotesk(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700)),
+                        ]),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                    'You review the figures before anything is sent. Computed '
+                    'estimates are labelled separately from invoiced amounts.',
+                    style: GoogleFonts.spaceGrotesk(
+                        color: const Color(0xFF6B7490),
+                        fontSize: 10,
+                        height: 1.45)),
+              ]),
+        ),
       ),
     );
   }
