@@ -47,14 +47,15 @@ class BillingBaseline {
   /// invoices on file: 18% IGST in March, 18% CGST+SGST in April.
   static const double gstRate = 0.18;
 
-  /// The rate on new work. Supplies now run under SEZ Bond / LUT, so no
-  /// integrated tax is charged.
+  /// The rate assumed when a new invoice is entered.
   ///
-  /// This is separate from [gstRate] on purpose. The historical months were
-  /// genuinely taxed and their invoices prove it; applying nil rating
-  /// backwards would misstate what NATRAX billed and break the
-  /// reconciliation.
-  static const double currentGstRate = 0.0;
+  /// GST treatment is a finance decision, so this is only a starting value —
+  /// the field stays editable and whatever the invoice prints always wins.
+  /// 18% is the default because every invoice received has carried it
+  /// (INV/25-26/1869 at IGST, INV/26-27/205 at CGST+SGST). Nil rating under
+  /// SEZ Bond / LUT is handled per invoice and per PO rather than by changing
+  /// this, since the treatment can differ between them.
+  static const double currentGstRate = 0.18;
 
   /// Mahindra EV PoC — from the V15 workbook.
   ///
