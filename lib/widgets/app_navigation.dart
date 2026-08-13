@@ -120,6 +120,14 @@ class _AppNavigationState extends State<AppNavigation>
       branchIndex: 11,
     ));
 
+    // 10. Resources — availability, allocation and utilisation
+    list.add(const _TabSpec(
+      icon: 'groups_2_outlined',
+      selectedIcon: 'groups_2',
+      label: 'Resources',
+      branchIndex: 12,
+    ));
+
     return list;
   }
 

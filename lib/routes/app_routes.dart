@@ -7,6 +7,7 @@ import '../presentation/gate_management_screen/gate_management_screen.dart';
 import '../presentation/login_screen/login_screen.dart';
 import '../presentation/manual_entry_screen/manual_entry_screen.dart';
 import '../presentation/po_tracker_screen/po_tracker_screen.dart';
+import '../presentation/resources_screen/resources_screen.dart';
 import '../presentation/privacy_policy_screen/privacy_policy_screen.dart';
 import '../presentation/tracks_screen/tracks_screen.dart';
 import '../presentation/session_history_screen/project_selection_screen.dart';
@@ -30,6 +31,7 @@ class AppRoutes {
   static const String sessionHistory = '/session-history-screen';
   static const String gateManagement = '/gate-management-screen';
   static const String poTracker = '/po-tracker-screen';
+  static const String resources = '/resources-screen';
   static const String emailReports = '/email-reports-screen';
   static const String manualEntry = '/manual-entry-screen';
   static const String privacyPolicy = '/privacy-policy';
@@ -228,6 +230,15 @@ final GoRouter appRouter = GoRouter(
             GoRoute(
               path: AppRoutes.testCases,
               builder: (context, state) => const TestCasesScreen(),
+            ),
+          ],
+        ),
+        // Branch 12: Testing resources
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: AppRoutes.resources,
+              builder: (context, state) => const ResourcesScreen(),
             ),
           ],
         ),
