@@ -46,6 +46,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // Original NATRAX invoices
   List<NatraxInvoice> _invoices = [];
   List<String> _poNumbers = [];
+
+  /// PO rows with their category, so the picker can say which is manpower and
+  /// which is track booking rather than showing bare numbers.
+  List<Map<String, dynamic>> _poOptions = [];
   List<String> _activeMonths = []; // 'YYYY-MM', newest first
   bool _loadingInvoices = true;
   bool _uploadingInvoice = false;
@@ -121,8 +125,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       final client = SupabaseService.instance.client;
       final invoices = await InvoiceService.instance.list();
-      final poRows =
-          await client.from('po_trackers').select('po_number').order('created_at');
+      final poRows = await client
+          .from('po_trackers')
+          .select('po_number, category, vendor_name, po_status')
+          .order('category');
 
       // Months that actually had track activity — these are the months an
       // invoice is expected for, so a missing one is visible rather than
@@ -149,9 +155,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       setState(() {
         _invoices = invoices;
-        _poNumbers = (poRows as List)
+        _poOptions = (poRows as List)
+            .cast<Map<String, dynamic>>()
+            .where((r) => ((r['po_number'] as String?) ?? '').isNotEmpty)
+            .toList();
+        _poNumbers = _poOptions
             .map((r) => (r['po_number'] as String?) ?? '')
-            .where((p) => p.isNotEmpty)
             .toList();
         _activeMonths = months.toList()..sort((a, b) => b.compareTo(a));
         _loadingInvoices = false;
@@ -558,10 +567,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           enabledBorder: UnderlineInputBorder(
                               borderSide: BorderSide(color: Colors.white24)),
                         ),
-                        items: _poNumbers
-                            .map((p) => DropdownMenuItem(
-                                value: p, child: Text('PO # $p')))
-                            .toList(),
+                        items: _poOptions.map((r) {
+                          final num = (r['po_number'] as String?) ?? '';
+                          final cat = switch (
+                              (r['category'] as String?) ?? 'other') {
+                            'track_booking' => 'Track booking',
+                            'manpower' => 'Manpower',
+                            'workshop' => 'Workshop',
+                            'instrumentation' => 'Instrumentation',
+                            _ => 'Uncategorised',
+                          };
+                          final vendor = (r['vendor_name'] as String?) ?? '';
+                          return DropdownMenuItem(
+                            value: num,
+                            child: Text(
+                              'PO # $num · $cat'
+                              '${vendor.isEmpty ? '' : ' · ${vendor.length > 18 ? '${vendor.substring(0, 18)}…' : vendor}'}',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        }).toList(),
                         onChanged: (v) => setLocal(() => poNumber = v),
                       ),
                     const SizedBox(height: 8),
@@ -1195,7 +1220,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Row(children: [
           Expanded(
               child: _cardTitle(
-                  Icons.receipt_long_rounded, 'Original NATRAX Invoices')),
+                  Icons.receipt_long_rounded, 'Original Invoices')),
           if (_canEditInvoices)
             GestureDetector(
               onTap: (_uploadingInvoice || _scanning) ? null : _uploadInvoice,
@@ -1237,10 +1262,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SizedBox(height: 6),
         Text(
           _canEditInvoices
-              ? 'Pick the PDF and the figures are read off it — no typing. The '
-                  'PO Tracker reconciles its computed spend against these '
-                  'billed amounts.'
-              : 'Invoices raised by NATRAX. Read-only for managers.',
+              ? 'Track and manpower invoices both go here — pick the PDF and '
+                  'the figures are read off it, then choose the PO it draws '
+                  'on. A non-NATRAX invoice may not read automatically; you '
+                  'can enter it by hand.'
+              : 'Invoices on file. Read-only for managers.',
           style: GoogleFonts.spaceGrotesk(
               fontSize: 11, color: const Color(0xFF6B7490), height: 1.45),
         ),

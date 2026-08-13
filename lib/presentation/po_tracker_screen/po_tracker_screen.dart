@@ -227,14 +227,44 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
     return (funded.first['po_number'] as String? ?? '').trim();
   }
 
+  /// A PO that has been fully consumed offers nothing for future booking.
+  ///
+  /// It stays on the list because its invoices are real history, but it is
+  /// excluded from the funding maths entirely — recording its value later must
+  /// not make spent money reappear as headroom.
+  static bool _isExhausted(Map<String, dynamic> po) {
+    final s = (po['po_status'] as String? ?? '').toLowerCase().trim();
+    return s == 'used' || s == 'closed' || s == 'exhausted';
+  }
+
+  /// POs that can still be booked against: not exhausted, and with a value on
+  /// record. A PO whose value is unknown cannot be counted as funding.
+  List<Map<String, dynamic>> get _bookablePos => _poList.where((p) {
+        if (_isExhausted(p)) return false;
+        final val = (p['total_po_value'] as num?)?.toDouble() ?? 0;
+        final tax = (p['tax_amount'] as num?)?.toDouble() ?? 0;
+        return val + tax > 0;
+      }).toList();
+
   double get _totalPoWithTax {
     double total = 0;
-    for (final po in _projectPos) {
+    for (final po in _bookablePos) {
       final val = (po['total_po_value'] as num?)?.toDouble() ?? 0;
       final tax = (po['tax_amount'] as num?)?.toDouble() ?? 0;
       total += val + tax;
     }
     return total;
+  }
+
+  /// Drawdown against bookable POs only — the counterpart to
+  /// [_totalPoWithTax]. Invoices against an exhausted PO are history, not a
+  /// claim on what remains.
+  double get _drawdownAgainstBookable {
+    var sum = 0.0;
+    for (final po in _bookablePos) {
+      sum += _invoicedAgainst((po['po_number'] as String? ?? '').trim());
+    }
+    return sum;
   }
 
   /// Drawdown across every PO — all invoices, all vehicles.
@@ -325,7 +355,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
   /// NATRAX billed. Without them we fall back to the app's computed spend,
   /// which is an estimate built from durations and rate cards.
   double get _drawdownInclGst =>
-      _hasInvoices ? _invoiceTotals.total : _totalSpendInclGst;
+      _hasInvoices ? _drawdownAgainstBookable : _totalSpendInclGst;
 
   double get _remainingBalance => _totalPoWithTax - _drawdownInclGst;
 
@@ -342,9 +372,15 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
     double taxAmount = 0;
     DateTime deliveryDate = DateTime.now().add(const Duration(days: 30));
 
+    // What the PO covers and where it stands. Without these a new PO lands as
+    // uncategorised, and the track-versus-manpower split cannot be answered.
+    var category = 'track_booking';
+    var poStatus = 'active';
+
     await showDialog(
       context: context,
-      builder: (ctx) {
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
         return AlertDialog(
           backgroundColor: const Color(0xFF0A1025),
           shape: RoundedRectangleBorder(
@@ -364,6 +400,54 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  DropdownButtonFormField<String>(
+                    value: category,
+                    isExpanded: true,
+                    dropdownColor: const Color(0xFF0A1025),
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      labelText: 'What does this PO cover?',
+                      labelStyle: TextStyle(color: Colors.white70),
+                      enabledBorder: UnderlineInputBorder(
+                          borderSide: BorderSide(color: Colors.white24)),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                          value: 'track_booking', child: Text('Track booking')),
+                      DropdownMenuItem(
+                          value: 'manpower', child: Text('Manpower')),
+                      DropdownMenuItem(
+                          value: 'workshop', child: Text('Workshop')),
+                      DropdownMenuItem(
+                          value: 'instrumentation',
+                          child: Text('Instrumentation')),
+                      DropdownMenuItem(value: 'other', child: Text('Other')),
+                    ],
+                    onChanged: (v) => setLocal(() => category = v ?? category),
+                  ),
+                  DropdownButtonFormField<String>(
+                    value: poStatus,
+                    isExpanded: true,
+                    dropdownColor: const Color(0xFF0A1025),
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      labelText: 'Status',
+                      labelStyle: TextStyle(color: Colors.white70),
+                      enabledBorder: UnderlineInputBorder(
+                          borderSide: BorderSide(color: Colors.white24)),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                          value: 'active', child: Text('Active — can be booked against')),
+                      DropdownMenuItem(
+                          value: 'upcoming', child: Text('Upcoming — not yet live')),
+                      DropdownMenuItem(
+                          value: 'used', child: Text('Used — fully consumed')),
+                      DropdownMenuItem(
+                          value: 'closed', child: Text('Closed')),
+                    ],
+                    onChanged: (v) => setLocal(() => poStatus = v ?? poStatus),
+                  ),
                   TextFormField(
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
@@ -435,6 +519,8 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                       'total_po_value': totalPoValue,
                       'tax_amount': taxAmount,
                       'delivery_date': deliveryDate.toIso8601String().split('T')[0],
+                      'category': category,
+                      'po_status': poStatus,
                     });
                     if (mounted) {
                       Navigator.of(ctx).pop();
@@ -449,7 +535,8 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
             ),
           ],
         );
-      },
+        },
+      ),
     );
   }
 
@@ -765,6 +852,42 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
     final balance = total - drawn;
     final pct = total <= 0 ? 0.0 : (drawn / total).clamp(0.0, 1.0);
     final over = balance < 0;
+
+    // Spent POs are stated as spent. Falling through to the value-pending
+    // branch would read as "we don't know", when in fact we know exactly:
+    // there is nothing left.
+    if (_isExhausted(po)) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const SizedBox(height: 12),
+        const Divider(color: Color(0xFF2A3450), height: 1),
+        const SizedBox(height: 10),
+        Row(children: [
+          const Icon(Icons.check_circle_outline_rounded,
+              size: 14, color: Color(0xFF6B7490)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              total > 0
+                  ? 'Fully consumed — no funding remaining'
+                  : 'Fully consumed — no funding remaining. PO value not '
+                      'recorded, so spend against it cannot be totalled.',
+              style: GoogleFonts.spaceGrotesk(
+                  color: const Color(0xFF8A94B0),
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w600,
+                  height: 1.4),
+            ),
+          ),
+        ]),
+        if (invoices.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text('₹${_formatAmount(drawn)} invoiced across ${invoices.length} '
+              'invoice${invoices.length == 1 ? '' : 's'}',
+              style: GoogleFonts.spaceGrotesk(
+                  color: const Color(0xFF6B7490), fontSize: 10.5)),
+        ],
+      ]);
+    }
 
     // A PO recorded before its value is known must not render as ₹0 of
     // funding — that reads like a real, empty PO rather than a missing figure.
