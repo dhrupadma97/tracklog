@@ -267,15 +267,51 @@ class ManagementReportService {
     const tdr = 'style="padding:7px 10px;border-bottom:1px solid #e6e9f0;'
         'font-size:13px;text-align:right;"';
 
+    // Drawdown per PO, from the PO each invoice names. This is what answers
+    // "which PO paid for track time and which paid for manpower".
+    final byPo = <String, double>{};
+    for (final i in invoices) {
+      final po = (i.poNumber ?? '').trim();
+      if (po.isEmpty) continue;
+      byPo[po] = (byPo[po] ?? 0) + i.totalAmount;
+    }
+    final knownPos = pos
+        .map((p) => (p['po_number'] as String? ?? '').trim())
+        .where((p) => p.isNotEmpty)
+        .toSet();
+    final orphans = invoices
+        .where((i) => !knownPos.contains((i.poNumber ?? '').trim()))
+        .toList();
+
     final poRows = pos.map((p) {
+      final number = (p['po_number'] as String? ?? '').trim();
       final base = (p['total_po_value'] as num?)?.toDouble() ?? 0;
       final tax = (p['tax_amount'] as num?)?.toDouble() ?? 0;
-      return '<tr><td $td>PO ${p['po_number'] ?? ''}<br>'
-          '<span style="color:#6b7490;font-size:11px;">'
-          '${_truncate(p['description'] as String? ?? '', 90)}</span></td>'
-          '<td $tdr>${_inr(base)}</td><td $tdr>${_inr(tax)}</td>'
-          '<td $tdr><b>${_inr(base + tax)}</b></td></tr>';
+      final total = base + tax;
+      final drawn = byPo[number] ?? 0;
+      final left = total - drawn;
+      final pct = total <= 0 ? 0 : (drawn / total * 100);
+      return '<tr><td $td>PO $number<br>'
+          '<span style="color:#0057e6;font-size:10px;font-weight:600;">'
+          '${_categoryLabel(p['category'] as String? ?? 'other')}</span>'
+          '<span style="color:#6b7490;font-size:11px;"> · '
+          '${_truncate(p['description'] as String? ?? '', 70)}</span></td>'
+          '<td $tdr>${_inr(total)}</td>'
+          '<td $tdr>${_inr(drawn)}'
+          '<span style="color:#6b7490;font-size:10px;"> (${pct.toStringAsFixed(0)}%)</span></td>'
+          '<td $tdr style="color:${left < 0 ? '#c62828' : '#1a7f37'};">'
+          '<b>${_inr(left)}</b></td></tr>';
     }).join();
+
+    final orphanRow = orphans.isEmpty
+        ? ''
+        : '<tr><td $td colspan="4" style="background:#fff8e1;color:#b26a00;'
+            'font-size:12px;">'
+            '${_inr(orphans.fold<double>(0, (s, i) => s + i.totalAmount))} '
+            'invoiced against PO '
+            '${orphans.map((i) => i.poNumber ?? '(none)').toSet().join(', ')}, '
+            'which is not yet loaded in the tracker — available funding above '
+            'is understated.</td></tr>';
 
     final invoiceRows = invoices.isEmpty
         ? '<tr><td $td colspan="4" style="color:#b26a00;">No invoices uploaded yet</td></tr>'
@@ -351,12 +387,17 @@ Goodyear SightLine tire intelligence validation${vehicleName == null ? '' : ' ·
     <b>${_inr(balance)}</b></td></tr>
 </table></div>
 
-<h3 style="font-size:14px;margin:18px 0 6px;">Purchase orders</h3>
+<h3 style="font-size:14px;margin:18px 0 6px;">Purchase orders — what each covers and what is left</h3>
 <table style="border-collapse:collapse;width:100%;">
-<tr><th $th>PO</th><th $th style="text-align:right">Base</th>
-<th $th style="text-align:right">GST</th><th $th style="text-align:right">Total</th></tr>
+<tr><th $th>PO / purpose</th><th $th style="text-align:right">PO value</th>
+<th $th style="text-align:right">Invoiced</th>
+<th $th style="text-align:right">Balance</th></tr>
 $poRows
+$orphanRow
 </table>
+<p style="font-size:11px;color:#6b7490;margin-top:4px;">
+Each invoice is attributed to the PO it names (Buyer's Order No.), so track
+booking and manpower spend are drawn from their own POs.</p>
 
 <h3 style="font-size:14px;margin:18px 0 6px;">Invoices raised</h3>
 <table style="border-collapse:collapse;width:100%;">
@@ -439,6 +480,14 @@ invoices raised by NATRAX.</p>
       (to.year - from.year) * 12 + (to.month - from.month);
 
   static String _short(String project) => project;
+
+  static String _categoryLabel(String c) => switch (c) {
+        'track_booking' => 'TRACK BOOKING',
+        'manpower' => 'MANPOWER',
+        'workshop' => 'WORKSHOP',
+        'instrumentation' => 'INSTRUMENTATION',
+        _ => 'UNCATEGORISED',
+      };
 
   static String _truncate(String s, int max) =>
       s.length <= max ? s : '${s.substring(0, max)}…';

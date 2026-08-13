@@ -203,6 +203,34 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
   InvoiceTotals get _invoiceTotals => InvoiceTotals.from(_invoices);
   bool get _hasInvoices => _invoices.isNotEmpty;
 
+  /// Invoices grouped by the PO they name, so each PO's own drawdown is
+  /// visible. Tally prints this as "Buyer's Order No."; the parser stores it.
+  Map<String, List<NatraxInvoice>> get _invoicesByPo {
+    final map = <String, List<NatraxInvoice>>{};
+    for (final inv in _invoices) {
+      final po = (inv.poNumber ?? '').trim();
+      if (po.isEmpty) continue;
+      map.putIfAbsent(po, () => []).add(inv);
+    }
+    return map;
+  }
+
+  double _invoicedAgainst(String poNumber) =>
+      (_invoicesByPo[poNumber] ?? const [])
+          .fold(0.0, (s, i) => s + i.totalAmount);
+
+  /// Invoices naming a PO that is not loaded in the tracker — their spend is
+  /// real but cannot be attributed, so it must not be silently dropped.
+  List<NatraxInvoice> get _unattributedInvoices {
+    final known = _poList
+        .map((p) => (p['po_number'] as String? ?? '').trim())
+        .where((p) => p.isNotEmpty)
+        .toSet();
+    return _invoices
+        .where((i) => !known.contains((i.poNumber ?? '').trim()))
+        .toList();
+  }
+
   /// Invoiced totals keyed by billing period.
   Map<String, double> get _invoicedByMonth {
     final map = <String, double>{};
@@ -440,6 +468,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                                 padding: const EdgeInsets.only(bottom: 16),
                                 child: _buildPoInfoCard(po),
                               )),
+                              _buildUnattributedWarning(),
                               _buildBalanceSummaryCard(),
                               const SizedBox(height: 16),
                               _buildReconciliationCard(),
@@ -593,6 +622,8 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                       ),
                     ),
                   ),
+                  const SizedBox(width: 7),
+                  _categoryChip(po['category'] as String? ?? 'other'),
                   const Spacer(),
                   if (po['delivery_date'] != null)
                     Row(
@@ -677,10 +708,135 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                   ),
                 ],
               ),
+              _buildPoDrawdown(po),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  /// What this specific PO has been drawn down by, from the invoices that name
+  /// it. Aggregate figures hide which PO paid for what; this does not.
+  Widget _buildPoDrawdown(Map<String, dynamic> po) {
+    final number = (po['po_number'] as String? ?? '').trim();
+    final total = ((po['total_po_value'] as num?)?.toDouble() ?? 0) +
+        ((po['tax_amount'] as num?)?.toDouble() ?? 0);
+    final invoices = _invoicesByPo[number] ?? const <NatraxInvoice>[];
+    final drawn = _invoicedAgainst(number);
+    final balance = total - drawn;
+    final pct = total <= 0 ? 0.0 : (drawn / total).clamp(0.0, 1.0);
+    final over = balance < 0;
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const SizedBox(height: 12),
+      const Divider(color: Color(0xFF2A3450), height: 1),
+      const SizedBox(height: 10),
+      Row(children: [
+        Text(
+          invoices.isEmpty
+              ? 'Nothing invoiced against this PO yet'
+              : 'Drawn down by ${invoices.length} invoice'
+                  '${invoices.length == 1 ? '' : 's'}',
+          style: GoogleFonts.spaceGrotesk(
+            color: const Color(0xFF8A94B0),
+            fontSize: 10.5,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const Spacer(),
+        Text(
+          '${(pct * 100).toStringAsFixed(0)}% used',
+          style: GoogleFonts.spaceGrotesk(
+            color: over
+                ? const Color(0xFFFF6B6B)
+                : pct > 0.85
+                    ? const Color(0xFFFFB547)
+                    : const Color(0xFF4CAF50),
+            fontSize: 10.5,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ]),
+      const SizedBox(height: 6),
+      ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: LinearProgressIndicator(
+          value: pct,
+          backgroundColor: const Color(0xFF2A3450),
+          valueColor: AlwaysStoppedAnimation<Color>(over
+              ? const Color(0xFFFF6B6B)
+              : pct > 0.85
+                  ? const Color(0xFFFFB547)
+                  : AppTheme.primary),
+          minHeight: 6,
+        ),
+      ),
+      const SizedBox(height: 8),
+      Row(children: [
+        Expanded(
+          child: Text('Invoiced  ₹${_formatAmount(drawn)}',
+              style: GoogleFonts.spaceGrotesk(
+                  color: const Color(0xFF8A94B0),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600)),
+        ),
+        Text(
+          '${over ? 'Over by' : 'Balance'}  ₹${_formatAmount(balance.abs())}',
+          style: GoogleFonts.spaceGrotesk(
+              color: over ? const Color(0xFFFF6B6B) : const Color(0xFF4CAF50),
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800),
+        ),
+      ]),
+      if (invoices.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        ...invoices.map((i) => Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Row(children: [
+                Icon(Icons.subdirectory_arrow_right_rounded,
+                    size: 11, color: Colors.white.withAlpha(60)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                      '${i.invoiceNumber}'
+                      '${(i.periodMonth ?? '').isEmpty ? '' : ' · ${_monthShort(i.periodMonth!)}'}',
+                      style: GoogleFonts.spaceGrotesk(
+                          color: const Color(0xFF6B7490), fontSize: 10),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                ),
+                Text('₹${_formatAmount(i.totalAmount)}',
+                    style: GoogleFonts.spaceGrotesk(
+                        color: const Color(0xFF8A94B0),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600)),
+              ]),
+            )),
+      ],
+    ]);
+  }
+
+  /// A PO's purpose, shown as a chip so "which PO paid for manpower" is
+  /// answerable at a glance.
+  Widget _categoryChip(String category) {
+    final (label, color) = switch (category) {
+      'track_booking' => ('TRACK BOOKING', AppTheme.primary),
+      'manpower' => ('MANPOWER', const Color(0xFF9C88FF)),
+      'workshop' => ('WORKSHOP', const Color(0xFFFFB547)),
+      'instrumentation' => ('INSTRUMENTATION', const Color(0xFFFF8A65)),
+      _ => ('UNCATEGORISED', const Color(0xFF6B7490)),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withAlpha(28),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withAlpha(90)),
+      ),
+      child: Text(label,
+          style: GoogleFonts.spaceGrotesk(
+              color: color, fontSize: 8.5, fontWeight: FontWeight.w800)),
     );
   }
 
@@ -716,6 +872,59 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
             overflow: TextOverflow.ellipsis,
           ),
         ],
+      ),
+    );
+  }
+
+  /// An invoice naming a PO that is not loaded means real spend the tracker
+  /// cannot attribute. Silence here would understate what has been consumed.
+  Widget _buildUnattributedWarning() {
+    final orphans = _unattributedInvoices;
+    if (orphans.isEmpty) return const SizedBox.shrink();
+
+    final total = orphans.fold(0.0, (s, i) => s + i.totalAmount);
+    final missingPos = orphans
+        .map((i) => (i.poNumber ?? '').trim())
+        .where((p) => p.isNotEmpty)
+        .toSet();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFB547).withAlpha(20),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFFFB547).withAlpha(90)),
+        ),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Icon(Icons.link_off_rounded,
+              color: Color(0xFFFFB547), size: 17),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                      '₹${_formatAmount(total)} invoiced against a PO not in '
+                      'the tracker',
+                      style: GoogleFonts.spaceGrotesk(
+                          color: const Color(0xFFFFB547),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 3),
+                  Text(
+                      missingPos.isEmpty
+                          ? '${orphans.length} invoice(s) name no PO at all.'
+                          : 'Add PO ${missingPos.join(', ')} so this spend is '
+                              'attributed and the balance is complete.',
+                      style: GoogleFonts.spaceGrotesk(
+                          color: const Color(0xFF8A94B0),
+                          fontSize: 10.5,
+                          height: 1.45)),
+                ]),
+          ),
+        ]),
       ),
     );
   }
