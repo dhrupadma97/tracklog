@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/app_export.dart';
+import '../../services/email_draft.dart';
 import '../../services/email_report_service.dart';
 import '../../services/management_report_service.dart';
 import '../../services/supabase_service.dart';
@@ -338,7 +339,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
           side: BorderSide(color: AppTheme.primary.withAlpha(60)),
         ),
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Send to management?',
+          Text('Management update ready',
               style: GoogleFonts.spaceGrotesk(
                   color: Colors.white,
                   fontWeight: FontWeight.w800,
@@ -396,21 +397,97 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                         fontSize: 10.5,
                         height: 1.5),
                   ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Preview opens the full mail in a new tab. Open in Outlook '
+                    'downloads it as a draft — double-click to edit and send it '
+                    'yourself, with the recipients and formatting already set.',
+                    style: GoogleFonts.spaceGrotesk(
+                        color: const Color(0xFF6B7490),
+                        fontSize: 10,
+                        height: 1.5),
+                  ),
                 ]),
           ),
         ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel',
-                style: GoogleFonts.spaceGrotesk(color: Colors.white70)),
-          ),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
-            onPressed: () => Navigator.pop(ctx, true),
-            icon: const Icon(Icons.send_rounded, size: 15),
-            label: const Text('Send'),
-          ),
+          Column(children: [
+            // Reviewing the real mail comes first — the numbers above are a
+            // summary, not the thing being sent.
+            Row(children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.primary,
+                    side: BorderSide(color: AppTheme.primary.withAlpha(120)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  onPressed: () {
+                    final err = EmailDraft.openHtmlPreview(update.html,
+                        title: update.subject);
+                    if (err != null) _showSnack(err, isError: true);
+                  },
+                  icon: const Icon(Icons.visibility_outlined, size: 16),
+                  label: const Text('Preview mail'),
+                ),
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0F6CBD), // Outlook blue
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  onPressed: () async {
+                    final err = await EmailDraft.openInOutlook(
+                      to: 'praharshithkumar_komaragiri@goodyear.com',
+                      cc: const [
+                        'v_vimal@goodyear.com',
+                        'ashish_pandit@goodyear.com',
+                        'yeswanth_golla@goodyear.com',
+                        'niranjan_poloju@goodyear.com',
+                      ],
+                      subject: update.subject,
+                      htmlBody: update.html,
+                      fileName: 'management-update-'
+                          '${DateFormat('yyyy-MM-dd').format(DateTime.now())}',
+                    );
+                    if (!ctx.mounted) return;
+                    if (err != null) {
+                      _showSnack(err, isError: true);
+                    } else {
+                      Navigator.pop(ctx, false);
+                      _showSnack('Draft downloaded — open it to edit and send '
+                          'from Outlook');
+                    }
+                  },
+                  icon: const Icon(Icons.mail_outline_rounded, size: 16),
+                  label: const Text('Open in Outlook'),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(
+                child: TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: Text('Cancel',
+                      style: GoogleFonts.spaceGrotesk(color: Colors.white70)),
+                ),
+              ),
+              Expanded(
+                child: TextButton.icon(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  icon: Icon(Icons.send_rounded,
+                      size: 14, color: Colors.white.withAlpha(150)),
+                  label: Text('Send directly',
+                      style: GoogleFonts.spaceGrotesk(
+                          color: Colors.white.withAlpha(150), fontSize: 12.5)),
+                ),
+              ),
+            ]),
+          ]),
         ],
       ),
     );
