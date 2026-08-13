@@ -15,6 +15,8 @@ import '../../services/invoice_service.dart';
 import '../../services/invoice_opener.dart';
 import '../../services/billing_baseline.dart';
 import '../../services/po_document_service.dart';
+import '../../services/engineer_auth_service.dart';
+import '../../widgets/invoice_upload_flow.dart';
 
 class PoTrackerScreen extends StatefulWidget {
   const PoTrackerScreen({super.key});
@@ -44,6 +46,8 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
   /// baseline covers are counted in [_totalSessions] but not costed, so the
   /// two must not be conflated in the UI.
   int _costedSessions = 0;
+
+  bool _uploadingInvoice = false;
 
   /// GST rate the computed spend is grossed up at. Session costs and the
   /// hardcoded overrides are all stored ex-GST, while PO values carry tax
@@ -364,6 +368,31 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
       ? (_drawdownInclGst / _totalPoWithTax).clamp(0.0, 1.0)
       : 0.0;
 
+  /// Records an invoice against one of the POs on this screen.
+  Future<void> _addInvoice() async {
+    setState(() => _uploadingInvoice = true);
+    final created = await InvoiceUploadFlow.start(
+      context,
+      poOptions: _poList,
+      knownMonths: BillingBaseline.forProject(
+              ProjectManager.instance.activeProject)
+          .map((m) => m.month)
+          .toList(),
+      uploadedBy: EngineerAuthService.instance.currentUser?.email,
+      onMessage: (m, {bool error = false}) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(m),
+          backgroundColor: error ? AppTheme.error : AppTheme.success,
+        ));
+      },
+    );
+    if (!mounted) return;
+    setState(() => _uploadingInvoice = false);
+    // Reload so the PO drawdown, reconciliation and balance all move together.
+    if (created != null) _loadData();
+  }
+
   Future<void> _showAddPoDialog() async {
     final formKey = GlobalKey<FormState>();
     String poNumber = '';
@@ -614,10 +643,42 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF050811),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddPoDialog,
-        backgroundColor: AppTheme.primary,
-        child: const Icon(Icons.add, color: Colors.white),
+      // Both actions live here permanently. An invoice is nearly always added
+      // while looking at the PO it draws on, and sending the user to Settings
+      // to record it invites it being put off.
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'add_invoice',
+            onPressed: _uploadingInvoice ? null : _addInvoice,
+            backgroundColor: const Color(0xFF0A1025),
+            foregroundColor: AppTheme.primary,
+            elevation: 3,
+            icon: _uploadingInvoice
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: AppTheme.primary))
+                : const Icon(Icons.document_scanner_outlined, size: 17),
+            label: Text('Add invoice',
+                style: GoogleFonts.spaceGrotesk(
+                    fontWeight: FontWeight.w700, fontSize: 12.5)),
+          ),
+          const SizedBox(height: 10),
+          FloatingActionButton.extended(
+            heroTag: 'add_po',
+            onPressed: _showAddPoDialog,
+            backgroundColor: AppTheme.primary,
+            foregroundColor: Colors.white,
+            icon: const Icon(Icons.post_add_rounded, size: 18),
+            label: Text('Add PO',
+                style: GoogleFonts.spaceGrotesk(
+                    fontWeight: FontWeight.w700, fontSize: 12.5)),
+          ),
+        ],
       ),
       body: Stack(
         children: [
