@@ -303,7 +303,55 @@ class ManagementReportService {
         .where((i) => !knownPos.contains((i.poNumber ?? '').trim()))
         .toList();
 
-    final poRows = pos.map((p) {
+    // Grouped by what the PO covers, with a subtotal each, so track booking
+    // and manpower can be read off separately rather than as one blended
+    // number.
+    final byCategory = <String, List<Map<String, dynamic>>>{};
+    for (final p in pos) {
+      final c = (p['category'] as String?) ?? 'other';
+      byCategory.putIfAbsent(c, () => []).add(p);
+    }
+    const categoryOrder = [
+      'track_booking',
+      'manpower',
+      'workshop',
+      'instrumentation',
+      'other'
+    ];
+    final orderedCategories = [
+      ...categoryOrder.where(byCategory.containsKey),
+      ...byCategory.keys.where((c) => !categoryOrder.contains(c)),
+    ];
+
+    String categoryBlock(String category) {
+      final rows = byCategory[category]!;
+      var funded = 0.0, drawn = 0.0;
+      var anyPending = false;
+      for (final p in rows) {
+        final number = (p['po_number'] as String? ?? '').trim();
+        final t = ((p['total_po_value'] as num?)?.toDouble() ?? 0) +
+            ((p['tax_amount'] as num?)?.toDouble() ?? 0);
+        final status = (p['po_status'] as String? ?? '').toLowerCase();
+        final spent = status == 'used' || status == 'closed';
+        if (t <= 0) anyPending = true;
+        if (!spent && t > 0) {
+          funded += t;
+          drawn += byPo[number] ?? 0;
+        }
+      }
+      final label = _categoryLabel(category);
+      return '<tr><td colspan="4" '
+          'style="padding:9px 10px 4px;font-size:11px;font-weight:700;'
+          'color:#0057e6;letter-spacing:.5px;border-bottom:1px solid #e6e9f0;">'
+          '$label'
+          '${funded > 0 ? ' — ${_inr(funded - drawn)} available of ${_inr(funded)}' : ''}'
+          '${anyPending ? ' <span style="color:#b26a00;font-weight:600;">(some values not recorded)</span>' : ''}'
+          '</td></tr>';
+    }
+
+    final poRows = orderedCategories.map((category) {
+      final block = categoryBlock(category);
+      final rows = byCategory[category]!.map((p) {
       final number = (p['po_number'] as String? ?? '').trim();
       final base = (p['total_po_value'] as num?)?.toDouble() ?? 0;
       final tax = (p['tax_amount'] as num?)?.toDouble() ?? 0;
@@ -311,11 +359,23 @@ class ManagementReportService {
       final drawn = byPo[number] ?? 0;
       final left = total - drawn;
       final pct = total <= 0 ? 0 : (drawn / total * 100);
-      final head = '<td $td>PO $number<br>'
-          '<span style="color:#0057e6;font-size:10px;font-weight:600;">'
-          '${_categoryLabel(p['category'] as String? ?? 'other')}</span>'
-          '<span style="color:#6b7490;font-size:11px;"> · '
-          '${_truncate(p['description'] as String? ?? '', 70)}</span></td>';
+      final status = (p['po_status'] as String? ?? '').toLowerCase();
+      final spent = status == 'used' || status == 'closed';
+      final head = '<td $td>PO $number'
+          '${status == 'upcoming' ? ' <span style="color:#b26a00;font-size:10px;">upcoming</span>' : ''}'
+          '${spent ? ' <span style="color:#6b7490;font-size:10px;">consumed</span>' : ''}'
+          '<br><span style="color:#6b7490;font-size:11px;">'
+          '${_truncate(p['description'] as String? ?? '', 80)}</span></td>';
+
+      // A spent PO offers nothing for future booking, whatever value is
+      // recorded against it.
+      if (spent) {
+        return '<tr>$head<td $tdr colspan="3" '
+            'style="padding:7px 10px;border-bottom:1px solid #e6e9f0;'
+            'font-size:12px;text-align:right;color:#6b7490;">'
+            'Fully consumed — no funding remaining'
+            '${total > 0 ? ' (${_inr(total)})' : ''}</td></tr>';
+      }
 
       // Recorded but unvalued: say so rather than printing ₹0 of funding.
       if (total <= 0) {
@@ -333,6 +393,8 @@ class ManagementReportService {
           '<span style="color:#6b7490;font-size:10px;"> (${pct.toStringAsFixed(0)}%)</span></td>'
           '<td $tdr style="color:${left < 0 ? '#c62828' : '#1a7f37'};">'
           '<b>${_inr(left)}</b></td></tr>';
+      }).join();
+      return '$block$rows';
     }).join();
 
     final orphanRow = orphans.isEmpty

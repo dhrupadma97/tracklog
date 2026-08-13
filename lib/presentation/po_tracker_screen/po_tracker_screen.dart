@@ -14,6 +14,7 @@ import '../../services/project_manager.dart';
 import '../../services/invoice_service.dart';
 import '../../services/invoice_opener.dart';
 import '../../services/billing_baseline.dart';
+import '../../services/po_document_service.dart';
 
 class PoTrackerScreen extends StatefulWidget {
   const PoTrackerScreen({super.key});
@@ -376,6 +377,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
     // uncategorised, and the track-versus-manpower split cannot be answered.
     var category = 'track_booking';
     var poStatus = 'active';
+    PlatformFile? attachment;
 
     await showDialog(
       context: context,
@@ -497,6 +499,58 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                     ),
                     onSaved: (val) => taxAmount = double.tryParse(val ?? '0') ?? 0,
                   ),
+                  const SizedBox(height: 16),
+                  // The PO document itself, so the figures above can be
+                  // checked against the paperwork they came from.
+                  GestureDetector(
+                    onTap: () async {
+                      final res = await FilePicker.platform.pickFiles(
+                        type: FileType.custom,
+                        allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg'],
+                        withData: true,
+                      );
+                      if (res != null && res.files.isNotEmpty) {
+                        setLocal(() => attachment = res.files.first);
+                      }
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 11),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primary.withAlpha(18),
+                        borderRadius: BorderRadius.circular(10),
+                        border:
+                            Border.all(color: AppTheme.primary.withAlpha(80)),
+                      ),
+                      child: Row(children: [
+                        Icon(
+                            attachment == null
+                                ? Icons.attach_file_rounded
+                                : Icons.picture_as_pdf_rounded,
+                            size: 15,
+                            color: AppTheme.primary),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            attachment?.name ?? 'Attach PO document (optional)',
+                            style: GoogleFonts.spaceGrotesk(
+                                color: AppTheme.primary,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (attachment != null)
+                          GestureDetector(
+                            onTap: () => setLocal(() => attachment = null),
+                            child: const Icon(Icons.close_rounded,
+                                size: 14, color: Colors.white54),
+                          ),
+                      ]),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -512,7 +566,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                 if (formKey.currentState?.validate() == true) {
                   formKey.currentState?.save();
                   try {
-                    await SupabaseService.instance.client.from('po_trackers').insert({
+                    final row = <String, dynamic>{
                       'po_number': poNumber,
                       'vendor_name': vendorName,
                       'description': description,
@@ -521,7 +575,23 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                       'delivery_date': deliveryDate.toIso8601String().split('T')[0],
                       'category': category,
                       'po_status': poStatus,
-                    });
+                    };
+
+                    // Upload the document first — if that fails the PO is not
+                    // created, rather than landing without the paperwork it
+                    // was meant to carry.
+                    final file = attachment;
+                    if (file?.bytes != null) {
+                      row.addAll(await PoDocumentService.instance.upload(
+                        poNumber: poNumber,
+                        bytes: file!.bytes!,
+                        fileName: file.name,
+                      ));
+                    }
+
+                    await SupabaseService.instance.client
+                        .from('po_trackers')
+                        .insert(row);
                     if (mounted) {
                       Navigator.of(ctx).pop();
                       _loadData();
@@ -749,6 +819,31 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                   ),
                   const SizedBox(width: 7),
                   _categoryChip(po['category'] as String? ?? 'other'),
+                  if ((po['storage_path'] as String? ?? '').isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    GestureDetector(
+                      onTap: () async {
+                        final err = await PoDocumentService.instance.open(
+                          storagePath: po['storage_path'] as String,
+                          fileName: po['file_name'] as String?,
+                        );
+                        if (err != null && mounted) {
+                          ScaffoldMessenger.of(context)
+                              .showSnackBar(SnackBar(content: Text(err)));
+                        }
+                      },
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.picture_as_pdf_rounded,
+                            size: 13, color: AppTheme.primary.withAlpha(200)),
+                        const SizedBox(width: 3),
+                        Text('PO doc',
+                            style: GoogleFonts.spaceGrotesk(
+                                color: AppTheme.primary.withAlpha(200),
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700)),
+                      ]),
+                    ),
+                  ],
                   const Spacer(),
                   if (po['delivery_date'] != null)
                     Row(
