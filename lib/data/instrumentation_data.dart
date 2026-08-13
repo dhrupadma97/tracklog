@@ -1004,11 +1004,12 @@ final VehicleProfile tataBetaProfile = VehicleProfile(
     // Raptor → accessories
     SchematicConnection(fromNodeId: 'raptor', toNodeId: 'huf',     label: 'TMS_CAN', protocol: BusProtocol.can2A),
     SchematicConnection(fromNodeId: 'raptor', toNodeId: 'display', label: 'Display', protocol: BusProtocol.can2A),
-    // VBOX chain — separate entity: IMU → VBOX; VBOX data is STORED in the
-    // GL2000 and CANoe. No vehicle CAN is fed into the VBOX.
-    SchematicConnection(fromNodeId: 'imu',  toNodeId: 'vbox',     label: 'IMU',       protocol: BusProtocol.imu),
-    SchematicConnection(fromNodeId: 'vbox', toNodeId: 'gl2000',   label: 'VBOX data', protocol: BusProtocol.can2A),
-    SchematicConnection(fromNodeId: 'vbox', toNodeId: 'pc_canoe', label: 'VBOX data', protocol: BusProtocol.gpsGnss),
+    // VBOX chain — separate entity: IMU → VBOX. The VBOX (with the IMU fused
+    // in) outputs its data as CAN, logged by EITHER the GL2000 or CANoe.
+    // No vehicle CAN is fed into the VBOX.
+    SchematicConnection(fromNodeId: 'imu',  toNodeId: 'vbox',     label: 'IMU',      protocol: BusProtocol.imu),
+    SchematicConnection(fromNodeId: 'vbox', toNodeId: 'gl2000',   label: 'VBOX CAN', protocol: BusProtocol.can2A),
+    SchematicConnection(fromNodeId: 'vbox', toNodeId: 'pc_canoe', label: 'VBOX CAN (alt)', protocol: BusProtocol.can2A),
     // Calibration: Kvaser flashes the Raptor ECU firmware
     SchematicConnection(fromNodeId: 'kvaser', toNodeId: 'raptor', label: 'Flash', protocol: BusProtocol.can2A),
     // Power

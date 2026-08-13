@@ -1843,6 +1843,8 @@ class _SchematicTabState extends State<_SchematicTab>
         const SizedBox(width: 8),
         _tbBtn(Icons.auto_fix_high, 'Tidy', false, _tidyLayout),
         const SizedBox(width: 8),
+        _tbBtn(Icons.restart_alt, 'Reset', false, _resetFromTemplate),
+        const SizedBox(width: 8),
         _tbBtn(Icons.settings_ethernet, 'Buses', false, _busesSheet),
         const SizedBox(width: 8),
         _tbBtn(
@@ -1857,6 +1859,73 @@ class _SchematicTabState extends State<_SchematicTab>
         _sectionBtn(SchematicSection.validation),
       ],
     ];
+  }
+
+  /// Replace this config's nodes + wiring with the current built-in template.
+  /// Use after the template changes (e.g. instruments added/removed) — a config
+  /// saved earlier keeps its old wiring, since the template only seeds new ones.
+  /// Buses, OBD pinout and attached DBCs are left untouched.
+  Future<void> _resetFromTemplate() async {
+    final c = _config;
+    if (c == null) return;
+    if (c.isSectionLocked(SchematicSection.calibration) ||
+        c.isSectionLocked(SchematicSection.validation)) {
+      _toast('Unlock the locked section(s) first');
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dCtx) => AlertDialog(
+        backgroundColor: const Color(0xFF0A1025),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Reset wiring from template?',
+            style: GoogleFonts.spaceGrotesk(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: Colors.white)),
+        content: Text(
+          'Replaces every node and connection in "${c.name}" with the current '
+          'standard setup. Your buses, OBD pinout and attached DBCs are kept.\n\n'
+          'Any nodes you added or moved on this schematic will be lost.',
+          style: GoogleFonts.spaceGrotesk(
+              fontSize: 12, color: Colors.white70, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dCtx, false),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(dCtx, true),
+              child: const Text('Reset')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final template = allVehicleProfiles.first;
+    setState(() {
+      // Clone nodes — x/y are mutable, so sharing template instances would let
+      // dragging mutate the global template.
+      c.nodes = [
+        for (final n in template.schematicNodes)
+          SchematicNode(
+            id: n.id,
+            label: n.label,
+            sublabel: n.sublabel,
+            nodeType: n.nodeType,
+            instrumentId: n.instrumentId,
+            section: n.section,
+            x: n.x,
+            y: n.y,
+          )
+      ];
+      c.connections = [...template.schematicConnections];
+      _selectedNodeId = null;
+      _linkFromId = null;
+      _dirty = true;
+    });
+    await _saveNow();
   }
 
   /// Toolbar button for one lockable section — shows its lock state and opens
