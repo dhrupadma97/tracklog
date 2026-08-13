@@ -111,14 +111,35 @@ class NatraxInvoiceParser {
     // and taxable figures are only ever taken from above the total line.
     final body = totalIndex == null ? lines : lines.sublist(0, totalIndex);
 
-    final gstAmount = _tax(body);
+    var gstAmount = _tax(body);
+    var amountExclGst = _taxableValue(body);
+
+    // Supplies under SEZ Bond / LUT carry no tax, so an invoice with no IGST
+    // or CGST/SGST line is legitimate rather than unreadable. Treat it as zero
+    // GST only when the taxable value and the printed total agree — otherwise
+    // tax really is missing and should be reported as such.
+    if (gstAmount == null &&
+        totalAmount != null &&
+        amountExclGst != null &&
+        (totalAmount - amountExclGst).abs() <= 1.0) {
+      gstAmount = 0;
+    }
+    // Same case, read the other way round: a total with no tax line and no
+    // subtotal above it is a nil-rated invoice whose taxable value is the
+    // total.
+    if (gstAmount == null && amountExclGst == null && totalAmount != null) {
+      final hasTaxLine = body.any((l) =>
+          RegExp(r'\b(IGST|CGST|SGST|UTGST)\b', caseSensitive: false)
+              .hasMatch(l));
+      if (!hasTaxLine) {
+        gstAmount = 0;
+        amountExclGst = totalAmount;
+      }
+    }
+
     if (gstAmount == null) missing.add('GST amount');
 
-    // The taxable value is the subtotal printed immediately above the tax line.
-    var amountExclGst = _taxableValue(body);
-    if (amountExclGst == null &&
-        totalAmount != null &&
-        gstAmount != null) {
+    if (amountExclGst == null && totalAmount != null && gstAmount != null) {
       // Derive it rather than fail — the two printed figures pin it down.
       amountExclGst = totalAmount - gstAmount;
     }

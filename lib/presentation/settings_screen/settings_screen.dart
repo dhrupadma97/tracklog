@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../services/billing_baseline.dart';
 import '../../services/engineer_auth_service.dart';
 import '../../services/invoice_opener.dart';
 import '../../services/invoice_service.dart';
@@ -370,7 +371,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     void recompute(void Function(void Function()) setLocal) {
       final excl = parse(exclCtrl);
-      if (!gstTouched) gstCtrl.text = (excl * 0.18).toStringAsFixed(2);
+      // Nil-rated under SEZ Bond / LUT, so GST defaults to zero rather than
+      // 18%. The field stays editable — what the invoice prints always wins.
+      if (!gstTouched) {
+        gstCtrl.text =
+            (excl * BillingBaseline.currentGstRate).toStringAsFixed(2);
+      }
       if (!totalTouched) {
         totalCtrl.text = (excl + parse(gstCtrl)).toStringAsFixed(2);
       }

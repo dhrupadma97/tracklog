@@ -43,7 +43,18 @@ class UnbilledExtra {
 class BillingBaseline {
   const BillingBaseline._();
 
+  /// The rate that applied to the billed months below, evidenced by the
+  /// invoices on file: 18% IGST in March, 18% CGST+SGST in April.
   static const double gstRate = 0.18;
+
+  /// The rate on new work. Supplies now run under SEZ Bond / LUT, so no
+  /// integrated tax is charged.
+  ///
+  /// This is separate from [gstRate] on purpose. The historical months were
+  /// genuinely taxed and their invoices prove it; applying nil rating
+  /// backwards would misstate what NATRAX billed and break the
+  /// reconciliation.
+  static const double currentGstRate = 0.0;
 
   /// Mahindra EV PoC — from the V15 workbook.
   ///

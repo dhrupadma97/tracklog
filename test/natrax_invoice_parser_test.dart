@@ -118,6 +118,74 @@ Total 1,18,000.00''';
     expect(parsed.gstAmount, closeTo(18000.00, 0.01));
   });
 
+  group('nil-rated invoices (SEZ Bond / LUT)', () {
+    test('a subtotal equal to the total means zero GST, not missing GST', () {
+      const text = '''
+Invoice No.INV/26-27/311
+Buyer's Order No.8242390552
+Dated
+15-Sep-26
+Terms of DeliveryTesting Period From 01 to 30-September-2026.
+Braking Track Testing (GVW < 3.5T) - WET
+2,10,000.00
+Hrs.
+21,000.00
+10 Hrs.
+998346
+2,10,000.00
+Total 2,10,000.00''';
+      final p = NatraxInvoiceParser.parseText(text);
+      expect(p.gstAmount, 0);
+      expect(p.amountExclGst, closeTo(210000, 0.01));
+      expect(p.totalAmount, closeTo(210000, 0.01));
+      expect(p.addsUp, isTrue);
+      expect(p.missingFields, isEmpty,
+          reason: 'a nil-rated invoice is complete, not unreadable');
+      expect(p.isComplete, isTrue);
+    });
+
+    test('a total with no tax line and no subtotal is still nil-rated', () {
+      const text = '''
+Invoice No.INV/26-27/312
+Dated
+30-Sep-26
+Total 95,000.00''';
+      final p = NatraxInvoiceParser.parseText(text);
+      expect(p.gstAmount, 0);
+      expect(p.amountExclGst, closeTo(95000, 0.01));
+      expect(p.addsUp, isTrue);
+    });
+
+    test('a genuine tax line is still never treated as nil', () {
+      const text = '''
+Invoice No.INV/26-27/313
+Dated
+30-Sep-26
+1,00,000.00
+IGST
+18,000.00
+Total 1,18,000.00''';
+      final p = NatraxInvoiceParser.parseText(text);
+      expect(p.gstAmount, closeTo(18000, 0.01));
+      expect(p.amountExclGst, closeTo(100000, 0.01));
+    });
+
+    test('tax that does not reconcile is reported, not zeroed', () {
+      // Subtotal and total disagree and there is a tax word present, so the
+      // figure is genuinely unreadable rather than nil.
+      const text = '''
+Invoice No.INV/26-27/314
+Dated
+30-Sep-26
+1,00,000.00
+IGST
+Total 1,18,000.00''';
+      final p = NatraxInvoiceParser.parseText(text);
+      expect(p.gstAmount, isNull);
+      expect(p.missingFields, contains('GST amount'));
+    });
+  });
+
   test('a PDF with no text layer is reported, not guessed at', () {
     // A minimal PDF header with no content streams at all.
     final bytes = File(pdf.path).readAsBytesSync().sublist(0, 64);
