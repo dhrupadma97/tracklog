@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../services/billing_baseline.dart';
 import '../../services/project_manager.dart';
 import '../../theme/app_theme.dart';
 
@@ -102,17 +103,17 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
   }
 
   // ── Canonical Excel data: NATRAX_Comprehensive_Billing_Final_V15 ──────────
-  static const _workshopByMonth = {
-    '2026-03': 55000.0,
-    '2026-04': 150000.0,
-    '2026-05': 40000.0,
-  };
+  // Single source of truth, shared with the PO Tracker so the two screens
+  // cannot report different figures for the same month.
+  Map<String, double> get _workshopByMonth => {
+        for (final m in BillingBaseline.forProject(_activeProject))
+          m.month: m.workshopRental,
+      };
 
-  static const _trackAccByMonth = {
-    '2026-03': 138605.0,
-    '2026-04': 1002375.0,
-    '2026-05': 337739.0,
-  };
+  Map<String, double> get _trackAccByMonth => {
+        for (final m in BillingBaseline.forProject(_activeProject))
+          m.month: m.trackAndAccessories,
+      };
 
   @override
   void initState() {
@@ -289,7 +290,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
         byMonth.putIfAbsent(mk, () => []).add(s);
       }
 
-      final isMahindraEV = _activeProject.toLowerCase() == 'mahindra ev poc';
+      final isMahindraEV = BillingBaseline.isMahindraEv(_activeProject);
 
       final monthGroups = byMonth.entries.map((e) {
         final dt = DateTime.parse('${e.key}-01');

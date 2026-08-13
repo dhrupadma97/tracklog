@@ -13,6 +13,7 @@ import '../../services/supabase_service.dart';
 import '../../services/project_manager.dart';
 import '../../services/invoice_service.dart';
 import '../../services/invoice_opener.dart';
+import '../../services/billing_baseline.dart';
 
 class PoTrackerScreen extends StatefulWidget {
   const PoTrackerScreen({super.key});
@@ -37,6 +38,11 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
   double _vehicleValidationSpend = 0;
   double _instrumentationSpend = 0;
   int _totalSessions = 0;
+
+  /// Sessions whose live cost was actually added. Sessions in months the
+  /// baseline covers are counted in [_totalSessions] but not costed, so the
+  /// two must not be conflated in the UI.
+  int _costedSessions = 0;
 
   /// GST rate the computed spend is grossed up at. Session costs and the
   /// hardcoded overrides are all stored ex-GST, while PO values carry tax
@@ -105,11 +111,15 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
 
       final pm = ProjectManager.instance;
       final activeProjName = pm.activeProject;
-      final isMahindraEV = activeProjName.toLowerCase() == 'mahindra ev poc';
 
       double trackTotal = 0;
       double servicesTotal = 0;
       int sessionCount = 0;
+
+      // Months the baseline already accounts for — their live session costs
+      // must be suppressed or they would be counted twice.
+      final covered = BillingBaseline.coveredMonths(activeProjName);
+      var costedSessions = 0;
 
       for (final s in sessionsData as List) {
         final rawProj = (s['project_name'] as String?)?.trim() ?? '';
@@ -118,41 +128,36 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
         final sid = s['id'] as String;
         final track = (s['total_cost'] as num?)?.toDouble() ?? 0.0;
         final svc = svcCostMap[sid] ?? 0.0;
-        final startStr = s['started_at'] as String? ?? '';
-        final startDt = DateTime.tryParse(startStr);
+        final startDt = DateTime.tryParse(s['started_at'] as String? ?? '');
 
         sessionCount++;
 
-        if (startDt != null) {
-          final isHistorical = isMahindraEV &&
-              startDt.year == 2026 &&
-              (startDt.month == 3 || startDt.month == 4 || startDt.month == 5);
-          if (!isHistorical) {
-            trackTotal += track;
-            servicesTotal += svc;
-          }
-        } else {
-          trackTotal += track;
-          servicesTotal += svc;
-        }
+        final monthKey = startDt == null
+            ? null
+            : '${startDt.year}-${startDt.month.toString().padLeft(2, '0')}';
+        if (monthKey != null && covered.contains(monthKey)) continue;
+
+        costedSessions++;
+        trackTotal += track;
+        servicesTotal += svc;
       }
 
-      if (isMahindraEV) {
-        // Add historical overrides (Track = 1,263,500, Accessories = 215,219, Workshop = 245,000)
-        trackTotal += 1263500.0;
-        servicesTotal += 215219.0;
-        _workshopSpend = 245000.0;
-        _vehicleValidationSpend = 120000.0;
-        _instrumentationSpend = 85000.0;
-      } else {
-        _workshopSpend = 0.0;
-        _vehicleValidationSpend = 0.0;
-        _instrumentationSpend = 0.0;
-      }
+      // The baseline is split track/accessories the same way the Analyser
+      // reports it; the PO Tracker shows the two lines separately.
+      final accessories = BillingBaseline.accessoriesTotal(activeProjName);
+      trackTotal +=
+          BillingBaseline.trackAndAccessoriesTotal(activeProjName) - accessories;
+      servicesTotal += accessories;
+      _workshopSpend = BillingBaseline.workshopTotal(activeProjName);
+
+      final extras = BillingBaseline.extrasForProject(activeProjName);
+      _vehicleValidationSpend = extras.isNotEmpty ? extras[0].exclGst : 0.0;
+      _instrumentationSpend = extras.length > 1 ? extras[1].exclGst : 0.0;
 
       _trackSessionsSpend = trackTotal;
       _additionalServicesSpend = servicesTotal;
       _totalSessions = sessionCount;
+      _costedSessions = costedSessions;
 
       // Originals raised by NATRAX for this project — the figure the PO is
       // actually drawn down by.
@@ -185,14 +190,6 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
   /// The same spend grossed up, so it can be set against a tax-inclusive PO.
   double get _totalSpendInclGst => _totalSpend * (1 + _gstRate);
 
-  double get _totalPoExclTax {
-    double total = 0;
-    for (final po in _poList) {
-      total += (po['total_po_value'] as num?)?.toDouble() ?? 0;
-    }
-    return total;
-  }
-
   double get _totalPoWithTax {
     double total = 0;
     for (final po in _poList) {
@@ -206,6 +203,56 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
   InvoiceTotals get _invoiceTotals => InvoiceTotals.from(_invoices);
   bool get _hasInvoices => _invoices.isNotEmpty;
 
+  /// Invoiced totals keyed by billing period.
+  Map<String, double> get _invoicedByMonth {
+    final map = <String, double>{};
+    for (final inv in _invoices) {
+      final m = inv.periodMonth;
+      if (m == null || m.isEmpty) continue;
+      map[m] = (map[m] ?? 0) + inv.totalAmount;
+    }
+    return map;
+  }
+
+  /// Months the baseline costs but NATRAX has not invoiced yet.
+  ///
+  /// Keeping these out of the drawdown is the whole point: three months of
+  /// computed spend measured against two months of invoices is not an overrun,
+  /// it is work that has not been billed.
+  List<MonthBaseline> get _uninvoicedMonths {
+    final invoiced = _invoicedByMonth;
+    return BillingBaseline.forProject(ProjectManager.instance.activeProject)
+        .where((m) => !invoiced.containsKey(m.month))
+        .toList()
+      ..sort((a, b) => a.month.compareTo(b.month));
+  }
+
+  double get _notYetBilledInclGst =>
+      _uninvoicedMonths.fold(0.0, (s, m) => s + m.inclGst);
+
+  /// Costs carried against the project that no invoice covers.
+  double get _extrasInclGst =>
+      BillingBaseline.extrasTotal(ProjectManager.instance.activeProject) *
+          (1 + _gstRate);
+
+  /// Variance for invoiced months only — the one comparison that is like for
+  /// like. Positive means NATRAX billed more than the baseline expected.
+  double get _invoicedMonthsVariance {
+    final invoiced = _invoicedByMonth;
+    var variance = 0.0;
+    for (final m
+        in BillingBaseline.forProject(ProjectManager.instance.activeProject)) {
+      final billed = invoiced[m.month];
+      if (billed == null) continue;
+      variance += billed - m.inclGst;
+    }
+    return variance;
+  }
+
+  /// What the balance becomes once the uninvoiced months are billed at the
+  /// baseline rate.
+  double get _projectedBalance => _remainingBalance - _notYetBilledInclGst;
+
   /// What the PO has actually been drawn down by, tax inclusive.
   ///
   /// Uploaded originals are authoritative whenever they exist — they are what
@@ -213,9 +260,6 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
   /// which is an estimate built from durations and rate cards.
   double get _drawdownInclGst =>
       _hasInvoices ? _invoiceTotals.total : _totalSpendInclGst;
-
-  /// Positive when NATRAX has billed more than the app computed.
-  double get _invoiceVariance => _invoiceTotals.total - _totalSpendInclGst;
 
   double get _remainingBalance => _totalPoWithTax - _drawdownInclGst;
 
@@ -816,7 +860,8 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
   /// gap between the two is visible rather than buried in the balance.
   Widget _buildReconciliationCard() {
     final totals = _invoiceTotals;
-    final variance = _invoiceVariance;
+    // Only invoiced months are compared — see [_invoicedMonthsVariance].
+    final variance = _invoicedMonthsVariance;
     final matched = variance.abs() < 1.0;
     final varianceColor = !_hasInvoices
         ? const Color(0xFF6B7490)
@@ -875,42 +920,11 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
               ]),
               const SizedBox(height: 14),
 
-              _reconRow(
-                'App-computed spend (excl. GST)',
-                _totalSpend,
-                const Color(0xFF8A94B0),
-              ),
-              _reconRow(
-                'GST @ ${(_gstRate * 100).toStringAsFixed(0)}%',
-                _totalSpendInclGst - _totalSpend,
-                const Color(0xFF8A94B0),
-              ),
-              _reconRow(
-                'App-computed spend (incl. GST)',
-                _totalSpendInclGst,
-                Colors.white,
-                bold: true,
-              ),
-              const SizedBox(height: 10),
-
-              // Headroom on both bases. Comparing ex-GST spend against a
-              // tax-inclusive PO is what made the balance look healthier than
-              // it is, so both are shown side by side.
-              Row(children: [
-                Expanded(
-                  child: _headroomChip(
-                    'vs PO excl. GST',
-                    _totalPoExclTax - _totalSpend,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _headroomChip(
-                    'vs PO incl. GST',
-                    _totalPoWithTax - _totalSpendInclGst,
-                  ),
-                ),
-              ]),
+              // Month by month, so invoiced and not-yet-billed never get
+              // conflated. All figures GST inclusive.
+              _monthCompareHeader(),
+              ...BillingBaseline.forProject(ProjectManager.instance.activeProject)
+                  .map((m) => _monthCompareRow(m, _invoicedByMonth[m.month])),
 
               const SizedBox(height: 12),
               const Divider(color: Color(0xFF2A3450), height: 1),
@@ -966,6 +980,31 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                   AppTheme.primary,
                   bold: true,
                 ),
+                if (_notYetBilledInclGst > 0)
+                  _reconRow(
+                    'Not yet billed (${_uninvoicedMonths.map((m) => _monthShort(m.month)).join(', ')})',
+                    _notYetBilledInclGst,
+                    const Color(0xFFFFB547),
+                  ),
+                if (_extrasInclGst > 0)
+                  _reconRow(
+                    'Carried costs on no invoice',
+                    _extrasInclGst,
+                    const Color(0xFF8A94B0),
+                  ),
+                const SizedBox(height: 6),
+                Row(children: [
+                  Expanded(
+                    child: _headroomChip(
+                        'Balance now', _totalPoWithTax - totals.total),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _headroomChip(
+                        'After ${_uninvoicedMonths.isEmpty ? 'all' : _uninvoicedMonths.map((m) => _monthShort(m.month)).join('/')} billed',
+                        _projectedBalance),
+                  ),
+                ]),
                 const SizedBox(height: 10),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -988,10 +1027,10 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                         children: [
                           Text(
                             matched
-                                ? 'Invoices match the computed spend'
+                                ? 'Invoiced months match the computed spend'
                                 : variance > 0
-                                    ? 'NATRAX billed ₹${_formatAmount(variance.abs())} more than computed'
-                                    : 'NATRAX billed ₹${_formatAmount(variance.abs())} less than computed',
+                                    ? 'NATRAX billed ₹${_formatAmount(variance.abs())} more than computed for the invoiced months'
+                                    : 'NATRAX billed ₹${_formatAmount(variance.abs())} less than computed for the invoiced months',
                             style: GoogleFonts.spaceGrotesk(
                               color: varianceColor,
                               fontSize: 11.5,
@@ -1019,6 +1058,88 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
           ),
         ),
       ),
+    );
+  }
+
+  String _monthShort(String yyyyMm) {
+    final p = yyyyMm.split('-');
+    if (p.length != 2) return yyyyMm;
+    final y = int.tryParse(p[0]), m = int.tryParse(p[1]);
+    if (y == null || m == null) return yyyyMm;
+    return DateFormat('MMM').format(DateTime(y, m));
+  }
+
+  Widget _monthCompareHeader() {
+    TextStyle s() => GoogleFonts.spaceGrotesk(
+        color: const Color(0xFF4A5470),
+        fontSize: 9,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.6);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(children: [
+        SizedBox(width: 52, child: Text('MONTH', style: s())),
+        Expanded(
+            child: Text('COMPUTED', style: s(), textAlign: TextAlign.right)),
+        const SizedBox(width: 10),
+        Expanded(
+            child: Text('INVOICED', style: s(), textAlign: TextAlign.right)),
+      ]),
+    );
+  }
+
+  /// One month's computed baseline against what was actually billed for it.
+  Widget _monthCompareRow(MonthBaseline m, double? invoiced) {
+    final billed = invoiced != null;
+    final diff = billed ? invoiced - m.inclGst : 0.0;
+    final matched = diff.abs() < 1.0;
+    final color = !billed
+        ? const Color(0xFFFFB547)
+        : matched
+            ? const Color(0xFF4CAF50)
+            : const Color(0xFFFFB547);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(children: [
+        SizedBox(
+          width: 52,
+          child: Text(_monthShort(m.month),
+              style: GoogleFonts.spaceGrotesk(
+                  color: Colors.white,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700)),
+        ),
+        Expanded(
+          child: Text('₹${_formatAmount(m.inclGst)}',
+              textAlign: TextAlign.right,
+              style: GoogleFonts.spaceGrotesk(
+                  color: const Color(0xFF8A94B0),
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600)),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(billed ? '₹${_formatAmount(invoiced)}' : 'not billed',
+              textAlign: TextAlign.right,
+              style: GoogleFonts.spaceGrotesk(
+                  color: color,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700)),
+        ),
+        SizedBox(
+          width: 62,
+          child: Text(
+              billed
+                  ? (matched
+                      ? '  ✓'
+                      : '  ${diff > 0 ? '+' : '−'}${_formatAmount(diff.abs())}')
+                  : '',
+              textAlign: TextAlign.right,
+              style: GoogleFonts.spaceGrotesk(
+                  color: color, fontSize: 10, fontWeight: FontWeight.w700)),
+        ),
+      ]),
     );
   }
 
@@ -1283,7 +1404,10 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                 label: 'Track Sessions',
                 amount: _trackSessionsSpend,
                 color: AppTheme.primary,
-                subtitle: '$_totalSessions completed sessions',
+                subtitle: _costedSessions == _totalSessions
+                    ? '$_totalSessions completed sessions'
+                    : '$_totalSessions sessions · '
+                        '${_totalSessions - _costedSessions} billed via monthly baseline',
               ),
               const SizedBox(height: 10),
               _buildBreakdownRow(
