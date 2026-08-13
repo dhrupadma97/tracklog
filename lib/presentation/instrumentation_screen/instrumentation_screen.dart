@@ -1306,9 +1306,22 @@ class _SchematicTabState extends State<_SchematicTab>
         configs = [seeded];
       }
       if (!mounted) return;
+      // A config saved before the template changed keeps its old wiring, so
+      // repair it here rather than making the engineer rebuild it by hand.
       for (final c in configs) {
+        final anyLocked = c.isSectionLocked(SchematicSection.calibration) ||
+            c.isSectionLocked(SchematicSection.validation);
+        if (_isStale(c) && !anyLocked) {
+          _applyTemplate(c);
+          try {
+            await _repo.saveConfig(c);
+          } catch (_) {
+            // Display-only if the save fails; the next Save persists it.
+          }
+        }
         _normalizeLayout(c);
       }
+      if (!mounted) return;
       setState(() {
         _configs = configs;
         final keepId = _config?.id;
@@ -1328,6 +1341,41 @@ class _SchematicTabState extends State<_SchematicTab>
         _loading = false;
       });
     }
+  }
+
+  /// True when a stored config predates the current built-in template: it
+  /// references an instrument that no longer exists (e.g. a dropped tool), or
+  /// it is missing a node the template now defines. Either way its wiring no
+  /// longer reflects the standard setup and should be refreshed.
+  bool _isStale(InstrConfig c) {
+    final catalogIds = instrumentCatalog.map((i) => i.id).toSet();
+    final orphaned = c.nodes.any(
+        (n) => n.instrumentId != null && !catalogIds.contains(n.instrumentId));
+    final templateIds =
+        allVehicleProfiles.first.schematicNodes.map((n) => n.id).toSet();
+    final configIds = c.nodes.map((n) => n.id).toSet();
+    return orphaned || templateIds.difference(configIds).isNotEmpty;
+  }
+
+  /// Overwrite a config's nodes + wiring with the built-in template. Nodes are
+  /// cloned because x/y are mutable — sharing template instances would let a
+  /// drag mutate the global template for every config.
+  void _applyTemplate(InstrConfig c) {
+    final template = allVehicleProfiles.first;
+    c.nodes = [
+      for (final n in template.schematicNodes)
+        SchematicNode(
+          id: n.id,
+          label: n.label,
+          sublabel: n.sublabel,
+          nodeType: n.nodeType,
+          instrumentId: n.instrumentId,
+          section: n.section,
+          x: n.x,
+          y: n.y,
+        )
+    ];
+    c.connections = [...template.schematicConnections];
   }
 
   void _toast(String msg) {
@@ -1903,24 +1951,8 @@ class _SchematicTabState extends State<_SchematicTab>
     );
     if (ok != true) return;
 
-    final template = allVehicleProfiles.first;
     setState(() {
-      // Clone nodes — x/y are mutable, so sharing template instances would let
-      // dragging mutate the global template.
-      c.nodes = [
-        for (final n in template.schematicNodes)
-          SchematicNode(
-            id: n.id,
-            label: n.label,
-            sublabel: n.sublabel,
-            nodeType: n.nodeType,
-            instrumentId: n.instrumentId,
-            section: n.section,
-            x: n.x,
-            y: n.y,
-          )
-      ];
-      c.connections = [...template.schematicConnections];
+      _applyTemplate(c);
       _selectedNodeId = null;
       _linkFromId = null;
       _dirty = true;
