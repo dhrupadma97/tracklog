@@ -728,6 +728,40 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
     final pct = total <= 0 ? 0.0 : (drawn / total).clamp(0.0, 1.0);
     final over = balance < 0;
 
+    // A PO recorded before its value is known must not render as ₹0 of
+    // funding — that reads like a real, empty PO rather than a missing figure.
+    if (total <= 0) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const SizedBox(height: 12),
+        const Divider(color: Color(0xFF2A3450), height: 1),
+        const SizedBox(height: 10),
+        Row(children: [
+          const Icon(Icons.help_outline_rounded,
+              size: 14, color: Color(0xFFFFB547)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'PO value not recorded yet — this PO is not counted in the '
+              'balance above',
+              style: GoogleFonts.spaceGrotesk(
+                  color: const Color(0xFFFFB547),
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w600,
+                  height: 1.4),
+            ),
+          ),
+        ]),
+        if (drawn > 0) ...[
+          const SizedBox(height: 6),
+          Text('₹${_formatAmount(drawn)} already invoiced against it',
+              style: GoogleFonts.spaceGrotesk(
+                  color: const Color(0xFFFF6B6B),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700)),
+        ],
+      ]);
+    }
+
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const SizedBox(height: 12),
       const Divider(color: Color(0xFF2A3450), height: 1),

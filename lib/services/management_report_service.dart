@@ -311,11 +311,23 @@ class ManagementReportService {
       final drawn = byPo[number] ?? 0;
       final left = total - drawn;
       final pct = total <= 0 ? 0 : (drawn / total * 100);
-      return '<tr><td $td>PO $number<br>'
+      final head = '<td $td>PO $number<br>'
           '<span style="color:#0057e6;font-size:10px;font-weight:600;">'
           '${_categoryLabel(p['category'] as String? ?? 'other')}</span>'
           '<span style="color:#6b7490;font-size:11px;"> · '
-          '${_truncate(p['description'] as String? ?? '', 70)}</span></td>'
+          '${_truncate(p['description'] as String? ?? '', 70)}</span></td>';
+
+      // Recorded but unvalued: say so rather than printing ₹0 of funding.
+      if (total <= 0) {
+        return '<tr>$head<td $tdr colspan="3" '
+            'style="padding:7px 10px;border-bottom:1px solid #e6e9f0;'
+            'font-size:12px;text-align:right;color:#b26a00;">'
+            'PO value not yet recorded — excluded from the totals above'
+            '${drawn > 0 ? ', though ${_inr(drawn)} has been invoiced against it' : ''}'
+            '</td></tr>';
+      }
+
+      return '<tr>$head'
           '<td $tdr>${_inr(total)}</td>'
           '<td $tdr>${_inr(drawn)}'
           '<span style="color:#6b7490;font-size:10px;"> (${pct.toStringAsFixed(0)}%)</span></td>'
@@ -511,10 +523,13 @@ invoices raised by NATRAX.</p>
         final total = ((p['total_po_value'] as num?)?.toDouble() ?? 0) +
             ((p['tax_amount'] as num?)?.toDouble() ?? 0);
         final drawn = byPo[number] ?? 0;
-        b.writeln('  PO $number '
-            '(${_categoryLabel(p['category'] as String? ?? 'other').toLowerCase()})'
-            ' — invoiced ${_inr(drawn)} of ${_inr(total)}, '
-            'balance ${_inr(total - drawn)}');
+        final cat =
+            _categoryLabel(p['category'] as String? ?? 'other').toLowerCase();
+        b.writeln(total <= 0
+            ? '  PO $number ($cat) — value not yet recorded, excluded from '
+                'the totals above'
+            : '  PO $number ($cat) — invoiced ${_inr(drawn)} of ${_inr(total)}, '
+                'balance ${_inr(total - drawn)}');
       }
     }
 
