@@ -41,6 +41,92 @@ class EmailDraft {
     }
   }
 
+  /// Opens a new Outlook mail with the recipients and subject already set, and
+  /// puts the formatted report on the clipboard so it pastes into the body.
+  ///
+  /// The body cannot be pre-filled with formatting: `mailto:` carries plain
+  /// text only, and injecting HTML into a compose window needs an Outlook
+  /// add-in or Graph API. So the mail opens with a readable plain-text summary
+  /// already in it, and one paste replaces it with the full formatted version.
+  ///
+  /// Returns null on success, or why it failed.
+  static Future<String?> composeInOutlook({
+    required String to,
+    required List<String> cc,
+    required String subject,
+    required String htmlBody,
+    required String plainBody,
+  }) async {
+    if (!kIsWeb) {
+      return 'Composing in Outlook works from the web app';
+    }
+    try {
+      final copied = _copyRichText(htmlBody);
+
+      // Keep the mailto under what Windows will accept on a command line —
+      // beyond roughly 2,000 characters Outlook silently drops the body.
+      var body = plainBody;
+      const limit = 1600;
+      if (body.length > limit) {
+        body = '${body.substring(0, limit)}\n\n'
+            '[…full report is on your clipboard — press Ctrl+V to paste it]';
+      }
+
+      final uri = Uri(
+        scheme: 'mailto',
+        path: to,
+        queryParameters: {
+          if (cc.isNotEmpty) 'cc': cc.join(','),
+          'subject': subject,
+          'body': body,
+        },
+      );
+
+      html.window.location.href = uri.toString();
+
+      return copied
+          ? null
+          : 'Outlook opened, but the formatted version could not be copied — '
+              'your browser blocked clipboard access';
+    } catch (e) {
+      return '$e';
+    }
+  }
+
+  /// Copies [htmlBody] as rich text via a hidden contenteditable selection, so
+  /// pasting into Outlook keeps the tables and colours rather than arriving as
+  /// a wall of markup.
+  static bool _copyRichText(String htmlBody) {
+    html.DivElement? holder;
+    try {
+      holder = html.DivElement()
+        ..innerHtml = htmlBody
+        ..contentEditable = 'true'
+        // Off-screen rather than display:none — a hidden element cannot be
+        // selected, and an unselectable one cannot be copied.
+        ..style.position = 'fixed'
+        ..style.left = '-99999px'
+        ..style.top = '0'
+        ..style.opacity = '0';
+      html.document.body!.append(holder);
+
+      final range = html.document.createRange()..selectNodeContents(holder);
+      final selection = html.window.getSelection();
+      if (selection == null) return false;
+      selection
+        ..removeAllRanges()
+        ..addRange(range);
+
+      final ok = html.document.execCommand('copy');
+      selection.removeAllRanges();
+      return ok;
+    } catch (_) {
+      return false;
+    } finally {
+      holder?.remove();
+    }
+  }
+
   /// Builds an RFC-822 message and hands it to the OS.
   ///
   /// The `X-Unsent: 1` header is the important part: Outlook opens a .eml

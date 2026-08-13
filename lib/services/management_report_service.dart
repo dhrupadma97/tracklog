@@ -178,9 +178,29 @@ class ManagementReportService {
       attention: attention,
     );
 
+    final plain = _plainText(
+      projectName: projectName,
+      asOn: date,
+      pos: pos,
+      byPo: {
+        for (final i in invoices)
+          if ((i.poNumber ?? '').isNotEmpty)
+            i.poNumber!: (invoices
+                .where((x) => x.poNumber == i.poNumber)
+                .fold<double>(0, (s, x) => s + x.totalAmount))
+      },
+      poTotal: poTotal,
+      invoicedTotal: invoicedTotal,
+      balance: balance,
+      unbilledTotal: unbilledTotal,
+      projected: projected,
+      attention: attention,
+    );
+
     return ManagementUpdate(
       subject: subject,
       html: html,
+      plainText: plain,
       poTotal: poTotal,
       invoicedTotal: invoicedTotal,
       unbilledTotal: unbilledTotal,
@@ -339,9 +359,18 @@ class ManagementReportService {
                 '<td $tdr>${pct.toStringAsFixed(0)}%</td></tr>';
           }).join();
 
-    final resourceSection = resources.isEmpty
-        ? '<p style="font-size:13px;color:#6b7490;">Resource availability and '
-            'allocation is being set up and will be included from the next update.</p>'
+    // A resource with nothing allocated and nothing used contributes no
+    // information to a management update — it just pads the table with zeros.
+    // Count them instead, so the capacity is still acknowledged.
+    final engaged = resources
+        .where((r) => r.allocatedHours > 0 || r.utilisedHours > 0)
+        .toList();
+    final idleCount = resources.length - engaged.length;
+
+    final resourceSection = engaged.isEmpty
+        ? '<p style="font-size:13px;color:#6b7490;">'
+            '${resources.isEmpty ? 'Resource availability and allocation is being set up and will be included from the next update.' : '${resources.length} resource(s) on record, none allocated or utilised in this period.'}'
+            '</p>'
         : '''
 <table style="border-collapse:collapse;width:100%;margin-top:6px;">
 <tr><th $th>Resource</th><th $th>Role</th>
@@ -349,7 +378,7 @@ class ManagementReportService {
 <th $th style="text-align:right">Allocated</th>
 <th $th style="text-align:right">Utilised</th>
 <th $th style="text-align:right">Util. %</th></tr>
-${resources.map((r) {
+${engaged.map((r) {
             final warn = r.isOverAllocated;
             return '<tr><td $td>${r.resource.name}'
                 '${r.utilisationFromSessions ? '' : '<span style="color:#6b7490;font-size:11px;"> (manual)</span>'}</td>'
@@ -362,7 +391,7 @@ ${resources.map((r) {
 </table>
 <p style="font-size:11px;color:#6b7490;margin-top:4px;">
 Utilised is taken from logged sessions where the resource is a test engineer;
-rows marked (manual) use hours recorded against the allocation.</p>''';
+rows marked (manual) use hours recorded against the allocation.${idleCount > 0 ? ' A further $idleCount resource(s) on record had no allocation or logged hours this period.' : ''}</p>''';
 
     final attentionItems = attention.isEmpty
         ? '<li>Nothing outstanding.</li>'
@@ -444,6 +473,72 @@ invoices raised by NATRAX.</p>
 </div>''';
   }
 
+  /// A compact readable version for the compose window, before the formatted
+  /// report is pasted over it. Kept short — mailto bodies get truncated.
+  String _plainText({
+    required String projectName,
+    required DateTime asOn,
+    required List<Map<String, dynamic>> pos,
+    required Map<String, double> byPo,
+    required double poTotal,
+    required double invoicedTotal,
+    required double balance,
+    required double unbilledTotal,
+    required double projected,
+    required List<String> attention,
+  }) {
+    final b = StringBuffer()
+      ..writeln('$projectName — NATRAX Proving Ground')
+      ..writeln('Status as on ${_fmtDate(asOn)}')
+      ..writeln()
+      ..writeln('PO POSITION')
+      ..writeln('  Total PO value      ${_inr(poTotal)}')
+      ..writeln('  Invoiced to date    ${_inr(invoicedTotal)}')
+      ..writeln('  Balance available   ${_inr(balance)}');
+
+    if (unbilledTotal > 0) {
+      b
+        ..writeln('  Not yet billed      ${_inr(unbilledTotal)} (computed)')
+        ..writeln('  Projected balance   ${_inr(projected)}');
+    }
+
+    if (pos.isNotEmpty) {
+      b
+        ..writeln()
+        ..writeln('BY PURCHASE ORDER');
+      for (final p in pos) {
+        final number = (p['po_number'] as String? ?? '').trim();
+        final total = ((p['total_po_value'] as num?)?.toDouble() ?? 0) +
+            ((p['tax_amount'] as num?)?.toDouble() ?? 0);
+        final drawn = byPo[number] ?? 0;
+        b.writeln('  PO $number '
+            '(${_categoryLabel(p['category'] as String? ?? 'other').toLowerCase()})'
+            ' — invoiced ${_inr(drawn)} of ${_inr(total)}, '
+            'balance ${_inr(total - drawn)}');
+      }
+    }
+
+    if (attention.isNotEmpty) {
+      b
+        ..writeln()
+        ..writeln('POINTS NEEDING ATTENTION');
+      for (var i = 0; i < attention.length; i++) {
+        b.writeln('  ${i + 1}. ${_stripTags(attention[i])}');
+      }
+    }
+
+    b
+      ..writeln()
+      ..writeln('Live dashboard: https://sightlinevalidation.web.app')
+      ..writeln('Figures marked computed are derived from session records; '
+          'all other amounts come from invoices raised by NATRAX.');
+
+    return b.toString();
+  }
+
+  static String _stripTags(String s) =>
+      s.replaceAll(RegExp(r'<[^>]*>'), '').replaceAll('&amp;', '&');
+
   // ── Formatting ─────────────────────────────────────────────────────────────
 
   static String _inr(double v) {
@@ -497,6 +592,9 @@ invoices raised by NATRAX.</p>
 class ManagementUpdate {
   final String subject;
   final String html;
+
+  /// Readable fallback for a mailto body, which cannot carry HTML.
+  final String plainText;
   final double poTotal;
   final double invoicedTotal;
   final double unbilledTotal;
@@ -507,6 +605,7 @@ class ManagementUpdate {
   const ManagementUpdate({
     required this.subject,
     required this.html,
+    this.plainText = '',
     required this.poTotal,
     required this.invoicedTotal,
     required this.unbilledTotal,

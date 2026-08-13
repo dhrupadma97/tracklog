@@ -399,6 +399,15 @@ class _ResourcesScreenState extends State<ResourcesScreen> {
                     style: GoogleFonts.spaceGrotesk(
                         color: _red, fontSize: 8.5, fontWeight: FontWeight.w800)),
               ),
+            if (!_readOnly)
+              GestureDetector(
+                onTap: () => _removeResource(r.resource),
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Icon(Icons.more_horiz_rounded,
+                      size: 17, color: Colors.white.withAlpha(90)),
+                ),
+              ),
           ]),
           const SizedBox(height: 12),
 
@@ -684,6 +693,82 @@ class _ResourcesScreenState extends State<ResourcesScreen> {
     if (saved == true) {
       _snack('Resource added');
       _load();
+    }
+  }
+
+  /// Take a resource off the list.
+  ///
+  /// Deactivating is offered first and is the safer choice: removing outright
+  /// also deletes that resource's allocations and availability history through
+  /// the cascade, which is not recoverable.
+  Future<void> _removeResource(TestResource r) async {
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0A1025),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.redAccent.withAlpha(60)),
+        ),
+        title: Text('Remove ${r.name}?',
+            style: GoogleFonts.spaceGrotesk(
+                color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+        content: Text(
+          'Deactivate keeps the record and its history but drops it from the '
+          'Resources list and the management report.\n\n'
+          'Delete removes the resource along with every allocation and '
+          'availability window recorded against it. That cannot be undone.',
+          style: GoogleFonts.spaceGrotesk(
+              color: const Color(0xFF8A94B0), fontSize: 12, height: 1.55),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel',
+                style: GoogleFonts.spaceGrotesk(color: Colors.white70)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'delete'),
+            child: Text('Delete',
+                style: GoogleFonts.spaceGrotesk(
+                    color: Colors.redAccent, fontWeight: FontWeight.w700)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: _teal),
+            onPressed: () => Navigator.pop(ctx, 'deactivate'),
+            child: const Text('Deactivate'),
+          ),
+        ],
+      ),
+    );
+
+    if (choice == null) return;
+    try {
+      if (choice == 'deactivate') {
+        await ResourceService.instance.upsertResource(
+          TestResource(
+            id: r.id,
+            name: r.name,
+            type: r.type,
+            employeeCode: r.employeeCode,
+            email: r.email,
+            engineerProfileId: r.engineerProfileId,
+            roleTitle: r.roleTitle,
+            department: r.department,
+            supplier: r.supplier,
+            dailyCapacityHours: r.dailyCapacityHours,
+            status: 'inactive',
+            notes: r.notes,
+          ),
+        );
+        _snack('${r.name} deactivated');
+      } else {
+        await ResourceService.instance.deleteResource(r.id);
+        _snack('${r.name} removed');
+      }
+      _load();
+    } catch (e) {
+      _snack('Could not update — $e', error: true);
     }
   }
 

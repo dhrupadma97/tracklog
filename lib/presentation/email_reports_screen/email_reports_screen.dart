@@ -399,9 +399,11 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    'Preview opens the full mail in a new tab. Open in Outlook '
-                    'downloads it as a draft — double-click to edit and send it '
-                    'yourself, with the recipients and formatting already set.',
+                    'Preview opens the full mail in a new tab. Compose in '
+                    'Outlook opens a new mail with recipients and subject set '
+                    'and the formatted report on your clipboard — press Ctrl+V '
+                    'in the body. Draft file gives a .eml that is already '
+                    'formatted, if you would rather not paste.',
                     style: GoogleFonts.spaceGrotesk(
                         color: const Color(0xFF6B7490),
                         fontSize: 10,
@@ -440,6 +442,44 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                   onPressed: () async {
+                    final err = await EmailDraft.composeInOutlook(
+                      to: 'praharshithkumar_komaragiri@goodyear.com',
+                      cc: const [
+                        'v_vimal@goodyear.com',
+                        'ashish_pandit@goodyear.com',
+                        'yeswanth_golla@goodyear.com',
+                        'niranjan_poloju@goodyear.com',
+                      ],
+                      subject: update.subject,
+                      htmlBody: update.html,
+                      plainBody: update.plainText,
+                    );
+                    if (!ctx.mounted) return;
+                    if (err != null) {
+                      _showSnack(err, isError: true);
+                    } else {
+                      Navigator.pop(ctx, false);
+                      _showSnack('Outlook opening — press Ctrl+V in the body '
+                          'for the formatted version');
+                    }
+                  },
+                  icon: const Icon(Icons.mail_outline_rounded, size: 16),
+                  label: const Text('Compose in Outlook'),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(
+                child: TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: Text('Cancel',
+                      style: GoogleFonts.spaceGrotesk(color: Colors.white70)),
+                ),
+              ),
+              Expanded(
+                child: TextButton.icon(
+                  onPressed: () async {
                     final err = await EmailDraft.openInOutlook(
                       to: 'praharshithkumar_komaragiri@goodyear.com',
                       cc: const [
@@ -458,22 +498,15 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                       _showSnack(err, isError: true);
                     } else {
                       Navigator.pop(ctx, false);
-                      _showSnack('Draft downloaded — open it to edit and send '
-                          'from Outlook');
+                      _showSnack('Draft saved — open it for the fully '
+                          'formatted mail, no pasting needed');
                     }
                   },
-                  icon: const Icon(Icons.mail_outline_rounded, size: 16),
-                  label: const Text('Open in Outlook'),
-                ),
-              ),
-            ]),
-            const SizedBox(height: 8),
-            Row(children: [
-              Expanded(
-                child: TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: Text('Cancel',
-                      style: GoogleFonts.spaceGrotesk(color: Colors.white70)),
+                  icon: Icon(Icons.download_rounded,
+                      size: 14, color: Colors.white.withAlpha(150)),
+                  label: Text('Draft file',
+                      style: GoogleFonts.spaceGrotesk(
+                          color: Colors.white.withAlpha(150), fontSize: 12.5)),
                 ),
               ),
               Expanded(
@@ -481,7 +514,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                   onPressed: () => Navigator.pop(ctx, true),
                   icon: Icon(Icons.send_rounded,
                       size: 14, color: Colors.white.withAlpha(150)),
-                  label: Text('Send directly',
+                  label: Text('Send now',
                       style: GoogleFonts.spaceGrotesk(
                           color: Colors.white.withAlpha(150), fontSize: 12.5)),
                 ),
