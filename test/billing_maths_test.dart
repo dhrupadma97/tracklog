@@ -81,8 +81,10 @@ void main() {
       expect(b['2026-03']!.inclGst, closeTo(228454, 0.5)); // INV/25-26/1869
       expect(b['2026-04']!.exclGst, 1162450);
       expect(b['2026-04']!.inclGst, closeTo(1371691, 0.5)); // INV/26-27/205
-      expect(b['2026-05']!.exclGst, 377739);
-      expect(b['2026-05']!.inclGst, closeTo(445732, 0.5));
+      // May carries only its workshop rental; its track cost comes from the
+      // sessions logged in TrackLog.
+      expect(b['2026-05']!.isTrackComputed, isTrue);
+      expect(b['2026-05']!.exclGst, 40000);
     });
 
     test('April now reconciles exactly, leaving no variance', () {
@@ -97,11 +99,17 @@ void main() {
       expect(balance, greaterThan(0), reason: 'the PO is not exhausted');
     });
 
-    test('May is not yet billed and is reported separately', () {
+    test('May is costed from sessions, so its baseline is workshop only', () {
+      final may = BillingBaseline.forProject(project)
+          .firstWhere((m) => m.month == '2026-05');
+      expect(may.isTrackComputed, isTrue);
+      expect(may.workshopRental, 40000);
+
+      // The baseline alone therefore contributes only the workshop rental.
+      // The PO Tracker adds that month's logged session cost on top at
+      // runtime, which is the whole point of costing it from sessions.
       expect(PoMaths.notYetBilled(project, [march, april]),
-          closeTo(445732, 0.5));
-      expect(PoMaths.projected(poInclTax, project, [march, april]),
-          closeTo(201286, 1));
+          closeTo(47200, 0.5));
     });
 
     test('variance covers invoiced months only', () {
@@ -111,17 +119,14 @@ void main() {
       expect(PoMaths.variance(project, [march, april]), closeTo(0.10, 1));
     });
 
-    test('the old whole-project comparison is what produced the false overrun',
-        () {
-      // Every month computed + the carried extras, grossed up.
-      final everything =
-          BillingBaseline.forProject(project).fold(0.0, (s, m) => s + m.exclGst) +
-              BillingBaseline.extrasTotal(project);
-      expect(PoMaths.inclGst(everything), closeTo(2287777, 1));
-      expect(poInclTax - PoMaths.inclGst(everything), lessThan(0),
-          reason: 'the whole-project comparison still reads as an overrun');
-      // …whereas the invoice-based balance is comfortably positive.
-      expect(PoMaths.balance(poInclTax, [march, april]), greaterThan(600000));
+    test('carried extras stay out of the drawdown', () {
+      // 2,05,000 ex-GST of Vehicle Validation and Instrumentation appear on no
+      // invoice. Counting them as PO drawdown is what made the balance read as
+      // overspent; the balance comes from invoices instead.
+      expect(BillingBaseline.extrasTotal(project), 205000);
+      expect(PoMaths.inclGst(BillingBaseline.extrasTotal(project)),
+          closeTo(241900, 1));
+      expect(PoMaths.balance(poInclTax, [march, april]), closeTo(647018, 1));
     });
   });
 
@@ -204,7 +209,7 @@ void main() {
         expect(PoMaths.variance(project, [stray]), 0);
         // …and leaves every baseline month still pending.
         expect(PoMaths.notYetBilled(project, [stray]),
-            closeTo(2045876.92, 0.5));
+            closeTo(1647344.90, 0.5));
       }
     });
 

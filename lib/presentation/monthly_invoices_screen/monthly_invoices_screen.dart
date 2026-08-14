@@ -110,9 +110,13 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
           m.month: m.workshopRental,
       };
 
+  /// Only months carrying a fixed figure. A month absent from this map falls
+  /// through to the summed session costs, which is exactly what a
+  /// session-costed month should do.
   Map<String, double> get _trackAccByMonth => {
         for (final m in BillingBaseline.forProject(_activeProject))
-          m.month: m.trackAndAccessories,
+          if (m.trackAndAccessories != null)
+            m.month: m.trackAndAccessories!,
       };
 
   @override

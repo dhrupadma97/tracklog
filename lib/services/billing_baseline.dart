@@ -12,7 +12,13 @@ library;
 class MonthBaseline {
   /// 'YYYY-MM'
   final String month;
-  final double trackAndAccessories;
+
+  /// Fixed track and accessories cost, or null when the month should be costed
+  /// from the sessions logged in TrackLog instead.
+  ///
+  /// Workshop rental is never computed: it is a monthly booking, not something
+  /// session records imply, so it stays here even for computed months.
+  final double? trackAndAccessories;
   final double workshopRental;
 
   const MonthBaseline({
@@ -21,7 +27,12 @@ class MonthBaseline {
     required this.workshopRental,
   });
 
-  double get exclGst => trackAndAccessories + workshopRental;
+  /// True when track cost comes from logged sessions rather than this record.
+  bool get isTrackComputed => trackAndAccessories == null;
+
+  /// The part of the month this record accounts for. For a computed month
+  /// that is the workshop rental alone — callers must add the session cost.
+  double get exclGst => (trackAndAccessories ?? 0) + workshopRental;
   double get gst => exclGst * BillingBaseline.gstRate;
   double get inclGst => exclGst * (1 + BillingBaseline.gstRate);
 }
@@ -73,8 +84,12 @@ class BillingBaseline {
         month: '2026-03', trackAndAccessories: 138605, workshopRental: 55000),
     MonthBaseline(
         month: '2026-04', trackAndAccessories: 1012450, workshopRental: 150000),
+    // May's track cost now comes from the sessions logged in TrackLog rather
+    // than a fixed figure, so the corrected utilisation feeds through on its
+    // own. The workshop rental stays: it is a monthly booking, and no session
+    // record implies it.
     MonthBaseline(
-        month: '2026-05', trackAndAccessories: 337739, workshopRental: 40000),
+        month: '2026-05', trackAndAccessories: null, workshopRental: 40000),
   ];
 
   /// Costs carried against the project that appear on no monthly invoice.
@@ -114,7 +129,7 @@ class BillingBaseline {
   }
 
   static double trackAndAccessoriesTotal(String project) =>
-      forProject(project).fold(0.0, (s, m) => s + m.trackAndAccessories);
+      forProject(project).fold(0.0, (s, m) => s + (m.trackAndAccessories ?? 0));
 
   static double workshopTotal(String project) =>
       forProject(project).fold(0.0, (s, m) => s + m.workshopRental);
@@ -134,8 +149,11 @@ class BillingBaseline {
   static double extrasTotal(String project) =>
       extrasForProject(project).fold(0.0, (s, e) => s + e.exclGst);
 
-  /// The months the baseline covers — the ones whose live session costs must
-  /// be suppressed to avoid double counting.
-  static Set<String> coveredMonths(String project) =>
-      forProject(project).map((m) => m.month).toSet();
+  /// Months whose live session costs must be suppressed to avoid double
+  /// counting — only those carrying a fixed track figure. A month costed from
+  /// sessions is deliberately not covered.
+  static Set<String> coveredMonths(String project) => forProject(project)
+      .where((m) => !m.isTrackComputed)
+      .map((m) => m.month)
+      .toSet();
 }

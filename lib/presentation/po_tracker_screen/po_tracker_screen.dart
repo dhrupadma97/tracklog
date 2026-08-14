@@ -50,6 +50,10 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
 
   bool _uploadingInvoice = false;
 
+  /// Ex-GST session cost per month, for months the baseline costs from
+  /// sessions rather than a fixed figure.
+  Map<String, double> _liveCostByMonth = {};
+
   /// GST rate the computed spend is grossed up at. Session costs and the
   /// hardcoded overrides are all stored ex-GST, while PO values carry tax
   /// separately — the two must be compared on the same basis.
@@ -130,6 +134,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
       // must be suppressed or they would be counted twice.
       final covered = BillingBaseline.coveredMonths(activeProjName);
       var costedSessions = 0;
+      final liveByMonth = <String, double>{};
 
       for (final s in sessionsData as List) {
         final rawProj = (s['project_name'] as String?)?.trim() ?? '';
@@ -150,6 +155,11 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
         costedSessions++;
         trackTotal += track;
         servicesTotal += svc;
+        // Kept per month so a month costed from sessions can still be
+        // forecast; its baseline row carries only the workshop rental.
+        if (monthKey != null) {
+          liveByMonth[monthKey] = (liveByMonth[monthKey] ?? 0) + track + svc;
+        }
       }
 
       // The baseline is split track/accessories the same way the Analyser
@@ -168,6 +178,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
       _additionalServicesSpend = servicesTotal;
       _totalSessions = sessionCount;
       _costedSessions = costedSessions;
+      _liveCostByMonth = liveByMonth;
 
       // Two views of the same invoices, and the distinction matters.
       //
@@ -343,8 +354,13 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
       ..sort((a, b) => a.month.compareTo(b.month));
   }
 
-  double get _notYetBilledInclGst =>
-      _uninvoicedMonths.fold(0.0, (s, m) => s + m.inclGst);
+  /// Ex-GST cost of a baseline month, taking the track figure from logged
+  /// sessions where the baseline defers to them.
+  double _monthExclGst(MonthBaseline m) =>
+      m.exclGst + (m.isTrackComputed ? (_liveCostByMonth[m.month] ?? 0) : 0);
+
+  double get _notYetBilledInclGst => _uninvoicedMonths
+      .fold(0.0, (s, m) => s + _monthExclGst(m) * (1 + _gstRate));
 
   /// Costs carried against the project that no invoice covers.
   double get _extrasInclGst =>
@@ -360,7 +376,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
         in BillingBaseline.forProject(ProjectManager.instance.activeProject)) {
       final billed = invoiced[m.month];
       if (billed == null) continue;
-      variance += billed - m.inclGst;
+      variance += billed - _monthExclGst(m) * (1 + _gstRate);
     }
     return variance;
   }
@@ -1847,8 +1863,9 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
 
   /// One month's computed baseline against what was actually billed for it.
   Widget _monthCompareRow(MonthBaseline m, double? invoiced) {
+    final computed = _monthExclGst(m) * (1 + _gstRate);
     final billed = invoiced != null;
-    final diff = billed ? invoiced - m.inclGst : 0.0;
+    final diff = billed ? invoiced - computed : 0.0;
     final matched = diff.abs() < 1.0;
     final color = !billed
         ? const Color(0xFFFFB547)
@@ -1868,7 +1885,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                   fontWeight: FontWeight.w700)),
         ),
         Expanded(
-          child: Text('₹${_formatAmount(m.inclGst)}',
+          child: Text('₹${_formatAmount(computed)}',
               textAlign: TextAlign.right,
               style: GoogleFonts.spaceGrotesk(
                   color: const Color(0xFF8A94B0),
