@@ -472,125 +472,207 @@ class ManagementReportService {
                 '<td $tdr>${pct.toStringAsFixed(0)}%</td></tr>';
           }).join();
 
-    // A resource with nothing allocated and nothing used contributes no
-    // information to a management update — it just pads the table with zeros.
-    // Count them instead, so the capacity is still acknowledged.
-    final engaged = resources
-        .where((r) => r.allocatedHours > 0 || r.utilisedHours > 0)
-        .toList();
-    final idleCount = resources.length - engaged.length;
+    // The section appears only once resources are actually allocated to
+    // something. Until then it is all zeros, and a table of zeros in a
+    // management update is worse than no table — it invites the question
+    // "so what?" and answers it with nothing. Hours logged against sessions
+    // are already reported under track utilisation.
+    final allocated =
+        resources.where((r) => r.allocatedHours > 0).toList();
 
-    final resourceSection = engaged.isEmpty
-        ? '<p style="font-size:13px;color:#6b7490;">'
-            '${resources.isEmpty ? 'Resource availability and allocation is being set up and will be included from the next update.' : '${resources.length} resource(s) on record, none allocated or utilised in this period.'}'
-            '</p>'
-        : '''
-<table style="border-collapse:collapse;width:100%;margin-top:6px;">
+    // Numbered rows with an amber rule, rather than a bullet list — Outlook's
+    // list indentation is unreliable and these are the lines most likely to be
+    // read.
+    final attentionItems = attention.isEmpty
+        ? '<tr><td style="padding:8px 0;font-size:13px;color:#1a7f37;">'
+            'Nothing outstanding.</td></tr>'
+        : attention.asMap().entries.map((e) => '''
+<tr><td style="padding:0 0 9px;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
+         style="border-collapse:collapse;background:#fffaf2;
+                border-left:3px solid #e8a33d;">
+  <tr>
+    <td width="26" valign="top" align="center"
+        style="padding:10px 0 10px 8px;font-size:12px;font-weight:700;color:#b26a00;">
+      ${e.key + 1}</td>
+    <td style="padding:10px 12px 10px 4px;font-size:12.5px;color:#3d4757;
+               line-height:1.55;">${e.value}</td>
+  </tr></table>
+</td></tr>''').join();
+
+    // Utilisation bar, drawn with table cells rather than a div — Outlook
+    // renders with Word's engine, which ignores width on styled divs.
+    final barUsed = (utilisationPct * 100).clamp(0, 100).round();
+    final barLeft = 100 - barUsed;
+    final bar = '''
+<table role="presentation" cellpadding="0" cellspacing="0" border="0"
+       width="100%" style="border-collapse:collapse;height:8px;">
+<tr>
+${barUsed > 0 ? '<td width="$barUsed%" bgcolor="#0057e6" style="height:8px;line-height:8px;font-size:0;">&nbsp;</td>' : ''}
+${barLeft > 0 ? '<td width="$barLeft%" bgcolor="#dbe2ec" style="height:8px;line-height:8px;font-size:0;">&nbsp;</td>' : ''}
+</tr></table>''';
+
+    String kpi(String label, String value, String sub, String colour) => '''
+<td width="33%" valign="top" style="padding:0 6px;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
+         style="border-collapse:collapse;background:#ffffff;border:1px solid #e2e7ef;">
+  <tr><td style="padding:13px 14px;">
+    <div style="font-size:10px;letter-spacing:.7px;text-transform:uppercase;
+                color:#7a8699;font-weight:700;">$label</div>
+    <div style="font-size:20px;font-weight:700;color:$colour;padding-top:5px;
+                white-space:nowrap;">$value</div>
+    <div style="font-size:11px;color:#7a8699;padding-top:3px;">$sub</div>
+  </td></tr></table>
+</td>''';
+
+    String section(String title, String body, {String? note}) => '''
+<tr><td style="padding:24px 26px 0;">
+  <div style="font-size:13px;font-weight:700;color:#0a1f44;
+              border-bottom:2px solid #0057e6;display:inline-block;
+              padding-bottom:3px;margin-bottom:10px;">$title</div>
+  $body
+  ${note == null ? '' : '<div style="font-size:11px;color:#7a8699;padding-top:6px;line-height:1.5;">$note</div>'}
+</td></tr>''';
+
+    final resourceSection = allocated.isEmpty
+        ? ''
+        : section(
+            'Testing resources',
+            '''
+<table cellpadding="0" cellspacing="0" border="0" width="100%"
+       style="border-collapse:collapse;">
 <tr><th $th>Resource</th><th $th>Role</th>
 <th $th style="text-align:right">Available</th>
 <th $th style="text-align:right">Allocated</th>
-<th $th style="text-align:right">Utilised</th>
-<th $th style="text-align:right">Util. %</th></tr>
-${engaged.map((r) {
+<th $th style="text-align:right">Utilised</th></tr>
+${allocated.map((r) {
             final warn = r.isOverAllocated;
             return '<tr><td $td>${r.resource.name}'
-                '${r.utilisationFromSessions ? '' : '<span style="color:#6b7490;font-size:11px;"> (manual)</span>'}</td>'
+                '${r.utilisationFromSessions ? '' : '<span style="color:#7a8699;font-size:11px;"> (manual)</span>'}</td>'
                 '<td $td>${r.resource.roleTitle ?? r.resource.type}</td>'
                 '<td $tdr>${r.availableHours.toStringAsFixed(0)} h</td>'
-                '<td $tdr${warn ? ' bgcolor="#fff3e0"' : ''}>${r.allocatedHours.toStringAsFixed(0)} h</td>'
-                '<td $tdr>${r.utilisedHours.toStringAsFixed(1)} h</td>'
-                '<td $tdr>${(r.utilisationRate * 100).toStringAsFixed(0)}%</td></tr>';
+                '<td $tdr${warn ? ' bgcolor="#fff5e6"' : ''}>${r.allocatedHours.toStringAsFixed(0)} h</td>'
+                '<td $tdr>${r.utilisedHours.toStringAsFixed(1)} h '
+                '<span style="color:#7a8699;font-size:10px;">'
+                '(${(r.utilisationRate * 100).toStringAsFixed(0)}%)</span></td></tr>';
           }).join()}
-</table>
-<p style="font-size:11px;color:#6b7490;margin-top:4px;">
-Utilised is taken from logged sessions where the resource is a test engineer;
-rows marked (manual) use hours recorded against the allocation.${idleCount > 0 ? ' A further $idleCount resource(s) on record had no allocation or logged hours this period.' : ''}</p>''';
-
-    final attentionItems = attention.isEmpty
-        ? '<li>Nothing outstanding.</li>'
-        : attention.map((a) => '<li style="margin-bottom:9px;">$a</li>').join();
+</table>''',
+            note: 'Utilised comes from logged sessions for test engineers; '
+                'rows marked (manual) use hours recorded against the allocation.',
+          );
 
     return '''
-<div style="font-family:Segoe UI,Arial,sans-serif;color:#1a1f36;max-width:760px;">
-<h2 style="margin:0 0 2px;font-size:19px;">
-NATRAX Proving Ground — SightLine Validation</h2>
-<p style="margin:0 0 16px;color:#6b7490;font-size:13px;">
-Goodyear SightLine tire intelligence validation, Indore
-&nbsp;|&nbsp; Status as on <b>${_fmtDate(asOn)}</b></p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
+       style="border-collapse:collapse;background:#eef1f6;
+              font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<tr><td align="center" style="padding:22px 12px;">
 
-<div style="background:#f4f7fb;border-left:4px solid #0057e6;padding:12px 14px;margin-bottom:18px;">
-<table style="width:100%;font-size:14px;">
-<tr><td style="padding:3px 0;"></td>
-    <td style="text-align:right;font-size:11px;color:#6b7490;">Ex-GST</td>
-    <td style="text-align:right;font-size:11px;color:#6b7490;width:150px;">Incl. GST</td></tr>
-<tr><td style="padding:3px 0;">Total PO value</td>
-    <td style="text-align:right;color:#6b7490;">${_inr(poTotalExcl)}</td>
-    <td style="text-align:right;"><b>${_inr(poTotal)}</b></td></tr>
-<tr><td style="padding:3px 0;">Invoiced to date</td>
-    <td style="text-align:right;color:#6b7490;">${_inr(invoicedTotalExcl)}</td>
-    <td style="text-align:right;"><b>${_inr(invoicedTotal)}</b>
-    <span style="color:#6b7490;">(${(utilisationPct * 100).toStringAsFixed(0)}%)</span></td></tr>
-<tr><td style="padding:3px 0;font-size:15px;"><b>Available to book</b></td>
-    <td style="text-align:right;color:#6b7490;">${_inr(balanceExcl)}</td>
-    <td style="text-align:right;font-size:15px;color:${balance < 0 ? '#c62828' : '#1a7f37'};">
-    <b>${_inr(balance)}</b></td></tr>
-</table></div>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="720"
+       style="border-collapse:collapse;max-width:720px;background:#ffffff;
+              border:1px solid #dfe4ec;">
 
-<h3 style="font-size:14px;margin:18px 0 6px;">Purchase orders — what each covers and what is left</h3>
-<table style="border-collapse:collapse;width:100%;">
+<!-- Header -->
+<tr><td bgcolor="#0a1f44" style="padding:22px 26px;">
+  <div style="font-size:18px;font-weight:700;color:#ffffff;letter-spacing:.2px;">
+    NATRAX Proving Ground &mdash; SightLine Validation</div>
+  <div style="font-size:12px;color:#9fb0cc;padding-top:4px;">
+    Goodyear SightLine tire intelligence validation, Indore</div>
+  <div style="font-size:12px;color:#ffffff;padding-top:10px;font-weight:600;">
+    PO &amp; expense status as on ${_fmtDate(asOn)}</div>
+</td></tr>
+
+<!-- Headline numbers -->
+<tr><td style="padding:20px 20px 4px;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
+         style="border-collapse:collapse;">
+  <tr>
+    ${kpi('Total PO value', _inr(poTotal), '${_inr(poTotalExcl)} ex-GST', '#0a1f44')}
+    ${kpi('Invoiced to date', _inr(invoicedTotal), '${_inr(invoicedTotalExcl)} ex-GST', '#0a1f44')}
+    ${kpi('Available to book', _inr(balance), '${_inr(balanceExcl)} ex-GST', balance < 0 ? '#c62828' : '#1a7f37')}
+  </tr></table>
+</td></tr>
+
+<!-- Utilisation bar -->
+<tr><td style="padding:12px 26px 0;">
+  $bar
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
+         style="border-collapse:collapse;padding-top:5px;">
+  <tr>
+    <td style="font-size:11px;color:#7a8699;padding-top:5px;">
+      $barUsed% of funded POs invoiced</td>
+    <td align="right" style="font-size:11px;color:#7a8699;padding-top:5px;">
+      ${(projectedPct * 100).toStringAsFixed(0)}% once unbilled work is raised</td>
+  </tr></table>
+</td></tr>
+
+${section('Purchase orders', '''
+<table cellpadding="0" cellspacing="0" border="0" width="100%"
+       style="border-collapse:collapse;">
 <tr><th $th>PO / purpose</th><th $th style="text-align:right">PO value</th>
 <th $th style="text-align:right">Invoiced</th>
-<th $th style="text-align:right">Balance</th></tr>
+<th $th style="text-align:right">Available</th></tr>
 $poRows
 $orphanRow
-</table>
-<p style="font-size:11px;color:#6b7490;margin-top:4px;">
-Each invoice is attributed to the PO it names (Buyer's Order No.), so track
-booking and manpower spend are drawn from their own POs.</p>
+</table>''', note: "Each invoice is attributed to the PO it names (Buyer's Order "
+        'No.), so track booking and manpower draw on their own POs.')}
 
-<h3 style="font-size:14px;margin:18px 0 6px;">Invoices raised</h3>
-<table style="border-collapse:collapse;width:100%;">
+${section('Invoices raised', '''
+<table cellpadding="0" cellspacing="0" border="0" width="100%"
+       style="border-collapse:collapse;">
 <tr><th $th>Invoice</th><th $th>Dated</th><th $th>Billing period</th>
 <th $th style="text-align:right">Amount</th></tr>
 $invoiceRows
-<tr><td $td colspan="3"><b>Total invoiced</b></td>
-    <td $tdr><b>${_inr(invoicedTotal)}</b></td></tr>
-</table>
-<p style="font-size:11px;color:#6b7490;margin-top:4px;">
-Originals are on file and verified against our session records.</p>
+<tr><td $td colspan="3" style="padding:8px 10px;background:#f6f8fb;">
+  <b>Total invoiced</b></td>
+<td $tdr style="padding:8px 10px;background:#f6f8fb;">
+  <b>${_inr(invoicedTotal)}</b></td></tr>
+</table>''', note: 'Originals are on file and verified against our session records.')}
 
-<h3 style="font-size:14px;margin:18px 0 6px;">Not yet billed</h3>
-<table style="border-collapse:collapse;width:100%;">
+${section('Not yet billed', '''
+<table cellpadding="0" cellspacing="0" border="0" width="100%"
+       style="border-collapse:collapse;">
 $unbilledRows
-<tr><td $td><b>Projected balance once billed</b></td>
-    <td $tdr><b>${_inr(projected)}</b>
-    <span style="color:#6b7490;font-size:11px;">
-    (${(projectedPct * 100).toStringAsFixed(0)}% utilised)</span></td></tr>
-</table>
+<tr><td $td style="padding:8px 10px;background:#f6f8fb;">
+  <b>Projected balance once billed</b></td>
+<td $tdr style="padding:8px 10px;background:#f6f8fb;">
+  <b>${_inr(projected)}</b></td></tr>
+</table>''')}
 
-<h3 style="font-size:14px;margin:18px 0 6px;">Track utilisation</h3>
-<p style="margin:0 0 4px;font-size:13px;">
-<b>${totalHours.toStringAsFixed(1)} hours</b> across <b>$sessionCount sessions</b></p>
-<table style="border-collapse:collapse;width:100%;">
+${section('Track utilisation', '''
+<div style="font-size:13px;color:#3d4757;padding-bottom:8px;">
+  <b>${totalHours.toStringAsFixed(1)} hours</b> across
+  <b>$sessionCount sessions</b></div>
+<table cellpadding="0" cellspacing="0" border="0" width="100%"
+       style="border-collapse:collapse;">
 <tr><th $th>Track</th><th $th style="text-align:right">Hours</th>
 <th $th style="text-align:right">Share</th></tr>
 $trackRows
-</table>
+</table>''')}
 
-<h3 style="font-size:14px;margin:18px 0 6px;">Testing resources</h3>
 $resourceSection
 
-<h3 style="font-size:14px;margin:18px 0 6px;">Points needing attention</h3>
-<ol style="font-size:13px;line-height:1.55;padding-left:18px;margin:0;">
+${section('Points needing attention', '''
+<table cellpadding="0" cellspacing="0" border="0" width="100%"
+       style="border-collapse:collapse;">
 $attentionItems
-</ol>
+</table>''')}
 
-<p style="margin-top:22px;font-size:12px;color:#6b7490;">
-Live dashboard: <a href="https://sightlinevalidation.web.app">sightlinevalidation.web.app</a><br>
-Generated by TrackLog on ${_fmtDate(asOn)}. Figures marked <i>computed</i> are
-derived from session records and rate cards; all other amounts come from
-invoices raised by NATRAX.</p>
-</div>''';
+<!-- Footer -->
+<tr><td style="padding:22px 26px 24px;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
+         style="border-collapse:collapse;border-top:1px solid #e2e7ef;">
+  <tr><td style="padding-top:14px;font-size:11px;color:#7a8699;line-height:1.6;">
+    Live dashboard:
+    <a href="https://sightlinevalidation.web.app"
+       style="color:#0057e6;text-decoration:none;">sightlinevalidation.web.app</a><br>
+    Generated by TrackLog on ${_fmtDate(asOn)}. Figures marked
+    <i>computed</i> are derived from session records and rate cards; all other
+    amounts come from invoices raised by NATRAX.
+  </td></tr></table>
+</td></tr>
+
+</table>
+</td></tr></table>''';
   }
 
   /// A compact readable version for the compose window, before the formatted

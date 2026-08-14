@@ -15,6 +15,7 @@ import '../../services/invoice_service.dart';
 import '../../services/invoice_opener.dart';
 import '../../services/billing_baseline.dart';
 import '../../services/po_document_service.dart';
+import '../../services/po_parser.dart';
 import '../../services/engineer_auth_service.dart';
 import '../../widgets/invoice_upload_flow.dart';
 
@@ -370,6 +371,20 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
 
   /// Records an invoice against one of the POs on this screen.
   Future<void> _addInvoice() async {
+    try {
+      await _runInvoiceFlow();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _uploadingInvoice = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Could not add the invoice — $e'),
+        backgroundColor: AppTheme.error,
+        duration: const Duration(seconds: 6),
+      ));
+    }
+  }
+
+  Future<void> _runInvoiceFlow() async {
     setState(() => _uploadingInvoice = true);
     final created = await InvoiceUploadFlow.start(
       context,
@@ -395,11 +410,13 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
 
   Future<void> _showAddPoDialog() async {
     final formKey = GlobalKey<FormState>();
-    String poNumber = '';
-    String vendorName = '';
-    String description = '';
-    double totalPoValue = 0;
-    double taxAmount = 0;
+    // Controllers rather than onSaved, so attaching the PO document can fill
+    // these in from what it reads.
+    final poNumberCtrl = TextEditingController();
+    final vendorCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
+    final baseCtrl = TextEditingController();
+    final taxCtrl = TextEditingController();
     DateTime deliveryDate = DateTime.now().add(const Duration(days: 30));
 
     // What the PO covers and where it stands. Without these a new PO lands as
@@ -407,6 +424,10 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
     var category = 'track_booking';
     var poStatus = 'active';
     PlatformFile? attachment;
+    ParsedPo? parsedPo;
+
+    double num0(TextEditingController c) =>
+        double.tryParse(c.text.replaceAll(RegExp(r'[^0-9.\-]'), '')) ?? 0;
 
     await showDialog(
       context: context,
@@ -480,35 +501,36 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                     onChanged: (v) => setLocal(() => poStatus = v ?? poStatus),
                   ),
                   TextFormField(
+                    controller: poNumberCtrl,
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
                       labelText: 'PO Number',
                       labelStyle: TextStyle(color: Colors.white70),
                       enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
                     ),
-                    onSaved: (val) => poNumber = val ?? '',
                     validator: (val) => val == null || val.isEmpty ? 'Required' : null,
                   ),
                   TextFormField(
+                    controller: vendorCtrl,
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
                       labelText: 'Vendor Name',
                       labelStyle: TextStyle(color: Colors.white70),
                       enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
                     ),
-                    onSaved: (val) => vendorName = val ?? '',
                     validator: (val) => val == null || val.isEmpty ? 'Required' : null,
                   ),
                   TextFormField(
+                    controller: descCtrl,
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
                       labelText: 'Description (e.g. Track Usage)',
                       labelStyle: TextStyle(color: Colors.white70),
                       enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
                     ),
-                    onSaved: (val) => description = val ?? '',
                   ),
                   TextFormField(
+                    controller: baseCtrl,
                     style: const TextStyle(color: Colors.white),
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
@@ -516,9 +538,9 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                       labelStyle: TextStyle(color: Colors.white70),
                       enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
                     ),
-                    onSaved: (val) => totalPoValue = double.tryParse(val ?? '0') ?? 0,
                   ),
                   TextFormField(
+                    controller: taxCtrl,
                     style: const TextStyle(color: Colors.white),
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
@@ -526,20 +548,97 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                       labelStyle: TextStyle(color: Colors.white70),
                       enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
                     ),
-                    onSaved: (val) => taxAmount = double.tryParse(val ?? '0') ?? 0,
                   ),
                   const SizedBox(height: 16),
+                  // What the attached document gave us, so it is clear which
+                  // figures were pulled and which still need typing.
+                  if (parsedPo != null)
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: (parsedPo!.foundAnything
+                                ? const Color(0xFF4CAF50)
+                                : const Color(0xFFFFB547))
+                            .withAlpha(20),
+                        borderRadius: BorderRadius.circular(9),
+                        border: Border.all(
+                            color: (parsedPo!.foundAnything
+                                    ? const Color(0xFF4CAF50)
+                                    : const Color(0xFFFFB547))
+                                .withAlpha(80)),
+                      ),
+                      child: Text(
+                        parsedPo!.isUnreadable
+                            ? 'This PO is a scan — no text to read, so the '
+                                'fields above need filling in by hand.'
+                            : parsedPo!.foundAnything
+                                ? 'Read from the document — check the figures '
+                                    'above before saving.'
+                                : 'Document is readable but no PO fields were '
+                                    'recognised; fill them in by hand.',
+                        style: GoogleFonts.spaceGrotesk(
+                          fontSize: 10.5,
+                          height: 1.45,
+                          color: parsedPo!.foundAnything
+                              ? const Color(0xFF4CAF50)
+                              : const Color(0xFFFFB547),
+                        ),
+                      ),
+                    ),
                   // The PO document itself, so the figures above can be
                   // checked against the paperwork they came from.
                   GestureDetector(
                     onTap: () async {
-                      final res = await FilePicker.platform.pickFiles(
-                        type: FileType.custom,
-                        allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg'],
-                        withData: true,
-                      );
-                      if (res != null && res.files.isNotEmpty) {
-                        setLocal(() => attachment = res.files.first);
+                      try {
+                        final res = await FilePicker.platform.pickFiles(
+                          type: FileType.custom,
+                          allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg'],
+                          withData: true,
+                        );
+                        if (res == null || res.files.isEmpty) return;
+                        final f = res.files.first;
+
+                        // Read what we can off the document, so the figures
+                        // below are pulled rather than typed. Many POs on file
+                        // are scans, so this often finds nothing — the fields
+                        // stay editable either way.
+                        ParsedPo? read;
+                        if (f.bytes != null &&
+                            f.name.toLowerCase().endsWith('.pdf')) {
+                          read = PoParser.parse(f.bytes!);
+                        }
+
+                        setLocal(() {
+                          attachment = f;
+                          parsedPo = read;
+                          if (read != null && read.foundAnything) {
+                            if (read.poNumber != null) {
+                              poNumberCtrl.text = read.poNumber!;
+                            }
+                            if (read.vendorName != null) {
+                              vendorCtrl.text = read.vendorName!;
+                            }
+                            if (read.baseValue != null) {
+                              baseCtrl.text = read.baseValue!.toStringAsFixed(2);
+                            }
+                            if (read.taxAmount != null) {
+                              taxCtrl.text = read.taxAmount!.toStringAsFixed(2);
+                            }
+                            if (read.category != null) category = read.category!;
+                            if (read.validUntil != null) {
+                              deliveryDate = read.validUntil!;
+                            }
+                          }
+                        });
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text('Could not read that file — $e'),
+                            backgroundColor: AppTheme.error,
+                          ));
+                        }
                       }
                     },
                     child: Container(
@@ -593,14 +692,14 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
               style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
               onPressed: () async {
                 if (formKey.currentState?.validate() == true) {
-                  formKey.currentState?.save();
+                  final poNumber = poNumberCtrl.text.trim();
                   try {
                     final row = <String, dynamic>{
                       'po_number': poNumber,
-                      'vendor_name': vendorName,
-                      'description': description,
-                      'total_po_value': totalPoValue,
-                      'tax_amount': taxAmount,
+                      'vendor_name': vendorCtrl.text.trim(),
+                      'description': descCtrl.text.trim(),
+                      'total_po_value': num0(baseCtrl),
+                      'tax_amount': num0(taxCtrl),
                       'delivery_date': deliveryDate.toIso8601String().split('T')[0],
                       'category': category,
                       'po_status': poStatus,
@@ -621,12 +720,33 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                     await SupabaseService.instance.client
                         .from('po_trackers')
                         .insert(row);
+                    if (ctx.mounted) Navigator.of(ctx).pop();
                     if (mounted) {
-                      Navigator.of(ctx).pop();
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text('PO $poNumber added'),
+                        backgroundColor: AppTheme.success,
+                      ));
                       _loadData();
                     }
                   } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                    // Surfaced rather than swallowed: a duplicate PO number or
+                    // an RLS rejection otherwise looks like the button simply
+                    // not working.
+                    if (!mounted) return;
+                    final msg = e.toString();
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(
+                        msg.contains('duplicate key') ||
+                                msg.contains('po_number_key')
+                            ? 'PO $poNumber is already in the tracker'
+                            : msg.contains('row-level security')
+                                ? 'Your account cannot add POs — engineer '
+                                    'access is required'
+                                : 'Could not save — $msg',
+                      ),
+                      backgroundColor: AppTheme.error,
+                      duration: const Duration(seconds: 6),
+                    ));
                   }
                 }
               },
