@@ -35,6 +35,14 @@ class MonthBaseline {
   double get exclGst => (trackAndAccessories ?? 0) + workshopRental;
   double get gst => exclGst * BillingBaseline.gstRate;
   double get inclGst => exclGst * (1 + BillingBaseline.gstRate);
+
+  /// Operational days the rental covers, derived from the flat day rate.
+  ///
+  /// Derived rather than stored because the rental is what the invoice states
+  /// and the days follow from it — storing both invites the two disagreeing.
+  double get workshopDays => BillingBaseline.workshopDayRate <= 0
+      ? 0
+      : workshopRental / BillingBaseline.workshopDayRate;
 }
 
 /// A cost that is not attributable to any billing month, and therefore cannot
@@ -133,6 +141,36 @@ class BillingBaseline {
 
   static double workshopTotal(String project) =>
       forProject(project).fold(0.0, (s, m) => s + m.workshopRental);
+
+  /// Continuous Workshop Flat Rate — 5,000 per operational day.
+  ///
+  /// This is the rate NATRAX charges, evidenced on INV/25-26/1869 (11 days at
+  /// 5,000 for 55,000) and consistent across April (30 days) and May (8 days).
+  static const double workshopDayRate = 5000;
+
+  static double workshopDaysTotal(String project) =>
+      forProject(project).fold(0.0, (s, m) => s + m.workshopDays);
+
+  /// The workshop was released over the June–July 2026 pause and re-occupied
+  /// on 12 August 2026 — which is why those two months carry no row above.
+  ///
+  /// The period is deliberately open-ended: the bay accrues rental every day
+  /// it is held, so the figure is computed as-on rather than frozen into a
+  /// month row that would be wrong the next morning. When NATRAX invoices this
+  /// period, add it as a normal [MonthBaseline] and clear this date, or the
+  /// month will be counted twice.
+  static final DateTime workshopResumedOn = DateTime(2026, 8, 12);
+
+  /// Days the workshop has been held since it was re-occupied, counting both
+  /// the resumption day and [asOn]. Zero before resumption.
+  static int openWorkshopDays(DateTime asOn) {
+    final to = DateTime(asOn.year, asOn.month, asOn.day);
+    if (to.isBefore(workshopResumedOn)) return 0;
+    return to.difference(workshopResumedOn).inDays + 1;
+  }
+
+  static double openWorkshopRental(DateTime asOn) =>
+      openWorkshopDays(asOn) * workshopDayRate;
 
   /// The accessories portion of [trackAndAccessoriesTotal] per the V15
   /// workbook (charger, sand bags, refreshments, casual labour…).

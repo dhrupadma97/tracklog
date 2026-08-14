@@ -1,5 +1,6 @@
 import 'billing_baseline.dart';
 import 'invoice_service.dart';
+import 'muster_service.dart';
 import 'resource_service.dart';
 import 'supabase_service.dart';
 
@@ -29,6 +30,7 @@ class ManagementReportService {
     required String projectName,
     String? vehicleName,
     DateTime? asOn,
+    String recipientName = 'Harsh',
   }) async {
     final client = SupabaseService.instance.client;
     final date = asOn ?? DateTime.now();
@@ -36,6 +38,19 @@ class ManagementReportService {
     // ── Purchase orders ──────────────────────────────────────────────────
     final poRows = await client.from('po_trackers').select().order('created_at');
     final pos = (poRows as List).cast<Map<String, dynamic>>();
+
+    // Man-days actually mustered, folded onto the PO rows rather than threaded
+    // through the renderer as another argument. Days worked and days invoiced
+    // are different numbers, and the report shows both.
+    try {
+      final mustered = await MusterService.instance.manDaysByPo();
+      for (final p in pos) {
+        final n = (p['po_number'] as String? ?? '').trim();
+        if (mustered.containsKey(n)) p['man_days_mustered'] = mustered[n];
+      }
+    } catch (_) {
+      // The muster table may not exist yet on a given environment.
+    }
     // A PO that is spent, or has no value recorded, is not funding.
     bool bookable(Map<String, dynamic> p) {
       final s = (p['po_status'] as String? ?? '').toLowerCase();
@@ -83,26 +98,28 @@ class ManagementReportService {
       invoicedMonths[m] = (invoicedMonths[m] ?? 0) + i.totalAmount;
     }
 
-    // ── Computed but unbilled ────────────────────────────────────────────
-    final baseline = BillingBaseline.forProject(projectName);
-    final unbilled =
-        baseline.where((m) => !invoicedMonths.containsKey(m.month)).toList();
-    final unbilledTotal = unbilled.fold<double>(0, (s, m) => s + m.inclGst);
-
-    final balance = poTotal - invoicedTotal;
-    final balanceExcl = poTotalExcl - invoicedTotalExcl;
-    final projected = balance - unbilledTotal;
-    final utilisationPct = poTotal <= 0 ? 0.0 : invoicedTotal / poTotal;
-    final projectedPct =
-        poTotal <= 0 ? 0.0 : (invoicedTotal + unbilledTotal) / poTotal;
-
-    // ── Track utilisation ────────────────────────────────────────────────
+    // ── Track utilisation and live session cost ──────────────────────────
+    // Costed before the unbilled figure below, which depends on it: a month
+    // with no fixed track figure is priced from these sessions.
     final sessionRows = await client
         .from('engineer_sessions')
-        .select('track_code, track_name, duration_minutes, project_name, started_at')
+        .select('id, total_cost, track_code, track_name, duration_minutes, '
+            'project_name, started_at')
         .eq('session_status', 'completed');
 
+    final servicesRows = await client
+        .from('session_additional_services')
+        .select('session_id, total_cost');
+    final svcBySession = <String, double>{};
+    for (final s in servicesRows as List) {
+      final sid = s['session_id'] as String?;
+      if (sid == null) continue;
+      svcBySession[sid] = (svcBySession[sid] ?? 0) +
+          ((s['total_cost'] as num?)?.toDouble() ?? 0);
+    }
+
     final trackHours = <String, double>{};
+    final liveCostByMonth = <String, double>{};
     var totalHours = 0.0;
     var sessionCount = 0;
     for (final s in sessionRows as List) {
@@ -117,9 +134,42 @@ class ManagementReportService {
       trackHours[code] = (trackHours[code] ?? 0) + hrs;
       totalHours += hrs;
       sessionCount++;
+
+      final startedAt = DateTime.tryParse(s['started_at'] as String? ?? '');
+      if (startedAt == null) continue;
+      final key = '${startedAt.year}-'
+          '${startedAt.month.toString().padLeft(2, '0')}';
+      final sid = s['id'] as String?;
+      liveCostByMonth[key] = (liveCostByMonth[key] ?? 0) +
+          ((s['total_cost'] as num?)?.toDouble() ?? 0) +
+          (sid == null ? 0 : (svcBySession[sid] ?? 0));
     }
     final tracks = trackHours.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
+
+    // ── Computed but unbilled ────────────────────────────────────────────
+    // A computed month carries only its workshop rental in the baseline —
+    // MonthBaseline.exclGst states that callers must add the session cost.
+    // This one did not, so May reported 47,200: the 40,000 rental grossed up,
+    // with every hour actually logged that month missing from it.
+    final baseline = BillingBaseline.forProject(projectName);
+    final unbilled = baseline
+        .where((m) => !invoicedMonths.containsKey(m.month))
+        .map((m) => m.isTrackComputed
+            ? MonthBaseline(
+                month: m.month,
+                trackAndAccessories: liveCostByMonth[m.month] ?? 0,
+                workshopRental: m.workshopRental)
+            : m)
+        .toList();
+    final unbilledTotal = unbilled.fold<double>(0, (s, m) => s + m.inclGst);
+
+    final balance = poTotal - invoicedTotal;
+    final balanceExcl = poTotalExcl - invoicedTotalExcl;
+    final projected = balance - unbilledTotal;
+    final utilisationPct = poTotal <= 0 ? 0.0 : invoicedTotal / poTotal;
+    final projectedPct =
+        poTotal <= 0 ? 0.0 : (invoicedTotal + unbilledTotal) / poTotal;
 
     // ── Resources ────────────────────────────────────────────────────────
     // Optional: the tables may not exist yet on a given environment.
@@ -170,6 +220,59 @@ class ManagementReportService {
           'before further track booking.');
     }
 
+    // The bay is held by the day, so an open period is a liability that grows
+    // whether or not anyone is testing.
+    final openWsDays = BillingBaseline.openWorkshopDays(date);
+    if (openWsDays > 0) {
+      attention.add(
+          '<b>Workshop rental accruing since '
+          '${_fmtDate(BillingBaseline.workshopResumedOn)}.</b> The bay has been '
+          'held for $openWsDays day${openWsDays == 1 ? '' : 's'} at '
+          '${_inr(BillingBaseline.workshopDayRate)}/day — '
+          '${_inr(BillingBaseline.openWorkshopRental(date))} not yet invoiced '
+          'and growing daily. It will draw on the track PO once NATRAX raises '
+          'it.');
+    }
+
+    // Manpower is contracted in days, so it runs out in days rather than in
+    // rupees — and the muster can run ahead of what MOICARS has billed.
+    final invoicedExclByPo = <String, double>{};
+    for (final i in invoices) {
+      final po = (i.poNumber ?? '').trim();
+      if (po.isEmpty) continue;
+      invoicedExclByPo[po] = (invoicedExclByPo[po] ?? 0) + i.amountExclGst;
+    }
+
+    for (final e in _manpowerPending(pos, invoicedExclByPo)) {
+      attention.add(
+          '<b>Manpower worked but not invoiced on PO ${e.poNumber}.</b> The '
+          'muster records ${_trimNum(e.days)} man-days more than MOICARS has '
+          'billed — ${_inr(e.amountInclGst)} sitting outside PO drawdown. '
+          'Recommend chasing the invoice so the position is complete.');
+    }
+
+    // Cover running out is a different question from billing lag, and needs
+    // raising earlier: a new PO takes longer than an invoice.
+    for (final p in pos.where(
+        (p) => (p['category'] as String? ?? '').toLowerCase() == 'manpower')) {
+      final number = (p['po_number'] as String? ?? '').trim();
+      final contracted = (p['manpower_days'] as num?)?.toDouble() ?? 0;
+      if (contracted <= 0) continue;
+      final used = ((p['manpower_days_opening'] as num?)?.toDouble() ?? 0) +
+          ((p['man_days_mustered'] as num?)?.toDouble() ?? 0);
+      final left = contracted - used;
+      if (left > 10) continue;
+
+      attention.add(left < 0
+          ? '<b>Manpower PO $number is overrun.</b> '
+              '${_trimNum(used)} man-days used against '
+              '${_trimNum(contracted)} contracted. A follow-on PO is needed '
+              'before further manpower is booked.'
+          : '<b>Manpower PO $number is nearly exhausted.</b> Only '
+              '${_trimNum(left)} of ${_trimNum(contracted)} man-days remain. '
+              'A follow-on PO should be raised now to avoid a gap in cover.');
+    }
+
     final overAllocated = resources.where((r) => r.isOverAllocated).toList();
     if (overAllocated.isNotEmpty) {
       attention.add(
@@ -193,6 +296,7 @@ class ManagementReportService {
     final html = _html(
       projectName: projectName,
       vehicleName: vehicleName,
+      recipientName: recipientName,
       asOn: date,
       pos: pos,
       poTotal: poTotal,
@@ -200,6 +304,7 @@ class ManagementReportService {
       invoices: invoices,
       invoicedTotal: invoicedTotal,
       invoicedTotalExcl: invoicedTotalExcl,
+      baseline: baseline,
       unbilled: unbilled,
       unbilledTotal: unbilledTotal,
       balance: balance,
@@ -232,6 +337,8 @@ class ManagementReportService {
       balance: balance,
       balanceExcl: balanceExcl,
       unbilledTotal: unbilledTotal,
+      manpowerPending: _manpowerPending(pos, invoicedExclByPo)
+          .fold<double>(0, (s, e) => s + e.amountInclGst),
       projected: projected,
       attention: attention,
     );
@@ -302,6 +409,7 @@ class ManagementReportService {
   String _html({
     required String projectName,
     required String? vehicleName,
+    required String recipientName,
     required DateTime asOn,
     required List<Map<String, dynamic>> pos,
     required double poTotal,
@@ -309,6 +417,7 @@ class ManagementReportService {
     required List<NatraxInvoice> invoices,
     required double invoicedTotal,
     required double invoicedTotalExcl,
+    required List<MonthBaseline> baseline,
     required List<MonthBaseline> unbilled,
     required double unbilledTotal,
     required double balance,
@@ -370,6 +479,7 @@ class ManagementReportService {
     String categoryBlock(String category) {
       final rows = byCategory[category]!;
       var funded = 0.0, fundedExcl = 0.0, drawn = 0.0, drawnExcl = 0.0;
+      var days = 0.0;
       var anyPending = false;
       for (final p in rows) {
         final number = (p['po_number'] as String? ?? '').trim();
@@ -384,6 +494,7 @@ class ManagementReportService {
           drawn += byPo[number] ?? 0;
           drawnExcl += byPoExcl[number] ?? 0;
         }
+        if (!spent) days += (p['manpower_days'] as num?)?.toDouble() ?? 0;
       }
       final label = _categoryLabel(category);
       return '<tr><td colspan="4" '
@@ -392,6 +503,8 @@ class ManagementReportService {
           '$label'
           '${funded > 0 ? ' — ${_inr(funded - drawn)} available incl. GST '
               '(${_inr(fundedExcl - drawnExcl)} ex-GST) of ${_inr(funded)}' : ''}'
+          '${category == 'manpower' && days > 0 ? ' <span style="color:#3d4757;font-weight:600;">'
+              '· ${_trimNum(days)} manpower days contracted</span>' : ''}'
           '${anyPending ? ' <span style="color:#b26a00;font-weight:600;">(some values not recorded)</span>' : ''}'
           '</td></tr>';
     }
@@ -411,10 +524,38 @@ class ManagementReportService {
       final status = (p['po_status'] as String? ?? '').toLowerCase();
       final spent = status == 'used' || status == 'closed';
       final issuer = (p['issued_by'] as String? ?? '').trim();
+
+      // Manpower is contracted in days, so a rupee balance on its own does not
+      // say whether the PO is nearly out of days. Days invoiced are derived
+      // from the invoices raised — deliberately not from days worked, which
+      // nothing here records and which can run well ahead of billing.
+      final days = (p['manpower_days'] as num?)?.toDouble() ?? 0;
+      final dayRate = days > 0 ? base / days : 0.0;
+      final daysBilled = dayRate > 0 ? drawnExcl / dayRate : 0.0;
+      final usedDays =
+          ((p['manpower_days_opening'] as num?)?.toDouble() ?? 0) +
+              ((p['man_days_mustered'] as num?)?.toDouble() ?? 0);
+      final unbilledDays = usedDays - daysBilled;
+      final manpowerLine = category != 'manpower'
+          ? ''
+          : days <= 0
+              ? '<br><span style="color:#b26a00;font-size:11px;">'
+                  'Manpower days not recorded</span>'
+              : '<br><span style="color:#3d4757;font-size:11px;font-weight:600;">'
+                  '${_trimNum(usedDays)} of ${_trimNum(days)} manpower days '
+                  'used${dayRate > 0 ? ' @ ${_inr(dayRate)}/day' : ''} · '
+                  '${_trimNum(days - usedDays)} left'
+                  '</span>'
+                  '${unbilledDays >= 1 ? '<br><span style="color:#b26a00;font-size:11px;">'
+                      '${_trimNum(unbilledDays)} days worked but not invoiced'
+                      '${dayRate > 0 ? ' — ${_inr(unbilledDays * dayRate)} ex-GST' : ''}'
+                      '</span>' : ''}';
+
       final head = '<td $td>PO $number'
           '${status == 'upcoming' ? ' <span style="color:#b26a00;font-size:10px;">upcoming</span>' : ''}'
           '${spent ? ' <span style="color:#6b7490;font-size:10px;">consumed</span>' : ''}'
           '${issuer.isEmpty ? '' : ' <span style="color:#3d4757;font-size:10px;font-weight:600;">via $issuer</span>'}'
+          '$manpowerLine'
           '<br><span style="color:#6b7490;font-size:11px;">'
           '${_truncate(p['description'] as String? ?? '', 80)}</span></td>';
 
@@ -471,13 +612,77 @@ class ManagementReportService {
                 '<td $tdr><b>${_inr(i.totalAmount)}</b></td></tr>';
           }).join();
 
+    // Work that is done but unbilled was still booked against a PO — the first
+    // track PO, which is what it will draw on when NATRAX raises the invoice.
+    // Naming it matters: that PO is the one with the least headroom left.
+    String firstTrackPo = '';
+    for (final p in pos) {
+      if ((p['category'] as String? ?? '').toLowerCase() != 'track_booking') {
+        continue;
+      }
+      final n = (p['po_number'] as String? ?? '').trim();
+      if (n.isNotEmpty) {
+        firstTrackPo = n;
+        break;
+      }
+    }
+
     final unbilledRows = unbilled.isEmpty
         ? '<tr><td $td colspan="2" style="color:#1a7f37;">Everything billed to date</td></tr>'
         : unbilled
             .map((m) => '<tr><td $td>${_monthLabel(m.month)} '
-                '<span style="color:#6b7490;font-size:11px;">(computed, not invoiced)</span></td>'
+                '<span style="color:#6b7490;font-size:11px;">(computed, not invoiced'
+                '${firstTrackPo.isEmpty ? '' : ' — will draw on PO $firstTrackPo'}'
+                ')</span></td>'
                 '<td $tdr>${_inr(m.inclGst)}</td></tr>')
             .join();
+
+    // Manpower pends separately from track: worked ahead of billing, on its
+    // own POs. Blending the two into one "not yet billed" figure hides which
+    // invoice to chase — NATRAX and MOICARS are different conversations.
+    final pending = _manpowerPending(pos, byPoExcl);
+    final manpowerPending =
+        pending.fold<double>(0, (s, e) => s + e.amountInclGst);
+    final manpowerPendingRows = pending.isEmpty
+        ? '<tr><td $td colspan="2" style="color:#1a7f37;">'
+            'Nothing outstanding</td></tr>'
+        : pending
+            .map((e) => '<tr><td $td>PO ${e.poNumber} '
+                '<span style="color:#6b7490;font-size:11px;">'
+                '(${_trimNum(e.days)} man-days worked, not invoiced)</span></td>'
+                '<td $tdr>${_inr(e.amountInclGst)}</td></tr>')
+            .join();
+
+    // Workshop is booked by the day and billed monthly, so the day count is
+    // the number that says whether the bay is being held longer than it is
+    // being used. Derived from the rental, never stored alongside it.
+    final workshopMonths = baseline.where((m) => m.workshopRental > 0).toList();
+    final workshopDays =
+        workshopMonths.fold<double>(0, (s, m) => s + m.workshopDays);
+    final workshopCost =
+        workshopMonths.fold<double>(0, (s, m) => s + m.workshopRental);
+    // The bay is currently held on an open period that has not been invoiced,
+    // so it accrues rather than sitting in a closed month.
+    final openDays = BillingBaseline.openWorkshopDays(asOn);
+    final openRental = BillingBaseline.openWorkshopRental(asOn);
+    final workshopDaysAll = workshopDays + openDays;
+    final workshopCostAll = workshopCost + openRental;
+
+    final workshopRows = (workshopMonths.isEmpty && openDays == 0)
+        ? '<tr><td $td colspan="3">No workshop rental recorded</td></tr>'
+        : workshopMonths
+                .map((m) => '<tr><td $td>${_monthLabel(m.month)}</td>'
+                    '<td $tdr>${_trimNum(m.workshopDays)}</td>'
+                    '<td $tdr>${_inr(m.workshopRental)}</td></tr>')
+                .join() +
+            (openDays == 0
+                ? ''
+                : '<tr><td $td>Since '
+                    '${_fmtDate(BillingBaseline.workshopResumedOn)} '
+                    '<span style="color:#6b7490;font-size:11px;">'
+                    '(open, not invoiced)</span></td>'
+                    '<td $tdr>$openDays</td>'
+                    '<td $tdr>${_inr(openRental)}</td></tr>');
 
     final trackRows = tracks.isEmpty
         ? '<tr><td $td colspan="3">No sessions logged</td></tr>'
@@ -597,8 +802,26 @@ ${allocated.map((r) {
     PO &amp; expense status as on ${_fmtDate(asOn)}</div>
 </td></tr>
 
+<!-- Greeting and lead. The report opened straight onto a wall of figures,
+     which reads as a pasted dashboard rather than a mail to a person. -->
+<tr><td style="padding:20px 26px 0;">
+  <div style="font-size:14px;color:#1f2733;">Hi $recipientName,</div>
+  <div style="font-size:13px;color:#3d4757;line-height:1.65;padding-top:9px;">
+    Here is the PO and expense position for
+    ${vehicleName == null || vehicleName.isEmpty ? projectName : '$projectName ($vehicleName)'}
+    at NATRAX as on ${_fmtDate(asOn)}.
+    ${_inr(invoicedTotal)} has been invoiced against ${_inr(poTotal)} of funded
+    purchase orders, leaving <b>${_inr(balance)}</b> available to book.${unbilledTotal > 0 ? '''
+    A further ${_inr(unbilledTotal)} of completed work is not yet invoiced and
+    is shown separately — it does not reduce the balance until NATRAX raises
+    it.''' : ''}${attention.isEmpty ? '' : '''
+    ${attention.length == 1 ? 'One point needs' : '${attention.length} points need'}
+    attention; these are set out at the end.'''}
+  </div>
+</td></tr>
+
 <!-- Headline numbers -->
-<tr><td style="padding:20px 20px 4px;">
+<tr><td style="padding:16px 20px 4px;">
   <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
          style="border-collapse:collapse;">
   <tr>
@@ -647,12 +870,50 @@ $invoiceRows
 ${section('Not yet billed', '''
 <table cellpadding="0" cellspacing="0" border="0" width="100%"
        style="border-collapse:collapse;">
+<tr><td colspan="2"
+        style="padding:9px 10px 4px;font-size:11px;font-weight:700;
+               color:#0057e6;letter-spacing:.5px;
+               border-bottom:1px solid #e6e9f0;">
+  TRACK &amp; WORKSHOP${firstTrackPo.isEmpty ? '' : ' — PO $firstTrackPo'}</td></tr>
 $unbilledRows
+<tr><td $td style="padding:7px 10px;"><i>Track subtotal</i></td>
+<td $tdr style="padding:7px 10px;"><i>${_inr(unbilledTotal)}</i></td></tr>
+
+<tr><td colspan="2"
+        style="padding:12px 10px 4px;font-size:11px;font-weight:700;
+               color:#0057e6;letter-spacing:.5px;
+               border-bottom:1px solid #e6e9f0;">
+  MANPOWER</td></tr>
+$manpowerPendingRows
+<tr><td $td style="padding:7px 10px;"><i>Manpower subtotal</i></td>
+<td $tdr style="padding:7px 10px;"><i>${_inr(manpowerPending)}</i></td></tr>
+
 <tr><td $td style="padding:8px 10px;background:#f6f8fb;">
-  <b>Projected balance once billed</b></td>
+  <b>Committed but not invoiced</b></td>
 <td $tdr style="padding:8px 10px;background:#f6f8fb;">
-  <b>${_inr(projected)}</b></td></tr>
-</table>''')}
+  <b>${_inr(unbilledTotal + manpowerPending)}</b></td></tr>
+</table>''', note: 'Split by stream because the two are chased separately — '
+        'track and workshop from NATRAX, manpower from MOICARS. None of it is '
+        'deducted from the available balance above: a PO is drawn down by '
+        'invoices, so this becomes drawdown only when the invoice is raised.')}
+
+${section('Workshop rental', '''
+<table cellpadding="0" cellspacing="0" border="0" width="100%"
+       style="border-collapse:collapse;">
+<tr><th $th>Month</th><th $th style="text-align:right">Days</th>
+<th $th style="text-align:right">Rental</th></tr>
+$workshopRows
+<tr><td $td style="padding:8px 10px;background:#f6f8fb;">
+  <b>Total</b></td>
+<td $tdr style="padding:8px 10px;background:#f6f8fb;">
+  <b>${_trimNum(workshopDaysAll)} days</b></td>
+<td $tdr style="padding:8px 10px;background:#f6f8fb;">
+  <b>${_inr(workshopCostAll)}</b></td></tr>
+</table>''', note: 'Charged at ${_inr(BillingBaseline.workshopDayRate)} per '
+        'operational day on the Continuous Workshop Flat Rate. June and July '
+        'carry no rental — the bay was released over the pause and re-occupied '
+        'on ${_fmtDate(BillingBaseline.workshopResumedOn)}, so that period is '
+        'still accruing and not yet invoiced.')}
 
 ${section('Track utilisation', '''
 <div style="font-size:13px;color:#3d4757;padding-bottom:8px;">
@@ -673,8 +934,17 @@ ${section('Points needing attention', '''
 $attentionItems
 </table>''')}
 
+<!-- Close. No name or sign-off: Outlook adds the signature, and a second one
+     inside the card reads as a duplicate. -->
+<tr><td style="padding:4px 26px 0;">
+  <div style="font-size:13px;color:#3d4757;line-height:1.65;">
+    Every figure above is reconciled against the invoices on file; happy to walk
+    through any part of it.
+  </div>
+</td></tr>
+
 <!-- Footer -->
-<tr><td style="padding:22px 26px 24px;">
+<tr><td style="padding:18px 26px 24px;">
   <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
          style="border-collapse:collapse;border-top:1px solid #e2e7ef;">
   <tr><td style="padding-top:14px;font-size:11px;color:#7a8699;line-height:1.6;">
@@ -707,6 +977,7 @@ $attentionItems
     required double balance,
     required double balanceExcl,
     required double unbilledTotal,
+    required double manpowerPending,
     required double projected,
     required List<String> attention,
   }) {
@@ -722,10 +993,18 @@ $attentionItems
       ..writeln('  Available to book   ${_pad(_inr(balanceExcl))} '
           '${_inr(balance)}');
 
-    if (unbilledTotal > 0) {
+    if (unbilledTotal > 0 || manpowerPending > 0) {
       b
-        ..writeln('  Not yet billed      ${_inr(unbilledTotal)} (computed)')
-        ..writeln('  Projected balance   ${_inr(projected)}');
+        ..writeln()
+        ..writeln('NOT YET BILLED')
+        ..writeln('  ${_pad('Track & workshop')}${_inr(unbilledTotal)} (computed)')
+        ..writeln('  ${_pad('Manpower')}${_inr(manpowerPending)} (mustered, '
+            'not invoiced)')
+        ..writeln('  ${_pad('Total')}${_inr(unbilledTotal + manpowerPending)}')
+        ..writeln('  Chased separately — track and workshop from NATRAX, '
+            'manpower from MOICARS.')
+        ..writeln('  None of it is deducted from the balance above; it draws '
+            'down only when invoiced.');
     }
 
     if (pos.isNotEmpty) {
@@ -737,13 +1016,19 @@ $attentionItems
         final total = ((p['total_po_value'] as num?)?.toDouble() ?? 0) +
             ((p['tax_amount'] as num?)?.toDouble() ?? 0);
         final drawn = byPo[number] ?? 0;
-        final cat =
-            _categoryLabel(p['category'] as String? ?? 'other').toLowerCase();
+        final category = (p['category'] as String? ?? 'other').toLowerCase();
+        final cat = _categoryLabel(category).toLowerCase();
+        final days = (p['manpower_days'] as num?)?.toDouble() ?? 0;
+        final dayNote = category != 'manpower'
+            ? ''
+            : days > 0
+                ? ', ${_trimNum(days)} manpower days'
+                : ', manpower days not recorded';
         b.writeln(total <= 0
-            ? '  PO $number ($cat) — value not yet recorded, excluded from '
-                'the totals above'
-            : '  PO $number ($cat) — invoiced ${_inr(drawn)} of ${_inr(total)}, '
-                'balance ${_inr(total - drawn)}');
+            ? '  PO $number ($cat$dayNote) — value not yet recorded, excluded '
+                'from the totals above'
+            : '  PO $number ($cat$dayNote) — invoiced ${_inr(drawn)} of '
+                '${_inr(total)}, balance ${_inr(total - drawn)}');
       }
     }
 
@@ -785,6 +1070,53 @@ $attentionItems
     if (rest.isNotEmpty) parts.insert(0, rest);
     buf.write(parts.isEmpty ? last3 : '${parts.join(',')},$last3');
     return '${neg ? '-' : ''}₹ ${buf.toString()}';
+  }
+
+  /// Day counts are whole in practice but stored as a number; drop the ".0"
+  /// without losing a genuine half-day.
+  static String _trimNum(double v) =>
+      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+
+  /// Manpower worked but not yet invoiced, per PO.
+  ///
+  /// One implementation, because three places report it — the HTML table, the
+  /// plain-text fallback and the attention list — and a manpower figure that
+  /// disagreed with itself between them would be worse than not showing it.
+  ///
+  /// Days billed are inferred from invoiced value at the PO's own day rate;
+  /// days worked come from the muster. Only whole days of gap are reported, so
+  /// rounding noise never surfaces as a spurious liability.
+  static List<({String poNumber, double days, double amountInclGst})>
+      _manpowerPending(
+    List<Map<String, dynamic>> pos,
+    Map<String, double> invoicedExclByPo,
+  ) {
+    final out = <({String poNumber, double days, double amountInclGst})>[];
+    for (final p in pos) {
+      if ((p['category'] as String? ?? '').toLowerCase() != 'manpower') continue;
+      final number = (p['po_number'] as String? ?? '').trim();
+      final base = (p['total_po_value'] as num?)?.toDouble() ?? 0;
+      final contracted = (p['manpower_days'] as num?)?.toDouble() ?? 0;
+      if (base <= 0 || contracted <= 0) continue;
+
+      final rate = base / contracted;
+      final billedDays = (invoicedExclByPo[number] ?? 0) / rate;
+      // Days worked before the muster existed are carried on the PO, so
+      // consumption is the two together.
+      final used = ((p['manpower_days_opening'] as num?)?.toDouble() ?? 0) +
+          ((p['man_days_mustered'] as num?)?.toDouble() ?? 0);
+      final gap = used - billedDays;
+      if (gap < 1) continue;
+
+      // Grossed up on the PO's own tax, which need not match the track rate.
+      final tax = (p['tax_amount'] as num?)?.toDouble() ?? 0;
+      out.add((
+        poNumber: number,
+        days: gap,
+        amountInclGst: gap * rate * (1 + tax / base),
+      ));
+    }
+    return out;
   }
 
   static String _fmtDate(DateTime d) =>
