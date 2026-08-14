@@ -1343,18 +1343,32 @@ class _SchematicTabState extends State<_SchematicTab>
     }
   }
 
-  /// True when a stored config predates the current built-in template: it
-  /// references an instrument that no longer exists (e.g. a dropped tool), or
-  /// it is missing a node the template now defines. Either way its wiring no
-  /// longer reflects the standard setup and should be refreshed.
+  /// Identity of one wire — direction, label, protocol and bus index — so two
+  /// wiring sets can be compared without depending on ordering.
+  static String _wireKey(SchematicConnection c) =>
+      '${c.fromNodeId}>${c.toNodeId}|${c.label}|${c.protocol.name}|${c.busIndex}';
+
+  /// True when a stored config no longer matches the built-in template: it
+  /// references an instrument that no longer exists, is missing a node the
+  /// template defines, or its wiring differs. Comparing the wiring matters —
+  /// a template fix that only rewires (same node ids) would otherwise go
+  /// undetected and leave the stored circuits stale forever.
   bool _isStale(InstrConfig c) {
+    final template = allVehicleProfiles.first;
     final catalogIds = instrumentCatalog.map((i) => i.id).toSet();
-    final orphaned = c.nodes.any(
-        (n) => n.instrumentId != null && !catalogIds.contains(n.instrumentId));
-    final templateIds =
-        allVehicleProfiles.first.schematicNodes.map((n) => n.id).toSet();
+    if (c.nodes.any(
+        (n) => n.instrumentId != null && !catalogIds.contains(n.instrumentId))) {
+      return true;
+    }
+    final templateIds = template.schematicNodes.map((n) => n.id).toSet();
     final configIds = c.nodes.map((n) => n.id).toSet();
-    return orphaned || templateIds.difference(configIds).isNotEmpty;
+    if (templateIds.difference(configIds).isNotEmpty) return true;
+
+    final templateWires =
+        template.schematicConnections.map(_wireKey).toSet();
+    final configWires = c.connections.map(_wireKey).toSet();
+    return templateWires.length != configWires.length ||
+        templateWires.difference(configWires).isNotEmpty;
   }
 
   /// Overwrite a config's nodes + wiring with the built-in template. Nodes are
