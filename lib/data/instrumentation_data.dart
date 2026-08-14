@@ -972,24 +972,29 @@ final VehicleProfile tataBetaProfile = VehicleProfile(
   // Each node sits inside its section's band (see [sectionBands]) so the
   // Calibration / Validation zones never overlap. The schematic's "Tidy"
   // action restores these positions by node id.
+  // y is the node's height in its column (0 = top, 1 = bottom). Two lanes are
+  // kept deliberately apart so wires never cross a node card:
+  //   • 0.08–0.32  the vehicle-CAN run: buses → GL2000 / Raptor
+  //   • 0.70–0.90  the VBOX chain, a self-contained IMU → VBOX → logger path
   schematicNodes: [
-    // ── Base band: vehicle → buses → logger, plus sensing and power ──
+    // ── Vehicle + buses ──
     SchematicNode(id: 'obd_port', label: 'Vehicle OBD', sublabel: 'TATA BETA', nodeType: InstrumentCategory.connector, x: 0.06, y: 0.20),
-    SchematicNode(id: 'can1_bus', label: 'CAN 1 · PT',  sublabel: 'CAN 2.0',  nodeType: InstrumentCategory.connector, x: 0.19, y: 0.07),
+    SchematicNode(id: 'can1_bus', label: 'CAN 1 · PT',  sublabel: 'CAN 2.0',  nodeType: InstrumentCategory.connector, x: 0.19, y: 0.08),
     SchematicNode(id: 'can2_bus', label: 'CAN 2 · Body', sublabel: 'CAN 2.0', nodeType: InstrumentCategory.connector, x: 0.19, y: 0.20),
-    SchematicNode(id: 'can3_bus', label: 'CAN 3 · ADAS', sublabel: 'CAN 2.0', nodeType: InstrumentCategory.connector, x: 0.19, y: 0.33),
-    SchematicNode(id: 'gl2000', label: 'GL2000', sublabel: 'Logger', nodeType: InstrumentCategory.logger, instrumentId: 'gl2000', x: 0.44, y: 0.20),
-    SchematicNode(id: 'imu', label: 'IMU', sublabel: 'Inertial', nodeType: InstrumentCategory.sensor, instrumentId: 'imu', x: 0.30, y: 0.47),
-    SchematicNode(id: 'vbox', label: 'VBOX 3i', sublabel: 'Dual Antenna', nodeType: InstrumentCategory.sensor, instrumentId: 'vbox_3i_dual', x: 0.46, y: 0.47),
-    SchematicNode(id: 'huf', label: 'HUF', sublabel: 'TPMS', nodeType: InstrumentCategory.receiver, instrumentId: 'huf_receiver', x: 0.30, y: 0.33),
-    SchematicNode(id: 'power_bar', label: 'Power Breakout', sublabel: 'Distribution', nodeType: InstrumentCategory.power, instrumentId: 'power_breakout', x: 0.84, y: 0.07),
-    // ── VBOX storage: CANoe stores the VBOX/IMU data stream ──
-    SchematicNode(id: 'pc_canoe', label: 'CANoe', sublabel: 'Alt logger / PC', nodeType: InstrumentCategory.software, instrumentId: 'canoe', x: 0.64, y: 0.47),
-    // ── Calibration band: Kvaser flashes the Raptor ECU ──
-    SchematicNode(id: 'kvaser', label: 'Kvaser', sublabel: 'ECU Flashing', nodeType: InstrumentCategory.interfaceDevice, instrumentId: 'kvaser', x: 0.46, y: 0.66),
-    // ── Validation band ──
-    SchematicNode(id: 'raptor', label: 'Raptor CAL', sublabel: 'Models', nodeType: InstrumentCategory.ecu, instrumentId: 'raptor_cal', x: 0.46, y: 0.89),
-    SchematicNode(id: 'display', label: 'Display', sublabel: 'UI/UX', nodeType: InstrumentCategory.display, instrumentId: 'display_uiux', x: 0.74, y: 0.89),
+    SchematicNode(id: 'can3_bus', label: 'CAN 3 · ADAS', sublabel: 'CAN 2.0', nodeType: InstrumentCategory.connector, x: 0.19, y: 0.32),
+    // ── Loggers / ECU — kept in the vehicle-CAN lane ──
+    SchematicNode(id: 'gl2000', label: 'GL2000', sublabel: 'Logger', nodeType: InstrumentCategory.logger, instrumentId: 'gl2000', x: 0.44, y: 0.12),
+    SchematicNode(id: 'raptor', label: 'Raptor CAL', sublabel: 'Models', nodeType: InstrumentCategory.ecu, instrumentId: 'raptor_cal', x: 0.46, y: 0.30),
+    SchematicNode(id: 'kvaser', label: 'Kvaser', sublabel: 'ECU Flashing', nodeType: InstrumentCategory.interfaceDevice, instrumentId: 'kvaser', x: 0.46, y: 0.62),
+    // ── Middle: TPMS + power, clear of the CAN lane ──
+    SchematicNode(id: 'huf', label: 'HUF', sublabel: 'TPMS', nodeType: InstrumentCategory.receiver, instrumentId: 'huf_receiver', x: 0.30, y: 0.44),
+    SchematicNode(id: 'power_bar', label: 'Power Breakout', sublabel: 'Distribution', nodeType: InstrumentCategory.power, instrumentId: 'power_breakout', x: 0.30, y: 0.56),
+    // ── VBOX chain — a completely separate entity, in its own lane ──
+    SchematicNode(id: 'imu', label: 'IMU', sublabel: 'Inertial', nodeType: InstrumentCategory.sensor, instrumentId: 'imu', x: 0.30, y: 0.72),
+    SchematicNode(id: 'vbox', label: 'VBOX 3i', sublabel: 'Dual Antenna', nodeType: InstrumentCategory.sensor, instrumentId: 'vbox_3i_dual', x: 0.30, y: 0.88),
+    // ── Software / display ──
+    SchematicNode(id: 'pc_canoe', label: 'CANoe', sublabel: 'Alt logger / PC', nodeType: InstrumentCategory.software, instrumentId: 'canoe', x: 0.64, y: 0.12),
+    SchematicNode(id: 'display', label: 'Display', sublabel: 'UI/UX', nodeType: InstrumentCategory.display, instrumentId: 'display_uiux', x: 0.74, y: 0.44),
   ],
   schematicConnections: [
     // OBD → buses

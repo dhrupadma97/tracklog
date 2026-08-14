@@ -1175,8 +1175,12 @@ class _SchematicTabState extends State<_SchematicTab>
       final k = list.length;
       final cx = colW * (col + 0.5);
       for (var i = 0; i < k; i++) {
-        centers[list[i].id] =
-            Offset(cx, topPad + usableH * (i + 0.5) / k);
+        final n = list[i];
+        // Honour the node's own height so a column can keep separate lanes —
+        // the vehicle-CAN run stays clear of the VBOX chain, instead of every
+        // column being spread evenly and dropping a node onto a passing wire.
+        final frac = (n.y > 0.0 && n.y < 1.0) ? n.y : (i + 0.5) / k;
+        centers[n.id] = Offset(cx, topPad + usableH * frac);
       }
     });
     return centers;
