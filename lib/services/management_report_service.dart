@@ -1,8 +1,18 @@
 import 'billing_baseline.dart';
 import 'invoice_service.dart';
 import 'muster_service.dart';
+import 'project_catalog.dart';
 import 'resource_service.dart';
 import 'supabase_service.dart';
+
+/// One programme's contribution to the overall NATRAX position.
+typedef ProgrammeSpend = ({
+  Programme programme,
+  double invoiced,
+  double unbilled,
+  double hours,
+  int sessions,
+});
 
 /// Builds the as-on-date management update: PO position, what NATRAX has
 /// actually invoiced, what is computed but unbilled, track utilisation and
@@ -73,12 +83,20 @@ class ManagementReportService {
         0, (s, p) => s + ((p['total_po_value'] as num?)?.toDouble() ?? 0));
 
     // ── Invoices actually raised ─────────────────────────────────────────
-    final invoices =
-        await InvoiceService.instance.list(projectName: projectName);
+    // Every programme, not only the active one. The POs are a shared pool
+    // drawn on by whichever vehicle is on test, so a per-project view of them
+    // was always a partial picture.
+    final invoices = await InvoiceService.instance.list();
     invoices.sort((a, b) => (a.periodMonth ?? '').compareTo(b.periodMonth ?? ''));
     final invoicedTotal = invoices.fold<double>(0, (s, i) => s + i.totalAmount);
     final invoicedTotalExcl =
         invoices.fold<double>(0, (s, i) => s + i.amountExclGst);
+
+    final invoicedByProgramme = <String, double>{};
+    for (final i in invoices) {
+      final k = ProjectCatalog.normaliseKey(i.projectName);
+      invoicedByProgramme[k] = (invoicedByProgramme[k] ?? 0) + i.totalAmount;
+    }
     // Only track and workshop invoices can be measured against the monthly
     // baseline — it describes nothing else. A manpower invoice in the same
     // month is real spend, but comparing it here produced a nonsense variance
@@ -90,12 +108,17 @@ class ManagementReportService {
         .where((p) => p.isNotEmpty)
         .toSet();
 
-    final invoicedMonths = <String, double>{};
+    // Keyed programme-then-month. Flat month keys would let an invoice for one
+    // programme mark another programme's month as billed the moment two run
+    // concurrently.
+    final invoicedMonths = <String, Map<String, double>>{};
     for (final i in invoices) {
       final m = i.periodMonth ?? '';
       if (m.isEmpty) continue;
       if (!baselinePos.contains((i.poNumber ?? '').trim())) continue;
-      invoicedMonths[m] = (invoicedMonths[m] ?? 0) + i.totalAmount;
+      final k = ProjectCatalog.normaliseKey(i.projectName);
+      final byMonth = invoicedMonths[k] ??= {};
+      byMonth[m] = (byMonth[m] ?? 0) + i.totalAmount;
     }
 
     // ── Track utilisation and live session cost ──────────────────────────
@@ -119,14 +142,15 @@ class ManagementReportService {
     }
 
     final trackHours = <String, double>{};
-    final liveCostByMonth = <String, double>{};
+    // Programme → month → cost, so a computed month is priced from that
+    // programme's own sessions rather than everyone's.
+    final liveCost = <String, Map<String, double>>{};
+    final hoursByProgramme = <String, double>{};
+    final sessionsByProgramme = <String, int>{};
     var totalHours = 0.0;
     var sessionCount = 0;
     for (final s in sessionRows as List) {
-      final raw = (s['project_name'] as String?)?.trim().toLowerCase() ?? '';
-      final normalised =
-          (raw.isEmpty || raw == 'general') ? 'mahindra ev poc' : raw;
-      if (normalised != projectName.toLowerCase()) continue;
+      final key = ProjectCatalog.normaliseKey(s['project_name'] as String?);
       final hrs = (s['duration_minutes'] as int? ?? 0) / 60.0;
       final code = (s['track_name'] as String?)?.trim().isNotEmpty == true
           ? s['track_name'] as String
@@ -134,13 +158,16 @@ class ManagementReportService {
       trackHours[code] = (trackHours[code] ?? 0) + hrs;
       totalHours += hrs;
       sessionCount++;
+      hoursByProgramme[key] = (hoursByProgramme[key] ?? 0) + hrs;
+      sessionsByProgramme[key] = (sessionsByProgramme[key] ?? 0) + 1;
 
       final startedAt = DateTime.tryParse(s['started_at'] as String? ?? '');
       if (startedAt == null) continue;
-      final key = '${startedAt.year}-'
+      final month = '${startedAt.year}-'
           '${startedAt.month.toString().padLeft(2, '0')}';
       final sid = s['id'] as String?;
-      liveCostByMonth[key] = (liveCostByMonth[key] ?? 0) +
+      final byMonth = liveCost[key] ??= {};
+      byMonth[month] = (byMonth[month] ?? 0) +
           ((s['total_cost'] as num?)?.toDouble() ?? 0) +
           (sid == null ? 0 : (svcBySession[sid] ?? 0));
     }
@@ -152,21 +179,40 @@ class ManagementReportService {
     // MonthBaseline.exclGst states that callers must add the session cost.
     // This one did not, so May reported 47,200: the 40,000 rental grossed up,
     // with every hour actually logged that month missing from it.
-    final baseline = BillingBaseline.forProject(projectName);
-    final unbilled = baseline
-        .where((m) => !invoicedMonths.containsKey(m.month))
-        .map((m) => m.isTrackComputed
+    final baseline = <MonthBaseline>[
+      for (final prog in ProjectCatalog.all)
+        ...BillingBaseline.forProject(prog.key)
+    ]..sort((a, b) => a.month.compareTo(b.month));
+
+    final unbilled = <MonthBaseline>[];
+    final unbilledByProgramme = <String, double>{};
+    for (final prog in ProjectCatalog.all) {
+      final billedMonths = invoicedMonths[prog.key] ?? const <String, double>{};
+      final live = liveCost[prog.key] ?? const <String, double>{};
+      for (final m in BillingBaseline.forProject(prog.key)) {
+        if (billedMonths.containsKey(m.month)) continue;
+        final resolved = m.isTrackComputed
             ? MonthBaseline(
                 month: m.month,
-                trackAndAccessories: liveCostByMonth[m.month] ?? 0,
+                trackAndAccessories: live[m.month] ?? 0,
                 workshopRental: m.workshopRental)
-            : m)
-        .toList();
+            : m;
+        unbilled.add(resolved);
+        unbilledByProgramme[prog.key] =
+            (unbilledByProgramme[prog.key] ?? 0) + resolved.inclGst;
+      }
+    }
+    unbilled.sort((a, b) => a.month.compareTo(b.month));
     final unbilledTotal = unbilled.fold<double>(0, (s, m) => s + m.inclGst);
 
-    final balance = poTotal - invoicedTotal;
-    final balanceExcl = poTotalExcl - invoicedTotalExcl;
-    final projected = balance - unbilledTotal;
+    // The balance is net of completed work. That spend is awaiting a NATRAX
+    // invoice rather than in doubt, so leaving it out would overstate what is
+    // genuinely still available to book.
+    final balance = poTotal - invoicedTotal - unbilledTotal;
+    final balanceExcl = poTotalExcl -
+        invoicedTotalExcl -
+        (unbilledTotal / (1 + BillingBaseline.gstRate));
+    final projected = balance;
     final utilisationPct = poTotal <= 0 ? 0.0 : invoicedTotal / poTotal;
     final projectedPct =
         poTotal <= 0 ? 0.0 : (invoicedTotal + unbilledTotal) / poTotal;
@@ -187,6 +233,20 @@ class ManagementReportService {
       resources = [];
     }
 
+    // ── Per programme ────────────────────────────────────────────────────
+    // Closed programmes are reported alongside running ones. Their spend is
+    // real, it drew on the same PO pool, and dropping them would make the
+    // totals above impossible to tie back to anything.
+    final programmes = ProjectCatalog.all
+        .map((p) => (
+              programme: p,
+              invoiced: invoicedByProgramme[p.key] ?? 0.0,
+              unbilled: unbilledByProgramme[p.key] ?? 0.0,
+              hours: hoursByProgramme[p.key] ?? 0.0,
+              sessions: sessionsByProgramme[p.key] ?? 0,
+            ))
+        .toList();
+
     // ── Points needing attention ─────────────────────────────────────────
     final attention = <String>[];
 
@@ -200,16 +260,21 @@ class ManagementReportService {
           'NATRAX finance so the PO position reflects committed spend.');
     }
 
-    for (final m in baseline) {
-      final billed = invoicedMonths[m.month];
-      if (billed == null) continue;
-      final diff = billed - m.inclGst;
-      if (diff.abs() < 100) continue;
-      attention.add(
-          '<b>${_monthLabel(m.month)} track billing is ${_inr(diff.abs())} '
-          '${diff > 0 ? 'above' : 'below'} our record.</b> Invoiced '
-          '${_inr(billed)} against our computed ${_inr(m.inclGst)}. '
-          'To be reconciled.');
+    // Variance is per programme: a month is only comparable against the
+    // baseline of the programme that was actually on test.
+    for (final prog in ProjectCatalog.all) {
+      final billedMonths = invoicedMonths[prog.key] ?? const <String, double>{};
+      for (final m in BillingBaseline.forProject(prog.key)) {
+        final billed = billedMonths[m.month];
+        if (billed == null) continue;
+        final diff = billed - m.inclGst;
+        if (diff.abs() < 100) continue;
+        attention.add(
+            '<b>${_monthLabel(m.month)} track billing on ${prog.displayName} '
+            'is ${_inr(diff.abs())} ${diff > 0 ? 'above' : 'below'} our '
+            'record.</b> Invoiced ${_inr(billed)} against our computed '
+            '${_inr(m.inclGst)}. To be reconciled.');
+      }
     }
 
     if (projectedPct >= 0.85) {
@@ -296,6 +361,7 @@ class ManagementReportService {
     final html = _html(
       projectName: projectName,
       vehicleName: vehicleName,
+      programmes: programmes,
       recipientName: recipientName,
       asOn: date,
       pos: pos,
@@ -409,6 +475,7 @@ class ManagementReportService {
   String _html({
     required String projectName,
     required String? vehicleName,
+    required List<ProgrammeSpend> programmes,
     required String recipientName,
     required DateTime asOn,
     required List<Map<String, dynamic>> pos,
@@ -795,9 +862,10 @@ ${allocated.map((r) {
 <!-- Header -->
 <tr><td bgcolor="#0a1f44" style="padding:22px 26px;">
   <div style="font-size:18px;font-weight:700;color:#ffffff;letter-spacing:.2px;">
-    NATRAX Proving Ground &mdash; SightLine Validation</div>
+    NATRAX Proving Ground &mdash; Overall PoC Testing Status</div>
   <div style="font-size:12px;color:#9fb0cc;padding-top:4px;">
-    Goodyear SightLine tire intelligence validation, Indore</div>
+    Goodyear SightLine tire intelligence validation, Indore &mdash;
+    all programmes</div>
   <div style="font-size:12px;color:#ffffff;padding-top:10px;font-weight:600;">
     PO &amp; expense status as on ${_fmtDate(asOn)}</div>
 </td></tr>
@@ -807,14 +875,13 @@ ${allocated.map((r) {
 <tr><td style="padding:20px 26px 0;">
   <div style="font-size:14px;color:#1f2733;">Hi $recipientName,</div>
   <div style="font-size:13px;color:#3d4757;line-height:1.65;padding-top:9px;">
-    Here is the PO and expense position for
-    ${vehicleName == null || vehicleName.isEmpty ? projectName : '$projectName ($vehicleName)'}
-    at NATRAX as on ${_fmtDate(asOn)}.
+    Here is the overall PoC testing position at NATRAX as on
+    ${_fmtDate(asOn)}, across all ${programmes.length} programmes.
     ${_inr(invoicedTotal)} has been invoiced against ${_inr(poTotal)} of funded
-    purchase orders, leaving <b>${_inr(balance)}</b> available to book.${unbilledTotal > 0 ? '''
-    A further ${_inr(unbilledTotal)} of completed work is not yet invoiced and
-    is shown separately — it does not reduce the balance until NATRAX raises
-    it.''' : ''}${attention.isEmpty ? '' : '''
+    purchase orders.${unbilledTotal > 0 ? '''
+    A further ${_inr(unbilledTotal)} of completed work is awaiting a NATRAX
+    invoice and is already deducted below, so it will settle in due course.''' : ''}
+    That leaves <b>${_inr(balance)}</b> genuinely available to book.${attention.isEmpty ? '' : '''
     ${attention.length == 1 ? 'One point needs' : '${attention.length} points need'}
     attention; these are set out at the end.'''}
   </div>
@@ -855,6 +922,44 @@ $orphanRow
 </table>''', note: "Each invoice is attributed to the PO it names (Buyer's Order "
         'No.), so track booking and manpower draw on their own POs.')}
 
+${section('By programme', '''
+<table cellpadding="0" cellspacing="0" border="0" width="100%"
+       style="border-collapse:collapse;">
+<tr><th $th>Programme</th><th $th>Status</th>
+<th $th style="text-align:right">Invoiced</th>
+<th $th style="text-align:right">Awaiting invoice</th>
+<th $th style="text-align:right">Total spend</th></tr>
+${programmes.map((e) {
+      final total = e.invoiced + e.unbilled;
+      final closed = e.programme.status.isClosed;
+      final chip = closed
+          ? '<span style="color:#6b7490;">Closed</span>'
+          : e.programme.status == ProgrammeStatus.active
+              ? '<span style="color:#1a7f37;font-weight:600;">Active</span>'
+              : '<span style="color:#b26a00;">Upcoming</span>';
+      return '<tr><td $td>${e.programme.displayName}'
+          '<br><span style="color:#6b7490;font-size:11px;">'
+          '${e.programme.vehicle}'
+          '${e.sessions > 0 ? ' · ${e.sessions} sessions, ${e.hours.toStringAsFixed(1)} h' : ''}'
+          '</span></td>'
+          '<td $td style="font-size:12px;">$chip</td>'
+          '<td $tdr>${_inr(e.invoiced)}</td>'
+          '<td $tdr>${e.unbilled > 0 ? _inr(e.unbilled) : '&mdash;'}</td>'
+          '<td $tdr><b>${total > 0 ? _inr(total) : '&mdash;'}</b></td></tr>';
+    }).join()}
+<tr><td $td colspan="2" style="padding:8px 10px;background:#f6f8fb;">
+  <b>All programmes</b></td>
+<td $tdr style="padding:8px 10px;background:#f6f8fb;">
+  <b>${_inr(invoicedTotal)}</b></td>
+<td $tdr style="padding:8px 10px;background:#f6f8fb;">
+  <b>${_inr(unbilledTotal)}</b></td>
+<td $tdr style="padding:8px 10px;background:#f6f8fb;">
+  <b>${_inr(invoicedTotal + unbilledTotal)}</b></td></tr>
+</table>''', note: 'A closed programme still carries spend and still drew on the '
+        'shared PO pool, so it is reported rather than dropped. Purchase '
+        'orders are not split by programme — track booking runs back to back '
+        'against whatever funding is left.')}
+
 ${section('Invoices raised', '''
 <table cellpadding="0" cellspacing="0" border="0" width="100%"
        style="border-collapse:collapse;">
@@ -893,9 +998,10 @@ $manpowerPendingRows
 <td $tdr style="padding:8px 10px;background:#f6f8fb;">
   <b>${_inr(unbilledTotal + manpowerPending)}</b></td></tr>
 </table>''', note: 'Split by stream because the two are chased separately — '
-        'track and workshop from NATRAX, manpower from MOICARS. None of it is '
-        'deducted from the available balance above: a PO is drawn down by '
-        'invoices, so this becomes drawdown only when the invoice is raised.')}
+        'track and workshop from NATRAX, manpower from MOICARS. This work is '
+        'done and the invoices are expected in due course, so it is already '
+        'deducted from the available balance above rather than left to land as '
+        'a surprise.')}
 
 ${section('Workshop rental', '''
 <table cellpadding="0" cellspacing="0" border="0" width="100%"
@@ -1003,8 +1109,8 @@ $attentionItems
         ..writeln('  ${_pad('Total')}${_inr(unbilledTotal + manpowerPending)}')
         ..writeln('  Chased separately — track and workshop from NATRAX, '
             'manpower from MOICARS.')
-        ..writeln('  None of it is deducted from the balance above; it draws '
-            'down only when invoiced.');
+        ..writeln('  Already deducted from the balance above; the invoices are '
+            'expected in due course.');
     }
 
     if (pos.isNotEmpty) {
