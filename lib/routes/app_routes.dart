@@ -20,6 +20,7 @@ import '../presentation/admin_screen/admin_screen.dart';
 import '../presentation/project_updates_screen/project_updates_screen.dart';
 import '../presentation/tyre_trends_screen/tyre_trends_screen.dart';
 import '../presentation/instrumentation_screen/instrumentation_screen.dart';
+import '../presentation/muster_screen/muster_screen.dart';
 import '../presentation/test_cases_screen/test_cases_screen.dart';
 
 class AppRoutes {
@@ -42,6 +43,7 @@ class AppRoutes {
   static const String tyreTrends = '/tyre-trends-screen';
   static const String instrumentation = '/instrumentation-screen';
   static const String testCases = '/test-cases';
+  static const String muster = '/muster-screen';
 }
 
 
@@ -239,6 +241,15 @@ final GoRouter appRouter = GoRouter(
             GoRoute(
               path: AppRoutes.resources,
               builder: (context, state) => const ResourcesScreen(),
+            ),
+          ],
+        ),
+        // Branch 13: Manpower muster
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: AppRoutes.muster,
+              builder: (context, state) => const MusterScreen(),
             ),
           ],
         ),

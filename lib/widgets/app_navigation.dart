@@ -128,6 +128,15 @@ class _AppNavigationState extends State<AppNavigation>
       branchIndex: 12,
     ));
 
+    // 11. Muster — daily contract manpower headcount. Filled in from site, so
+    // it stays on mobile as well as web.
+    list.add(const _TabSpec(
+      icon: 'how_to_reg_outlined',
+      selectedIcon: 'how_to_reg',
+      label: 'Muster',
+      branchIndex: 13,
+    ));
+
     return list;
   }
 
