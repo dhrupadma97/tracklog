@@ -64,10 +64,24 @@ class ManagementReportService {
     final invoicedTotal = invoices.fold<double>(0, (s, i) => s + i.totalAmount);
     final invoicedTotalExcl =
         invoices.fold<double>(0, (s, i) => s + i.amountExclGst);
-    final invoicedMonths = {
-      for (final i in invoices)
-        if ((i.periodMonth ?? '').isNotEmpty) i.periodMonth!: i.totalAmount
-    };
+    // Only track and workshop invoices can be measured against the monthly
+    // baseline — it describes nothing else. A manpower invoice in the same
+    // month is real spend, but comparing it here produced a nonsense variance
+    // ("May billed 3,86,260 below our record" when the 59,472 was manpower).
+    final baselinePos = pos
+        .where((p) => BillingBaseline.baselineCategories
+            .contains((p['category'] as String? ?? '').toLowerCase()))
+        .map((p) => (p['po_number'] as String? ?? '').trim())
+        .where((p) => p.isNotEmpty)
+        .toSet();
+
+    final invoicedMonths = <String, double>{};
+    for (final i in invoices) {
+      final m = i.periodMonth ?? '';
+      if (m.isEmpty) continue;
+      if (!baselinePos.contains((i.poNumber ?? '').trim())) continue;
+      invoicedMonths[m] = (invoicedMonths[m] ?? 0) + i.totalAmount;
+    }
 
     // ── Computed but unbilled ────────────────────────────────────────────
     final baseline = BillingBaseline.forProject(projectName);
@@ -142,8 +156,8 @@ class ManagementReportService {
       final diff = billed - m.inclGst;
       if (diff.abs() < 100) continue;
       attention.add(
-          '<b>${_monthLabel(m.month)} billed ${_inr(diff.abs())} '
-          '${diff > 0 ? 'above' : 'below'} our record.</b> NATRAX invoiced '
+          '<b>${_monthLabel(m.month)} track billing is ${_inr(diff.abs())} '
+          '${diff > 0 ? 'above' : 'below'} our record.</b> Invoiced '
           '${_inr(billed)} against our computed ${_inr(m.inclGst)}. '
           'To be reconciled.');
     }
@@ -396,9 +410,11 @@ class ManagementReportService {
       final pct = total <= 0 ? 0 : (drawn / total * 100);
       final status = (p['po_status'] as String? ?? '').toLowerCase();
       final spent = status == 'used' || status == 'closed';
+      final issuer = (p['issued_by'] as String? ?? '').trim();
       final head = '<td $td>PO $number'
           '${status == 'upcoming' ? ' <span style="color:#b26a00;font-size:10px;">upcoming</span>' : ''}'
           '${spent ? ' <span style="color:#6b7490;font-size:10px;">consumed</span>' : ''}'
+          '${issuer.isEmpty ? '' : ' <span style="color:#3d4757;font-size:10px;font-weight:600;">via $issuer</span>'}'
           '<br><span style="color:#6b7490;font-size:11px;">'
           '${_truncate(p['description'] as String? ?? '', 80)}</span></td>';
 

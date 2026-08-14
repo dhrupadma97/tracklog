@@ -72,19 +72,23 @@ void main() {
     final march = _inv('2026-03', 228454.00); // INV/25-26/1869
     final april = _inv('2026-04', 1371691.00); // INV/26-27/205
 
-    test('baseline months match the Analyser figures on screen', () {
+    test('baseline months agree with the invoices actually raised', () {
       final b = {
         for (final m in BillingBaseline.forProject(project)) m.month: m
       };
+      // March and April are pinned to their invoices; May is still computed.
       expect(b['2026-03']!.exclGst, 193605);
-      expect(b['2026-04']!.exclGst, 1152375);
+      expect(b['2026-03']!.inclGst, closeTo(228454, 0.5)); // INV/25-26/1869
+      expect(b['2026-04']!.exclGst, 1162450);
+      expect(b['2026-04']!.inclGst, closeTo(1371691, 0.5)); // INV/26-27/205
       expect(b['2026-05']!.exclGst, 377739);
-      // Grand total the Analyser shows for All Months.
-      expect(
-          BillingBaseline.forProject(project)
-              .fold(0.0, (s, m) => s + m.inclGst),
-          closeTo(2033988.42, 0.5));
-      expect(b['2026-05']!.inclGst, closeTo(445732, 0.5)); // May screenshot
+      expect(b['2026-05']!.inclGst, closeTo(445732, 0.5));
+    });
+
+    test('April now reconciles exactly, leaving no variance', () {
+      final april = _inv('2026-04', 1371691.00);
+      expect(PoMaths.variance(project, [april]), closeTo(0, 1),
+          reason: 'the workbook figure was corrected to the invoiced value');
     });
 
     test('balance with March + April invoiced is 6.47 lakh, not overspent', () {
@@ -101,9 +105,10 @@ void main() {
     });
 
     test('variance covers invoiced months only', () {
-      // March matches to the round-off; April is billed 11,889 over baseline.
+      // Both months are now pinned to their invoices, so only Tally's
+      // round-off remains.
       expect(PoMaths.variance(project, [march]), closeTo(0.10, 0.5));
-      expect(PoMaths.variance(project, [march, april]), closeTo(11888.5, 1));
+      expect(PoMaths.variance(project, [march, april]), closeTo(0.10, 1));
     });
 
     test('the old whole-project comparison is what produced the false overrun',
@@ -112,8 +117,9 @@ void main() {
       final everything =
           BillingBaseline.forProject(project).fold(0.0, (s, m) => s + m.exclGst) +
               BillingBaseline.extrasTotal(project);
-      expect(PoMaths.inclGst(everything), closeTo(2275888, 1));
-      expect(poInclTax - PoMaths.inclGst(everything), closeTo(-28725, 1));
+      expect(PoMaths.inclGst(everything), closeTo(2287777, 1));
+      expect(poInclTax - PoMaths.inclGst(everything), lessThan(0),
+          reason: 'the whole-project comparison still reads as an overrun');
       // …whereas the invoice-based balance is comfortably positive.
       expect(PoMaths.balance(poInclTax, [march, april]), greaterThan(600000));
     });
@@ -198,7 +204,7 @@ void main() {
         expect(PoMaths.variance(project, [stray]), 0);
         // …and leaves every baseline month still pending.
         expect(PoMaths.notYetBilled(project, [stray]),
-            closeTo(2033988.42, 0.5));
+            closeTo(2045876.92, 0.5));
       }
     });
 

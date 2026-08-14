@@ -305,12 +305,26 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
         .toList();
   }
 
-  /// Invoiced totals keyed by billing period.
+  /// PO numbers whose spend the monthly baseline actually describes.
+  ///
+  /// The baseline is track hire, accessories and workshop. A manpower invoice
+  /// billed in the same month is real spend, but comparing it against a track
+  /// baseline produces a nonsense variance.
+  Set<String> get _baselinePoNumbers => _poList
+      .where((p) => BillingBaseline.baselineCategories
+          .contains((p['category'] as String? ?? '').toLowerCase()))
+      .map((p) => (p['po_number'] as String? ?? '').trim())
+      .where((p) => p.isNotEmpty)
+      .toSet();
+
+  /// Track-and-workshop invoiced totals keyed by billing period.
   Map<String, double> get _invoicedByMonth {
+    final baselinePos = _baselinePoNumbers;
     final map = <String, double>{};
     for (final inv in _invoices) {
       final m = inv.periodMonth;
       if (m == null || m.isEmpty) continue;
+      if (!baselinePos.contains((inv.poNumber ?? '').trim())) continue;
       map[m] = (map[m] ?? 0) + inv.totalAmount;
     }
     return map;
@@ -1048,16 +1062,40 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                 ],
               ),
               const SizedBox(height: 10),
-              Text(
-                po['vendor_name'] as String? ?? '',
-                style: GoogleFonts.spaceGrotesk(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
+              Row(children: [
+                Expanded(
+                  child: Text(
+                    po['vendor_name'] as String? ?? '',
+                    style: GoogleFonts.spaceGrotesk(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
                 ),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-              ),
+                // Which Goodyear entity raised it — GTCI and SATL are
+                // different buying entities, not a label.
+                if ((po['issued_by'] as String? ?? '').isNotEmpty)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withAlpha(14),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.white.withAlpha(38)),
+                    ),
+                    child: Text(
+                      'via ${po['issued_by']}',
+                      style: GoogleFonts.spaceGrotesk(
+                        color: const Color(0xFF8A94B0),
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+              ]),
               const SizedBox(height: 4),
               Text(
                 po['description'] as String? ?? '',

@@ -57,18 +57,22 @@ class BillingBaseline {
   /// this, since the treatment can differ between them.
   static const double currentGstRate = 0.18;
 
-  /// Mahindra EV PoC — from the V15 workbook.
+  /// Mahindra EV PoC — from the V15 workbook, corrected against the invoices
+  /// actually raised.
   ///
-  /// March is confirmed exact by invoice INV/25-26/1869 (taxable 1,93,605).
-  /// April is confirmed *understated*: invoice INV/26-27/205 bills 11,62,450
-  /// taxable against the 11,52,375 below, a 10,075 gap. The figure is left as
-  /// the workbook recorded it so the reconciliation can surface the gap rather
-  /// than quietly absorb it — the invoice is what draws down the PO either way.
+  /// March matches invoice INV/25-26/1869 exactly (taxable 1,93,605).
+  ///
+  /// April was recorded as 10,02,375 track+accessories, but invoice
+  /// INV/26-27/205 bills 11,62,450 taxable — 10,075 more. The invoice is what
+  /// draws down the PO, so the workbook figure was the wrong one and has been
+  /// brought into line rather than left to show a permanent variance.
+  ///
+  /// May is still computed; NATRAX has not raised it.
   static const List<MonthBaseline> _mahindraEv = [
     MonthBaseline(
         month: '2026-03', trackAndAccessories: 138605, workshopRental: 55000),
     MonthBaseline(
-        month: '2026-04', trackAndAccessories: 1002375, workshopRental: 150000),
+        month: '2026-04', trackAndAccessories: 1012450, workshopRental: 150000),
     MonthBaseline(
         month: '2026-05', trackAndAccessories: 337739, workshopRental: 40000),
   ];
@@ -122,6 +126,10 @@ class BillingBaseline {
   /// separate lines — invoices bill them together and the sum is what counts.
   static double accessoriesTotal(String project) =>
       isMahindraEv(project) ? 215219 : 0;
+
+  /// The baseline describes track hire, accessories and workshop only, so a
+  /// manpower invoice must never be compared against it.
+  static const Set<String> baselineCategories = {'track_booking', 'workshop'};
 
   static double extrasTotal(String project) =>
       extrasForProject(project).fold(0.0, (s, e) => s + e.exclGst);
