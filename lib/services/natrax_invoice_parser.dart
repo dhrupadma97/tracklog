@@ -102,7 +102,7 @@ class NatraxInvoiceParser {
         valuePattern: RegExp(r'.+'));
 
     final totalIndex = _grandTotalIndex(lines);
-    final totalAmount = totalIndex == null ? null : _money(_afterTotal(lines[totalIndex]));
+    final totalAmount = totalIndex == null ? null : _totalAt(lines, totalIndex);
     if (totalAmount == null) missing.add('invoice total');
 
     // Everything below the grand total is the HSN/SAC summary table, which
@@ -137,13 +137,48 @@ class NatraxInvoiceParser {
       }
     }
 
+    // Some layouts put the taxable value far from the tax line — a multi-page
+    // invoice carries its line items on page one and the tax on page two. When
+    // it cannot be found adjacently, look for the figure that reconciles with
+    // the tax actually printed. This verifies rather than assumes: a candidate
+    // is only accepted when candidate × rate lands on the printed tax.
+    if (amountExclGst == null && gstAmount != null && gstAmount > 0) {
+      for (final rate in const [0.18, 0.12, 0.05, 0.28]) {
+        final wanted = gstAmount / rate;
+        for (final line in body) {
+          final v = _money(line);
+          if (v == null || v <= 0) continue;
+          if ((v - wanted).abs() <= 1.0) {
+            amountExclGst = v;
+            break;
+          }
+        }
+        if (amountExclGst != null) break;
+      }
+    }
+
+    // With taxable and tax both known the total follows, even when the
+    // document never prints it as its own figure.
+    var derivedTotal = totalAmount;
+    if (derivedTotal == null && amountExclGst != null && gstAmount != null) {
+      derivedTotal = amountExclGst + gstAmount;
+      missing.remove('invoice total');
+    }
+
     if (gstAmount == null) missing.add('GST amount');
 
     if (amountExclGst == null && totalAmount != null && gstAmount != null) {
       // Derive it rather than fail — the two printed figures pin it down.
-      amountExclGst = totalAmount - gstAmount;
+      final derived = totalAmount - gstAmount;
+      // Unless they do not: tax exceeding the total means one of the two was
+      // misread, and a negative taxable value is never a real reading.
+      if (derived >= 0) amountExclGst = derived;
     }
-    if (amountExclGst == null) missing.add('taxable value');
+    if (amountExclGst == null) {
+      missing.add('taxable value');
+    } else {
+      missing.remove('taxable value');
+    }
 
     return ParsedInvoice(
       invoiceNumber: invoiceNumber,
@@ -152,7 +187,7 @@ class NatraxInvoiceParser {
       poNumber: poNumber,
       amountExclGst: amountExclGst,
       gstAmount: gstAmount,
-      totalAmount: totalAmount,
+      totalAmount: derivedTotal,
       testingPeriod: testingPeriod?.trim(),
       missingFields: missing,
       rawText: text,
@@ -237,25 +272,35 @@ class NatraxInvoiceParser {
 
   /// Index of the `Total 13,71,691.00` line — the grand total including tax,
   /// and the boundary between the invoice body and the HSN summary table.
+  /// Index of the grand-total line, and the boundary between the invoice body
+  /// and the HSN summary table.
+  ///
+  /// Tally prints `Total 13,71,691.00` on one line; other layouts put a bare
+  /// `Total` above its figure. Both have to resolve to the same place.
   static int? _grandTotalIndex(List<String> lines) {
     for (var i = 0; i < lines.length; i++) {
-      final m = RegExp(r'^\s*Total\s+([\d,]+\.?\d*)\s*$', caseSensitive: false)
-          .firstMatch(lines[i]);
-      if (m != null) {
-        final v = _money(m.group(1)!);
-        if (v != null && v > 0) return i;
+      if (!RegExp(r'^\s*Total\b', caseSensitive: false).hasMatch(lines[i])) {
+        continue;
       }
+      if (_totalAt(lines, i) != null) return i;
     }
     return null;
   }
 
-  /// The figure printed after the word `Total` on the grand-total line.
-  static String _afterTotal(String line) =>
-      RegExp(r'^\s*Total\s+(.*)$', caseSensitive: false)
-          .firstMatch(line)
-          ?.group(1)
-          ?.trim() ??
-      '';
+  /// The grand total belonging to the `Total` line at [i], whether printed
+  /// beside the word or on one of the lines below it.
+  static double? _totalAt(List<String> lines, int i) {
+    final inline =
+        RegExp(r'^\s*Total\s+(.*)$', caseSensitive: false).firstMatch(lines[i]);
+    final same = _money(inline?.group(1)?.trim() ?? '');
+    if (same != null && same > 0) return same;
+
+    for (var j = i + 1; j < lines.length && j <= i + 2; j++) {
+      final v = _money(lines[j]);
+      if (v != null && v > 0) return v;
+    }
+    return null;
+  }
 
   /// Sums the tax lines — IGST for inter-state (NATRAX MP → Goodyear MH), or
   /// CGST + SGST should an intra-state invoice ever arrive.
@@ -266,9 +311,12 @@ class NatraxInvoiceParser {
 
     for (var i = 0; i < lines.length; i++) {
       final line = lines[i];
-      final igstMatch =
-          RegExp(r'^\s*IGST\s*([\d,]+\.?\d*)?\s*$', caseSensitive: false)
-              .firstMatch(line);
+      // The label may carry its rate — "IGST @18%" — so anything between the
+      // tax name and the figure is skipped.
+      final igstMatch = RegExp(
+              r'^\s*IGST\s*(?:@?\s*[\d.]+\s*%)?\s*([\d,]+\.?\d*)?\s*$',
+              caseSensitive: false)
+          .firstMatch(line);
       if (igstMatch != null && igst == null) {
         final inline = _money(igstMatch.group(1) ?? '');
         igst = inline ?? _nextMoney(lines, i);

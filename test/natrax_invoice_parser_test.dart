@@ -186,6 +186,89 @@ Total 1,18,000.00''';
     });
   });
 
+  group('other vendors (MOICARS manpower)', () {
+    // MOICARS invoices differ from Tally in three ways that each broke the
+    // parse: a bare "Total" above its figure, a tax label carrying its rate,
+    // and line items on page one with the tax on page two.
+    const text = '''
+Tax Invoice
+MOICARS
+Invoice No.
+MOI/TV-2082
+Buyer's Order No.
+8242356330
+Dated
+21-May-26
+Charges for Man Power
+50,400.00
+Nos.
+1,800.00
+28 Nos.
+998346
+continued to page number 2
+IGST @18%
+9,072.00
+Total
+Amount Chargeable (in words)''';
+
+    test('reads a bare Total and a rate-suffixed tax label', () {
+      final p = NatraxInvoiceParser.parseText(text);
+      expect(p.invoiceNumber, 'MOI/TV-2082');
+      expect(p.poNumber, '8242356330');
+      expect(p.invoiceDate, DateTime(2026, 5, 21));
+      expect(p.gstAmount, closeTo(9072, 0.01));
+    });
+
+    test('reconciles the taxable value against the printed tax', () {
+      final p = NatraxInvoiceParser.parseText(text);
+      // 50,400 x 18% = 9,072 exactly, so the figure is accepted; the total
+      // follows even though the document never prints it.
+      expect(p.amountExclGst, closeTo(50400, 0.01));
+      expect(p.totalAmount, closeTo(59472, 0.01));
+      expect(p.addsUp, isTrue);
+      expect(p.missingFields, isEmpty);
+    });
+
+    test('a distant figure that does not reconcile is not adopted', () {
+      // The candidate sits far from the tax line, so only the reconciliation
+      // path can reach it — and 12,345 x 18% is not 9,072, so it is refused
+      // rather than adopted as the nearest number on the page.
+      const bad = '''
+Invoice No.
+MOI/TV-9999
+Dated
+21-May-26
+Charges for Man Power
+12,345.00
+Nos.
+some description line
+another description line
+continued to page number 2
+IGST @18%
+9,072.00
+Total
+Amount Chargeable (in words)''';
+      final p = NatraxInvoiceParser.parseText(bad);
+      expect(p.amountExclGst, isNull);
+      expect(p.missingFields, contains('taxable value'));
+    });
+
+    test('a derived taxable value is never negative', () {
+      // Tax larger than the total means something was misread; the parser must
+      // report that rather than produce a negative taxable value.
+      const wrong = '''
+Invoice No.
+X-1
+Dated
+21-May-26
+IGST
+1,00,000.00
+Total 10,000.00''';
+      final p = NatraxInvoiceParser.parseText(wrong);
+      expect(p.amountExclGst == null || p.amountExclGst! >= 0, isTrue);
+    });
+  });
+
   test('a PDF with no text layer is reported, not guessed at', () {
     // A minimal PDF header with no content streams at all.
     final bytes = File(pdf.path).readAsBytesSync().sublist(0, 64);
