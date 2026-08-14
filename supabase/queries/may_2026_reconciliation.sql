@@ -16,10 +16,10 @@
 --
 --   EV charging: 122.58 units (28.28 + 40.52 + 53.78) on 20 and 22 May
 --
---   Vehicles: XVE-9E / XEV-9 on 18, 23 and 25 May; EC-170 on 19, 20 and 22 May.
---   EC-170 is not the Mahindra EV. If those sessions are logged under a
---   different project they will not be counted; if they are logged under
---   Mahindra EV PoC they are attributed to a programme they do not belong to.
+--   Vehicles: the sheet names the same car three ways — XVE-9E, XEV-9 and
+--   EC-170 are all the Mahindra XEV 9e. Every one of the 10 hours therefore
+--   belongs to Mahindra EV PoC; query 4 exists to catch any row that was
+--   nonetheless filed under a different project and so would go uncounted.
 
 -- 1. Every May session TrackLog holds, whatever the project
 SELECT
