@@ -72,17 +72,17 @@ class EmailDraft {
             '[…full report is on your clipboard — press Ctrl+V to paste it]';
       }
 
-      final uri = Uri(
-        scheme: 'mailto',
-        path: to,
-        queryParameters: {
-          if (cc.isNotEmpty) 'cc': cc.join(','),
-          'subject': subject,
-          'body': body,
-        },
-      );
+      // Built by hand rather than with Uri(queryParameters:). That constructor
+      // form-encodes, turning every space into '+', which mailto does not
+      // decode — the mail then arrives with a + between every word.
+      // Uri.encodeComponent uses %20, which Outlook reads correctly.
+      final query = <String>[
+        if (cc.isNotEmpty) 'cc=${Uri.encodeComponent(cc.join(','))}',
+        'subject=${Uri.encodeComponent(subject)}',
+        'body=${Uri.encodeComponent(body)}',
+      ].join('&');
 
-      html.window.location.href = uri.toString();
+      html.window.location.href = 'mailto:$to?$query';
 
       return copied
           ? null

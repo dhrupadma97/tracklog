@@ -36,18 +36,34 @@ class ManagementReportService {
     // ── Purchase orders ──────────────────────────────────────────────────
     final poRows = await client.from('po_trackers').select().order('created_at');
     final pos = (poRows as List).cast<Map<String, dynamic>>();
-    final poTotal = pos.fold<double>(
+    // A PO that is spent, or has no value recorded, is not funding.
+    bool bookable(Map<String, dynamic> p) {
+      final s = (p['po_status'] as String? ?? '').toLowerCase();
+      if (s == 'used' || s == 'closed') return false;
+      return ((p['total_po_value'] as num?)?.toDouble() ?? 0) +
+              ((p['tax_amount'] as num?)?.toDouble() ?? 0) >
+          0;
+    }
+
+    // Both tax bases are carried through: procurement sanctions POs ex-GST,
+    // invoices arrive incl-GST, and quoting only one invites the two being
+    // compared against each other.
+    final poTotal = pos.where(bookable).fold<double>(
         0,
         (s, p) =>
             s +
             ((p['total_po_value'] as num?)?.toDouble() ?? 0) +
             ((p['tax_amount'] as num?)?.toDouble() ?? 0));
+    final poTotalExcl = pos.where(bookable).fold<double>(
+        0, (s, p) => s + ((p['total_po_value'] as num?)?.toDouble() ?? 0));
 
     // ── Invoices actually raised ─────────────────────────────────────────
     final invoices =
         await InvoiceService.instance.list(projectName: projectName);
     invoices.sort((a, b) => (a.periodMonth ?? '').compareTo(b.periodMonth ?? ''));
     final invoicedTotal = invoices.fold<double>(0, (s, i) => s + i.totalAmount);
+    final invoicedTotalExcl =
+        invoices.fold<double>(0, (s, i) => s + i.amountExclGst);
     final invoicedMonths = {
       for (final i in invoices)
         if ((i.periodMonth ?? '').isNotEmpty) i.periodMonth!: i.totalAmount
@@ -60,6 +76,7 @@ class ManagementReportService {
     final unbilledTotal = unbilled.fold<double>(0, (s, m) => s + m.inclGst);
 
     final balance = poTotal - invoicedTotal;
+    final balanceExcl = poTotalExcl - invoicedTotalExcl;
     final projected = balance - unbilledTotal;
     final utilisationPct = poTotal <= 0 ? 0.0 : invoicedTotal / poTotal;
     final projectedPct =
@@ -154,8 +171,10 @@ class ManagementReportService {
           'update.');
     }
 
-    final subject = 'NATRAX ${_short(projectName)} — PO & Expense Status '
-        'as on ${_fmtDate(date)}';
+    // Not titled by programme: the POs are a shared pool drawn on by whichever
+    // vehicle is testing, and Mahindra EV PoC is finished.
+    final subject =
+        'NATRAX SightLine — PO & Expense Status as on ${_fmtDate(date)}';
 
     final html = _html(
       projectName: projectName,
@@ -163,11 +182,14 @@ class ManagementReportService {
       asOn: date,
       pos: pos,
       poTotal: poTotal,
+      poTotalExcl: poTotalExcl,
       invoices: invoices,
       invoicedTotal: invoicedTotal,
+      invoicedTotalExcl: invoicedTotalExcl,
       unbilled: unbilled,
       unbilledTotal: unbilledTotal,
       balance: balance,
+      balanceExcl: balanceExcl,
       projected: projected,
       utilisationPct: utilisationPct,
       projectedPct: projectedPct,
@@ -190,8 +212,11 @@ class ManagementReportService {
                 .fold<double>(0, (s, x) => s + x.totalAmount))
       },
       poTotal: poTotal,
+      poTotalExcl: poTotalExcl,
       invoicedTotal: invoicedTotal,
+      invoicedTotalExcl: invoicedTotalExcl,
       balance: balance,
+      balanceExcl: balanceExcl,
       unbilledTotal: unbilledTotal,
       projected: projected,
       attention: attention,
@@ -266,11 +291,14 @@ class ManagementReportService {
     required DateTime asOn,
     required List<Map<String, dynamic>> pos,
     required double poTotal,
+    required double poTotalExcl,
     required List<NatraxInvoice> invoices,
     required double invoicedTotal,
+    required double invoicedTotalExcl,
     required List<MonthBaseline> unbilled,
     required double unbilledTotal,
     required double balance,
+    required double balanceExcl,
     required double projected,
     required double utilisationPct,
     required double projectedPct,
@@ -290,10 +318,12 @@ class ManagementReportService {
     // Drawdown per PO, from the PO each invoice names. This is what answers
     // "which PO paid for track time and which paid for manpower".
     final byPo = <String, double>{};
+    final byPoExcl = <String, double>{};
     for (final i in invoices) {
       final po = (i.poNumber ?? '').trim();
       if (po.isEmpty) continue;
       byPo[po] = (byPo[po] ?? 0) + i.totalAmount;
+      byPoExcl[po] = (byPoExcl[po] ?? 0) + i.amountExclGst;
     }
     final knownPos = pos
         .map((p) => (p['po_number'] as String? ?? '').trim())
@@ -325,18 +355,20 @@ class ManagementReportService {
 
     String categoryBlock(String category) {
       final rows = byCategory[category]!;
-      var funded = 0.0, drawn = 0.0;
+      var funded = 0.0, fundedExcl = 0.0, drawn = 0.0, drawnExcl = 0.0;
       var anyPending = false;
       for (final p in rows) {
         final number = (p['po_number'] as String? ?? '').trim();
-        final t = ((p['total_po_value'] as num?)?.toDouble() ?? 0) +
-            ((p['tax_amount'] as num?)?.toDouble() ?? 0);
+        final b = (p['total_po_value'] as num?)?.toDouble() ?? 0;
+        final t = b + ((p['tax_amount'] as num?)?.toDouble() ?? 0);
         final status = (p['po_status'] as String? ?? '').toLowerCase();
         final spent = status == 'used' || status == 'closed';
         if (t <= 0) anyPending = true;
         if (!spent && t > 0) {
           funded += t;
+          fundedExcl += b;
           drawn += byPo[number] ?? 0;
+          drawnExcl += byPoExcl[number] ?? 0;
         }
       }
       final label = _categoryLabel(category);
@@ -344,7 +376,8 @@ class ManagementReportService {
           'style="padding:9px 10px 4px;font-size:11px;font-weight:700;'
           'color:#0057e6;letter-spacing:.5px;border-bottom:1px solid #e6e9f0;">'
           '$label'
-          '${funded > 0 ? ' — ${_inr(funded - drawn)} available of ${_inr(funded)}' : ''}'
+          '${funded > 0 ? ' — ${_inr(funded - drawn)} available incl. GST '
+              '(${_inr(fundedExcl - drawnExcl)} ex-GST) of ${_inr(funded)}' : ''}'
           '${anyPending ? ' <span style="color:#b26a00;font-weight:600;">(some values not recorded)</span>' : ''}'
           '</td></tr>';
     }
@@ -357,7 +390,9 @@ class ManagementReportService {
       final tax = (p['tax_amount'] as num?)?.toDouble() ?? 0;
       final total = base + tax;
       final drawn = byPo[number] ?? 0;
+      final drawnExcl = byPoExcl[number] ?? 0;
       final left = total - drawn;
+      final leftExcl = base - drawnExcl;
       final pct = total <= 0 ? 0 : (drawn / total * 100);
       final status = (p['po_status'] as String? ?? '').toLowerCase();
       final spent = status == 'used' || status == 'closed';
@@ -388,11 +423,15 @@ class ManagementReportService {
       }
 
       return '<tr>$head'
-          '<td $tdr>${_inr(total)}</td>'
+          '<td $tdr>${_inr(total)}'
+          '<br><span style="color:#6b7490;font-size:10px;">'
+          '${_inr(base)} ex-GST</span></td>'
           '<td $tdr>${_inr(drawn)}'
           '<span style="color:#6b7490;font-size:10px;"> (${pct.toStringAsFixed(0)}%)</span></td>'
           '<td $tdr style="color:${left < 0 ? '#c62828' : '#1a7f37'};">'
-          '<b>${_inr(left)}</b></td></tr>';
+          '<b>${_inr(left)}</b>'
+          '<br><span style="color:#6b7490;font-size:10px;font-weight:400;">'
+          '${_inr(leftExcl)} ex-GST</span></td></tr>';
       }).join();
       return '$block$rows';
     }).join();
@@ -473,19 +512,26 @@ rows marked (manual) use hours recorded against the allocation.${idleCount > 0 ?
 
     return '''
 <div style="font-family:Segoe UI,Arial,sans-serif;color:#1a1f36;max-width:760px;">
-<h2 style="margin:0 0 2px;font-size:19px;">NATRAX Proving Ground — ${_short(projectName)}</h2>
+<h2 style="margin:0 0 2px;font-size:19px;">
+NATRAX Proving Ground — SightLine Validation</h2>
 <p style="margin:0 0 16px;color:#6b7490;font-size:13px;">
-Goodyear SightLine tire intelligence validation${vehicleName == null ? '' : ' · $vehicleName'}
+Goodyear SightLine tire intelligence validation, Indore
 &nbsp;|&nbsp; Status as on <b>${_fmtDate(asOn)}</b></p>
 
 <div style="background:#f4f7fb;border-left:4px solid #0057e6;padding:12px 14px;margin-bottom:18px;">
 <table style="width:100%;font-size:14px;">
-<tr><td style="padding:3px 0;">Total PO value (incl. tax)</td>
+<tr><td style="padding:3px 0;"></td>
+    <td style="text-align:right;font-size:11px;color:#6b7490;">Ex-GST</td>
+    <td style="text-align:right;font-size:11px;color:#6b7490;width:150px;">Incl. GST</td></tr>
+<tr><td style="padding:3px 0;">Total PO value</td>
+    <td style="text-align:right;color:#6b7490;">${_inr(poTotalExcl)}</td>
     <td style="text-align:right;"><b>${_inr(poTotal)}</b></td></tr>
-<tr><td style="padding:3px 0;">Invoiced by NATRAX to date</td>
+<tr><td style="padding:3px 0;">Invoiced to date</td>
+    <td style="text-align:right;color:#6b7490;">${_inr(invoicedTotalExcl)}</td>
     <td style="text-align:right;"><b>${_inr(invoicedTotal)}</b>
     <span style="color:#6b7490;">(${(utilisationPct * 100).toStringAsFixed(0)}%)</span></td></tr>
-<tr><td style="padding:3px 0;font-size:15px;"><b>Balance available</b></td>
+<tr><td style="padding:3px 0;font-size:15px;"><b>Available to book</b></td>
+    <td style="text-align:right;color:#6b7490;">${_inr(balanceExcl)}</td>
     <td style="text-align:right;font-size:15px;color:${balance < 0 ? '#c62828' : '#1a7f37'};">
     <b>${_inr(balance)}</b></td></tr>
 </table></div>
@@ -549,26 +595,34 @@ invoices raised by NATRAX.</p>
 
   /// A compact readable version for the compose window, before the formatted
   /// report is pasted over it. Kept short — mailto bodies get truncated.
+  static String _pad(String s) => s.padRight(15);
+
   String _plainText({
     required String projectName,
     required DateTime asOn,
     required List<Map<String, dynamic>> pos,
     required Map<String, double> byPo,
     required double poTotal,
+    required double poTotalExcl,
     required double invoicedTotal,
+    required double invoicedTotalExcl,
     required double balance,
+    required double balanceExcl,
     required double unbilledTotal,
     required double projected,
     required List<String> attention,
   }) {
     final b = StringBuffer()
-      ..writeln('$projectName — NATRAX Proving Ground')
+      ..writeln('NATRAX Proving Ground — SightLine Validation')
       ..writeln('Status as on ${_fmtDate(asOn)}')
       ..writeln()
-      ..writeln('PO POSITION')
-      ..writeln('  Total PO value      ${_inr(poTotal)}')
-      ..writeln('  Invoiced to date    ${_inr(invoicedTotal)}')
-      ..writeln('  Balance available   ${_inr(balance)}');
+      ..writeln('PO POSITION                 ex-GST         incl. GST')
+      ..writeln('  Total PO value      ${_pad(_inr(poTotalExcl))} '
+          '${_inr(poTotal)}')
+      ..writeln('  Invoiced to date    ${_pad(_inr(invoicedTotalExcl))} '
+          '${_inr(invoicedTotal)}')
+      ..writeln('  Available to book   ${_pad(_inr(balanceExcl))} '
+          '${_inr(balance)}');
 
     if (unbilledTotal > 0) {
       b
@@ -651,7 +705,6 @@ invoices raised by NATRAX.</p>
   static int _monthsBetween(DateTime from, DateTime to) =>
       (to.year - from.year) * 12 + (to.month - from.month);
 
-  static String _short(String project) => project;
 
   static String _categoryLabel(String c) => switch (c) {
         'track_booking' => 'TRACK BOOKING',

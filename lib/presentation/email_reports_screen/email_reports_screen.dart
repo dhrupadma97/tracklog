@@ -399,11 +399,11 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    'Preview opens the full mail in a new tab. Compose in '
-                    'Outlook opens a new mail with recipients and subject set '
-                    'and the formatted report on your clipboard — press Ctrl+V '
-                    'in the body. Draft file gives a .eml that is already '
-                    'formatted, if you would rather not paste.',
+                    'Formatted draft downloads a .eml — double-click it and '
+                    'Outlook opens the styled mail ready to send, nothing to '
+                    'paste. Preview shows it in a browser tab first. Plain '
+                    'compose opens Outlook directly, but mailto carries text '
+                    'only, so the tables are lost unless you press Ctrl+V.',
                     style: GoogleFonts.spaceGrotesk(
                         color: const Color(0xFF6B7490),
                         fontSize: 10,
@@ -442,44 +442,6 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                   onPressed: () async {
-                    final err = await EmailDraft.composeInOutlook(
-                      to: 'praharshithkumar_komaragiri@goodyear.com',
-                      cc: const [
-                        'v_vimal@goodyear.com',
-                        'ashish_pandit@goodyear.com',
-                        'yeswanth_golla@goodyear.com',
-                        'niranjan_poloju@goodyear.com',
-                      ],
-                      subject: update.subject,
-                      htmlBody: update.html,
-                      plainBody: update.plainText,
-                    );
-                    if (!ctx.mounted) return;
-                    if (err != null) {
-                      _showSnack(err, isError: true);
-                    } else {
-                      Navigator.pop(ctx, false);
-                      _showSnack('Outlook opening — press Ctrl+V in the body '
-                          'for the formatted version');
-                    }
-                  },
-                  icon: const Icon(Icons.mail_outline_rounded, size: 16),
-                  label: const Text('Compose in Outlook'),
-                ),
-              ),
-            ]),
-            const SizedBox(height: 8),
-            Row(children: [
-              Expanded(
-                child: TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: Text('Cancel',
-                      style: GoogleFonts.spaceGrotesk(color: Colors.white70)),
-                ),
-              ),
-              Expanded(
-                child: TextButton.icon(
-                  onPressed: () async {
                     final err = await EmailDraft.openInOutlook(
                       to: 'praharshithkumar_komaragiri@goodyear.com',
                       cc: const [
@@ -498,13 +460,51 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                       _showSnack(err, isError: true);
                     } else {
                       Navigator.pop(ctx, false);
-                      _showSnack('Draft saved — open it for the fully '
-                          'formatted mail, no pasting needed');
+                      _showSnack('Draft downloaded — open it to get the fully '
+                          'formatted mail, ready to send');
                     }
                   },
-                  icon: Icon(Icons.download_rounded,
+                  icon: const Icon(Icons.mark_email_read_outlined, size: 16),
+                  label: const Text('Formatted draft'),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(
+                child: TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: Text('Cancel',
+                      style: GoogleFonts.spaceGrotesk(color: Colors.white70)),
+                ),
+              ),
+              Expanded(
+                child: TextButton.icon(
+                  onPressed: () async {
+                    final err = await EmailDraft.composeInOutlook(
+                      to: 'praharshithkumar_komaragiri@goodyear.com',
+                      cc: const [
+                        'v_vimal@goodyear.com',
+                        'ashish_pandit@goodyear.com',
+                        'yeswanth_golla@goodyear.com',
+                        'niranjan_poloju@goodyear.com',
+                      ],
+                      subject: update.subject,
+                      htmlBody: update.html,
+                      plainBody: update.plainText,
+                    );
+                    if (!ctx.mounted) return;
+                    if (err != null) {
+                      _showSnack(err, isError: true);
+                    } else {
+                      Navigator.pop(ctx, false);
+                      _showSnack('Outlook opening with plain text — press '
+                          'Ctrl+V in the body for the formatted version');
+                    }
+                  },
+                  icon: Icon(Icons.edit_note_rounded,
                       size: 14, color: Colors.white.withAlpha(150)),
-                  label: Text('Draft file',
+                  label: Text('Plain compose',
                       style: GoogleFonts.spaceGrotesk(
                           color: Colors.white.withAlpha(150), fontSize: 12.5)),
                 ),
