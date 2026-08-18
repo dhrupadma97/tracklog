@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../core/app_export.dart';
 import '../../services/engineer_auth_service.dart';
 import '../../services/offline_queue_service.dart';
+import '../../services/project_catalog.dart';
 import '../../services/project_manager.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
@@ -55,6 +56,14 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
   TimeOfDay _end    = TimeOfDay(hour: (TimeOfDay.now().hour + 1) % 24, minute: TimeOfDay.now().minute);
   String _status    = 'completed';
   bool _savingTrack = false;
+
+  /// The programme this track session bills to.
+  ///
+  /// It used to be read straight off ProjectManager at save time with nothing
+  /// on screen to say so, which meant an entry could be booked to whichever
+  /// project happened to be selected elsewhere without the person entering it
+  /// ever seeing which. It is now shown, and can be changed here.
+  String _trackProject = 'Mahindra EV PoC';
 
   // ── Other Services fields ────────────────────────────────────────────────
   final Map<String, int>      _svcQty     = {}; // perQty → count/units
@@ -121,6 +130,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
   void initState() {
     super.initState();
     _svcProject = ProjectManager.instance.activeProject;
+    _trackProject = ProjectManager.instance.activeProject;
     _initOffline();
     _loadRecentEntries();
   }
@@ -262,12 +272,12 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
         'duration_minutes': totalMins,
         'hourly_rate':    (track['rate'] as double),
         'total_cost':     cost,
-        'project_name':   ProjectManager.instance.activeProject,
+        'project_name':   _trackProject,
         'notes': 'Manual entry${_notesCtrl.text.isNotEmpty ? ' — ${_notesCtrl.text}' : ''}',
       };
       if (_isOnline) {
         await SupabaseService.instance.client.from('engineer_sessions').insert(payload);
-        _snack('Track session saved ✓');
+        _snack('Track session saved to $_trackProject ✓');
         _loadRecentEntries();
         _resetTrackForm();
       } else {
@@ -691,6 +701,8 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      _buildBookedToCard(),
+                      const SizedBox(height: 12),
                       _buildTrackSelectionCard(),
                       const SizedBox(height: 12),
                       _buildDateTimeCard(),
@@ -730,6 +742,8 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  _buildBookedToCard(),
+                  const SizedBox(height: 12),
                   _buildTrackSelectionCard(),
                   const SizedBox(height: 12),
                   _buildDateTimeCard(),
@@ -1316,6 +1330,98 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
 
   // ── Modular card components ───────────────────────────────────────────────
 
+  /// Which programme this entry bills to.
+  ///
+  /// Deliberately the first card on the form. Track time is charged to a PoC,
+  /// and an entry filed against the wrong one is only ever found later, in a
+  /// reconciliation — so the answer is stated up front rather than inherited
+  /// silently from whatever was last selected on another screen.
+  Widget _buildBookedToCard() {
+    const accent = Color(0xFF9C88FF);
+    final programme = ProjectCatalog.byKey(_trackProject);
+    final globalProject = ProjectManager.instance.activeProject;
+    final differsFromGlobal = _trackProject != globalProject;
+
+    return _card(
+      accentColor: accent,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _cardTitle(Icons.science_rounded, 'Booked To', accent),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: accent.withAlpha(20),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: accent.withAlpha(90)),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _trackProject,
+              isExpanded: true,
+              dropdownColor: const Color(0xFF0A1025),
+              icon: const Icon(Icons.expand_more_rounded, color: accent, size: 18),
+              style: GoogleFonts.spaceGrotesk(
+                  fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
+              items: ProjectCatalog.displayNames
+                  .map((p) => DropdownMenuItem(value: p, child: Text(p)))
+                  .toList(),
+              onChanged: (v) {
+                if (v != null) setState(() => _trackProject = v);
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(children: [
+          Icon(
+            programme?.powertrain.isIce ?? false
+                ? Icons.local_fire_department_rounded
+                : Icons.electric_bolt_rounded,
+            size: 13,
+            color: const Color(0xFF6B7490),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              programme == null
+                  ? 'This session will be filed under $_trackProject.'
+                  : 'This session will be filed under ${programme.displayName} '
+                      '— ${programme.vehicle}.',
+              style: GoogleFonts.spaceGrotesk(
+                  fontSize: 10.5, color: const Color(0xFF6B7490), height: 1.4),
+            ),
+          ),
+        ]),
+        if (differsFromGlobal) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFB547).withAlpha(20),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFFFB547).withAlpha(70)),
+            ),
+            child: Row(children: [
+              const Icon(Icons.info_outline_rounded,
+                  size: 13, color: Color(0xFFFFB547)),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  'Not the project you have open ($globalProject). '
+                  'The entry follows this card, not the open project.',
+                  style: GoogleFonts.spaceGrotesk(
+                      fontSize: 10,
+                      color: const Color(0xFFFFB547),
+                      height: 1.4),
+                ),
+              ),
+            ]),
+          ),
+        ],
+      ]),
+    );
+  }
+
   Widget _buildTrackSelectionCard() {
     return _card(
       accentColor: const Color(0xFFFF9500),
@@ -1478,8 +1584,14 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
               Text(e['track_name'] as String? ?? '',
                   style: GoogleFonts.spaceGrotesk(fontSize: 12, fontWeight: FontWeight.w600,
                       color: Colors.white), overflow: TextOverflow.ellipsis),
-              Text(dt != null ? DateFormat('dd MMM yyyy').format(dt) : '—',
-                  style: GoogleFonts.spaceGrotesk(fontSize: 11, color: const Color(0xFF6B7490))),
+              // Which programme it went to. Without this the list cannot answer
+              // the one question worth asking of a past entry — whether it was
+              // booked to the right project.
+              Text(
+                  '${dt != null ? DateFormat('dd MMM yyyy').format(dt) : '—'}'
+                  ' · ${ProjectCatalog.displayName(e['project_name'] as String?)}',
+                  style: GoogleFonts.spaceGrotesk(fontSize: 11, color: const Color(0xFF6B7490)),
+                  overflow: TextOverflow.ellipsis),
             ])),
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
               Text('₹${cost.toStringAsFixed(0)}',
@@ -1540,6 +1652,8 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
           const DottedLine(color: Colors.white24, height: 1),
           const SizedBox(height: 16),
           
+          _receiptRow('Project', _trackProject, valueBold: true),
+          const SizedBox(height: 8),
           _receiptRow('Track', _trackCode, valueBold: true),
           const SizedBox(height: 8),
           _receiptRow('Track Name', _trackName, valueStyle: GoogleFonts.spaceGrotesk(fontSize: 11, color: Colors.white70)),
@@ -1773,7 +1887,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
               isExpanded: true,
               dropdownColor: const Color(0xFF0A1025),
               style: GoogleFonts.spaceGrotesk(fontSize: 11, color: Colors.white70),
-              items: ['Mahindra EV PoC', 'Mahindra ICE PoC', 'Hyundai PoC']
+              items: ProjectCatalog.displayNames
                   .map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
               onChanged: (v) { if (v != null) setState(() => _svcProject = v); },
             )),

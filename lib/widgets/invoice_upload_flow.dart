@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../services/billing_baseline.dart';
 import '../services/invoice_service.dart';
 import '../services/natrax_invoice_parser.dart';
+import '../services/project_catalog.dart';
 import '../services/project_manager.dart';
 import '../theme/app_theme.dart';
 
@@ -331,11 +332,7 @@ class InvoiceUploadFlow {
                       enabledBorder: UnderlineInputBorder(
                           borderSide: BorderSide(color: Colors.white24)),
                     ),
-                    items: const [
-                      'Mahindra EV PoC',
-                      'Mahindra ICE PoC',
-                      'Hyundai PoC',
-                    ]
+                    items: ProjectCatalog.displayNames
                         .map((p) => DropdownMenuItem(value: p, child: Text(p)))
                         .toList(),
                     onChanged: (v) => setLocal(() => project = v ?? project),

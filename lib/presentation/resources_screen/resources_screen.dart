@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/app_export.dart';
 import '../../services/engineer_auth_service.dart';
+import '../../services/project_catalog.dart';
 import '../../services/project_manager.dart';
 import '../../services/resource_service.dart';
 
@@ -801,11 +802,7 @@ class _ResourcesScreenState extends State<ResourcesScreen> {
                 _dropdown<String>(
                   label: 'Project',
                   value: project,
-                  items: const [
-                    'Mahindra EV PoC',
-                    'Mahindra ICE PoC',
-                    'Hyundai PoC'
-                  ],
+                  items: ProjectCatalog.displayNames,
                   labelOf: (v) => v,
                   onChanged: (v) => setLocal(() => project = v ?? project),
                 ),

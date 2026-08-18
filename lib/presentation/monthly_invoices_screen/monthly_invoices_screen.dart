@@ -6,6 +6,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../services/billing_baseline.dart';
+import '../../services/project_catalog.dart';
 import '../../services/project_manager.dart';
 import '../../theme/app_theme.dart';
 
@@ -132,13 +133,11 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
     });
   }
 
-  // Vehicles the Analyser can scope to. Kept here (not from ProjectManager) so
-  // the Analyser selection stays independent of the global project.
-  static const List<Map<String, String>> _analyserVehicles = [
-    {'project': 'Mahindra EV PoC', 'vehicle': 'Mahindra XEV 9e', 'type': 'BEV'},
-    {'project': 'Mahindra ICE PoC', 'vehicle': 'Mahindra XUV 7XO', 'type': 'ICE SUV'},
-    {'project': 'Hyundai PoC', 'vehicle': 'Hyundai CRETA EV', 'type': 'BEV'},
-  ];
+  // Vehicles the Analyser can scope to. Read from the catalogue so a new
+  // programme appears here without a second edit, but still held separately
+  // from ProjectManager so the Analyser selection stays independent of the
+  // globally selected project.
+  static List<Programme> get _analyserVehicles => ProjectCatalog.all;
 
   /// Ask which vehicle's expenses to analyse. Shown on open and via "Change".
   Future<void> _pickVehicle() async {
@@ -175,12 +174,12 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
                     fontSize: 11, color: Colors.white54)),
             const SizedBox(height: 14),
             ..._analyserVehicles.map((v) {
-              final sel = v['project'] == _activeProject;
-              final isIce = v['type'] == 'ICE SUV';
+              final sel = v.displayName == _activeProject;
+              final isIce = v.powertrain.isIce;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: GestureDetector(
-                  onTap: () => Navigator.pop(ctx, v['project']),
+                  onTap: () => Navigator.pop(ctx, v.displayName),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 14, vertical: 12),
@@ -205,12 +204,12 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
                         child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(v['vehicle']!,
+                              Text(v.vehicle,
                                   style: GoogleFonts.spaceGrotesk(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w700,
                                       color: Colors.white)),
-                              Text('${v['project']} · ${v['type']}',
+                              Text('${v.displayName} · ${v.powertrain.label}',
                                   style: GoogleFonts.spaceGrotesk(
                                       fontSize: 10.5, color: Colors.white54)),
                             ]),

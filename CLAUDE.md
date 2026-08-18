@@ -20,13 +20,26 @@
 - Email reports To: `praharshithkumar_komaragiri@goodyear.com`, CC: vimal, ashish, yeswanth, niranjan
 
 ## Projects tracked
-| Key | Display Name | Vehicle |
-|---|---|---|
-| `mahindra ev poc` | Mahindra EV PoC | XEV 9e |
-| `mahindra ice poc` | Mahindra ICE PoC | XUV 7XO |
-| `hyundai poc` | Hyundai PoC | CRETA EV |
+| Key | Display Name | Vehicle | Status |
+|---|---|---|---|
+| `mahindra ev poc` | Mahindra EV PoC | XEV 9e | Closed |
+| `mahindra ice poc` | Mahindra ICE PoC | XUV 7XO | Active |
+| `hyundai poc` | Hyundai PoC | CRETA EV | Upcoming |
+| `tata harrier ev poc` | Tata Harrier EV PoC | Harrier.ev QWD | Active |
+
+`lib/services/project_catalog.dart` is the single source of this list. Every
+project picker reads `ProjectCatalog.displayNames` from it — add a programme
+there and it appears in manual entry, the muster, the Analyser, resources,
+invoice upload and the manager report without further edits. The selection
+screen keeps a parallel `_knownProjects` map for hero image, accent colour and
+vehicle specs only; add the matching entry there, keyed identically.
 
 Empty/General `project_name` in DB → treated as Mahindra EV PoC.
+
+Only Mahindra EV PoC has a hardcoded `BillingBaseline`. Every other programme
+costs live from what is logged — sessions for track time, `session_additional_
+services` for other costs, the muster for manpower days. POs are a shared pool
+and are deliberately not project-scoped.
 
 ## Supabase Edge Functions needed
 - `send-report-email` — must accept: `recipientEmail`, `recipientName`, `ccEmails[]`, `subject`, `htmlBody`, `reportType`

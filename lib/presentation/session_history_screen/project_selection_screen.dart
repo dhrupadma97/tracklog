@@ -45,6 +45,18 @@ class _ProjectMeta {
   final String vehicleType;
   final String description;
   final String? imagePath;
+
+  /// True when [imagePath] is a photograph that carries its own scenery rather
+  /// than a vehicle cut out on a dark ground.
+  ///
+  /// The cutouts are floated over the card and dissolved at the edges, which
+  /// only works because there is nothing behind the vehicle to dissolve. A
+  /// photograph run through the same treatment reads as a bright rectangle
+  /// pasted onto a dark card, so it is laid in full-bleed and dimmed instead —
+  /// deliberate backdrop rather than failed cutout. Swap in a background-free
+  /// image and this can go back to false.
+  final bool imageHasBackdrop;
+
   final Color accentColor;
   final Color glowColor;
   final List<String> specs;
@@ -56,6 +68,7 @@ class _ProjectMeta {
     required this.vehicleType,
     required this.description,
     this.imagePath,
+    this.imageHasBackdrop = false,
     required this.accentColor,
     required this.glowColor,
     this.specs = const [],
@@ -123,6 +136,28 @@ const _knownProjects = {
       _CarDetail('Motor: 138 hp (102 kW) / 255 Nm', Icons.bolt_rounded),
       _CarDetail('Platform: e-GMP derived K2 Platform', Icons.layers_rounded),
       _CarDetail('Features: Smart Regen & V2L Power Output', Icons.settings_backup_restore_rounded),
+    ],
+  ),
+  'tata harrier ev poc': _ProjectMeta(
+    displayName: 'Tata Harrier EV PoC',
+    vehicle: 'Tata Harrier.ev QWD',
+    vehicleType: 'Dual-Motor Battery Electric SUV',
+    description: 'Goodyear SightLine validation on the Tata Harrier.ev in Quad Wheel Drive form. '
+        'Dual-motor torque split makes this the first programme where friction estimation and '
+        'tire health monitoring are exercised against independently driven axles, alongside '
+        'aquaplaning onset detection across the wet handling and braking tracks.',
+    imagePath: 'assets/images/tata_harrier_ev.webp',
+    imageHasBackdrop: true,
+    status: ProjectStatus.active,
+    accentColor: Color(0xFF9BC53D),
+    glowColor: Color(0xFF6FA320),
+    specs: ['acti.ev+ Architecture', '75 kWh Battery', 'QWD · Dual Motor'],
+    details: [
+      _CarDetail('Approved OEM Size: 245/55 R19', Icons.circle_outlined),
+      _CarDetail('acti.ev+ EV Architecture Platform', Icons.layers_rounded),
+      _CarDetail('75 kWh Battery (120 kW DC Fast)', Icons.battery_charging_full_rounded),
+      _CarDetail('Quad Wheel Drive · Dual Motor · 504 Nm', Icons.bolt_rounded),
+      _CarDetail('MIDC Certified Range: 622 km', Icons.map_rounded),
     ],
   ),
 };
@@ -290,12 +325,10 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
         evCard.totalInclGst = mahindraEvTotalInclGst;
       }
 
-      // Maintain fixed order
-      final ordered = [
-        cardMap['mahindra ev poc']!,
-        cardMap['mahindra ice poc']!,
-        cardMap['hyundai poc']!,
-      ];
+      // Maintain fixed order — cardMap was filled from _knownProjects in
+      // order, so reading its values back keeps that order without naming
+      // each project again here.
+      final ordered = cardMap.values.toList();
 
       if (mounted) {
         setState(() {
@@ -367,20 +400,15 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
                 const SizedBox(height: 36),
                 // Project cards
                 LayoutBuilder(builder: (ctx, constraints) {
-                  if (constraints.maxWidth >= 900) {
-                    return _buildThreeColumnGrid(constraints.maxWidth);
-                  }
-                  if (constraints.maxWidth >= 600) {
-                    return _buildTwoColumnGrid(constraints.maxWidth);
-                  }
-                  return Column(
-                    children: _projects.asMap().entries.map((e) =>
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 24),
-                        child: _buildProjectCard(e.value, e.key),
-                      ),
-                    ).toList(),
-                  );
+                  final w = constraints.maxWidth;
+                  final columns = w >= 1280
+                      ? 4
+                      : w >= 900
+                          ? 3
+                          : w >= 600
+                              ? 2
+                              : 1;
+                  return _buildProjectGrid(w, columns);
                 }),
                 const SizedBox(height: 32),
                 // All projects button
@@ -634,28 +662,31 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
         margin: const EdgeInsets.symmetric(horizontal: 12),
       );
 
-  Widget _buildThreeColumnGrid(double totalWidth) {
-    final cardWidth = (totalWidth - 48) / 3;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: _projects.asMap().entries.map((e) => Padding(
-        padding: EdgeInsets.only(right: e.key < _projects.length - 1 ? 24 : 0),
-        child: SizedBox(width: cardWidth, child: _buildProjectCard(e.value, e.key)),
-      )).toList(),
+  /// Cards flow into as many columns as the width allows, and wrap.
+  ///
+  /// This replaced a pair of builders that each assumed exactly three
+  /// programmes — one divided the row by three, the other indexed
+  /// `_projects[0..2]` directly. A fourth card overflowed the first and was
+  /// silently dropped by the second, so the layout had to be edited every time
+  /// a programme was added. It no longer does.
+  Widget _buildProjectGrid(double totalWidth, int desiredColumns) {
+    const gap = 24.0;
+    // Never more columns than there are cards, or three programmes on a wide
+    // monitor would each shrink to a quarter width and leave a hole.
+    final columns = math.min(desiredColumns, math.max(_projects.length, 1));
+    final cardWidth = (totalWidth - gap * (columns - 1)) / columns;
+    return Wrap(
+      spacing: gap,
+      runSpacing: gap,
+      children: _projects
+          .asMap()
+          .entries
+          .map((e) => SizedBox(
+                width: cardWidth,
+                child: _buildProjectCard(e.value, e.key),
+              ))
+          .toList(),
     );
-  }
-
-  Widget _buildTwoColumnGrid(double totalWidth) {
-    final cardWidth = (totalWidth - 20) / 2;
-    return Column(children: [
-      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        SizedBox(width: cardWidth, child: _buildProjectCard(_projects[0], 0)),
-        const SizedBox(width: 20),
-        SizedBox(width: cardWidth, child: _buildProjectCard(_projects[1], 1)),
-      ]),
-      const SizedBox(height: 20),
-      SizedBox(width: cardWidth * 2 + 20, child: _buildProjectCard(_projects[2], 2)),
-    ]);
   }
 
   Widget _buildProjectCard(_ProjectCard p, int idx) {
@@ -831,8 +862,44 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
           Positioned.fill(
             child: CustomPaint(painter: _GridPainter(color: accent.withOpacity(0.05))),
           ),
+          // Photographic image — laid in full-bleed and dimmed into the card's
+          // palette, then faded out towards the bottom so the text below it
+          // keeps its contrast. See _ProjectMeta.imageHasBackdrop.
+          if (meta.imagePath != null && meta.imageHasBackdrop)
+            Positioned.fill(
+              child: ClipRRect(
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(24)),
+                child: ShaderMask(
+                  shaderCallback: (bounds) => const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.white, Colors.white, Colors.transparent],
+                    stops: [0.0, 0.45, 0.95],
+                  ).createShader(bounds),
+                  blendMode: BlendMode.dstIn,
+                  child: ColorFiltered(
+                    // Pulls the scenery down towards the card's own darkness so
+                    // it sits behind the copy rather than competing with it.
+                    colorFilter: ColorFilter.mode(
+                      const Color(0xFF030712).withOpacity(0.55),
+                      BlendMode.srcOver,
+                    ),
+                    child: AnimatedScale(
+                      duration: const Duration(milliseconds: 300),
+                      scale: isHovered ? 1.06 : 1.0,
+                      child: Image.asset(
+                        meta.imagePath!,
+                        fit: BoxFit.cover,
+                        alignment: Alignment.center,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            )
           // Floating vehicle image – background stripped via gradient mask
-          if (meta.imagePath != null)
+          else if (meta.imagePath != null)
             Positioned(
               bottom: -30,
               right: -10,

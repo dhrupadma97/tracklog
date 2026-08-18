@@ -5,6 +5,7 @@ import '../../core/app_export.dart';
 import '../../services/engineer_auth_service.dart';
 import '../../services/invoice_service.dart';
 import '../../services/muster_service.dart';
+import '../../services/project_catalog.dart';
 import '../../services/project_manager.dart';
 
 /// Daily manpower muster — headcount per day against a manpower PO.
@@ -468,6 +469,7 @@ class _MusterScreenState extends State<MusterScreen> {
                       fontWeight: FontWeight.w600)),
               Text(
                   'PO ${d.poNumber}'
+                  ' · ${ProjectCatalog.displayName(d.projectName)}'
                   '${(d.notes ?? '').isEmpty ? '' : ' · ${d.notes}'}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -496,6 +498,11 @@ class _MusterScreenState extends State<MusterScreen> {
     var date = existing?.date ?? DateTime.now();
     var count = existing?.headCount ?? 1;
     var po = existing?.poNumber ?? _defaultPo;
+    // Which programme the day is worked against. Recorded on the row already,
+    // but previously taken silently from whatever project was open elsewhere —
+    // so a day could be attributed without the person marking it ever seeing
+    // to what. Shown and editable, like the track entry form.
+    var project = existing?.projectName ?? ProjectManager.instance.activeProject;
     final notes = TextEditingController(text: existing?.notes ?? '');
 
     await showModalBottomSheet<void>(
@@ -602,6 +609,40 @@ class _MusterScreenState extends State<MusterScreen> {
             ),
             const SizedBox(height: 12),
 
+            // Project the day is booked to
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFF050811).withAlpha(160),
+                borderRadius: BorderRadius.circular(12),
+                border:
+                    Border.all(color: const Color(0xFF849495).withAlpha(90)),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: ProjectCatalog.displayNames.contains(project)
+                      ? project
+                      : null,
+                  isExpanded: true,
+                  dropdownColor: const Color(0xFF0A1025),
+                  hint: Text('Project',
+                      style: GoogleFonts.spaceGrotesk(
+                          color: _muted, fontSize: 13)),
+                  icon: const Icon(Icons.arrow_drop_down, color: _muted),
+                  items: ProjectCatalog.displayNames
+                      .map((p) => DropdownMenuItem(
+                            value: p,
+                            child: Text(p,
+                                style: GoogleFonts.spaceGrotesk(
+                                    color: Colors.white, fontSize: 13)),
+                          ))
+                      .toList(),
+                  onChanged: (v) => setSheet(() => project = v ?? project),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+
             TextField(
               controller: notes,
               style: GoogleFonts.spaceGrotesk(
@@ -657,8 +698,7 @@ class _MusterScreenState extends State<MusterScreen> {
                             date: DateTime(date.year, date.month, date.day),
                             headCount: count,
                             poNumber: po,
-                            projectName:
-                                ProjectManager.instance.activeProject,
+                            projectName: project,
                             notes: notes.text.trim().isEmpty
                                 ? null
                                 : notes.text.trim(),

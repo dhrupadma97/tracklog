@@ -11,6 +11,56 @@
         "source": "**",
         "destination": "/index.html"
       }
+    ],
+    "headers": [
+      {
+        "//": "The entry point and the service worker must never be cached.",
+        "//2": "Flutter's service worker caches the app shell aggressively, so",
+        "//3": "a browser holding an old copy of these two keeps serving a",
+        "//4": "stale build after a deploy — the report showed pre-deploy text",
+        "//5": "for exactly this reason. Everything else is content-hashed and",
+        "//6": "safe to cache; these two are what let the browser find out a",
+        "//7": "new build exists.",
+        "source": "/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/flutter_service_worker.js",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/flutter_bootstrap.js",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "//": "main.dart.js carries no content hash in its filename — the",
+        "//2": "bootstrap loads it as a plain 'main.dart.js' — so the default",
+        "//3": "max-age=3600 left browsers serving the previous build for up",
+        "//4": "to an hour after a deploy, with nothing to signal it changed.",
+        "//5": "It is the whole application, so it must revalidate every load.",
+        "source": "/main.dart.js",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      }
     ]
   }
 }

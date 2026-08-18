@@ -24,17 +24,35 @@ extension ProgrammeStatusLabel on ProgrammeStatus {
   bool get isClosed => this == ProgrammeStatus.completed;
 }
 
+/// Whether the test vehicle is battery-electric or combustion.
+///
+/// Screens key an icon and a short label off this rather than matching on the
+/// vehicle name, which stops being reliable as soon as there is more than one
+/// EV in the list.
+enum Powertrain { bev, ice }
+
+extension PowertrainLabel on Powertrain {
+  String get label => switch (this) {
+        Powertrain.bev => 'BEV',
+        Powertrain.ice => 'ICE SUV',
+      };
+
+  bool get isIce => this == Powertrain.ice;
+}
+
 class Programme {
   /// Lower-case key that `project_name` is matched on.
   final String key;
   final String displayName;
   final String vehicle;
+  final Powertrain powertrain;
   final ProgrammeStatus status;
 
   const Programme({
     required this.key,
     required this.displayName,
     required this.vehicle,
+    required this.powertrain,
     required this.status,
   });
 }
@@ -47,21 +65,38 @@ class ProjectCatalog {
       key: 'mahindra ev poc',
       displayName: 'Mahindra EV PoC',
       vehicle: 'Mahindra XEV 9e',
+      powertrain: Powertrain.bev,
       status: ProgrammeStatus.completed,
     ),
     Programme(
       key: 'mahindra ice poc',
       displayName: 'Mahindra ICE PoC',
       vehicle: 'Mahindra XUV 7XO',
+      powertrain: Powertrain.ice,
       status: ProgrammeStatus.active,
     ),
     Programme(
       key: 'hyundai poc',
       displayName: 'Hyundai PoC',
       vehicle: 'Hyundai CRETA EV',
+      powertrain: Powertrain.bev,
       status: ProgrammeStatus.upcoming,
     ),
+    Programme(
+      key: 'tata harrier ev poc',
+      displayName: 'Tata Harrier EV PoC',
+      vehicle: 'Tata Harrier.ev QWD',
+      powertrain: Powertrain.bev,
+      status: ProgrammeStatus.active,
+    ),
   ];
+
+  /// The display names every project picker should offer, in one order.
+  ///
+  /// Five screens each held their own copy of this list, so adding a programme
+  /// meant editing all five and noticing all five. They read it from here now.
+  static List<String> get displayNames =>
+      all.map((p) => p.displayName).toList();
 
   /// An empty or 'general' `project_name` means Mahindra EV PoC — that
   /// programme predates the field being filled in reliably.
