@@ -266,6 +266,14 @@ class _MusterScreenState extends State<MusterScreen> {
                   color: Colors.white,
                   fontSize: 14,
                   fontWeight: FontWeight.w800)),
+          if (p.isClosed) ...[
+            const Spacer(),
+            Text('closed',
+                style: GoogleFonts.spaceGrotesk(
+                    color: _muted,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700)),
+          ],
         ]),
         const SizedBox(height: 12),
         Row(children: [
@@ -275,11 +283,15 @@ class _MusterScreenState extends State<MusterScreen> {
         ]),
         const SizedBox(height: 10),
         Text(
-            p.daysRecorded == 0
-                ? 'No workshop days recorded yet. Mark a day and pick '
-                    'WORKSHOP to start the count.'
-                : 'Billed on actuals against a lumpsum PO, so this accrues '
-                    'rather than drawing a contracted day count down.',
+            p.isClosed
+                ? 'This PO is closed. The days on it are historical and no '
+                    'new ones can be booked against it.'
+                : p.daysRecorded == 0
+                    ? 'No workshop days recorded yet. Mark a day and pick '
+                        'WORKSHOP to start the count.'
+                    : 'Billed on actuals against a lumpsum PO, so this '
+                        'accrues rather than drawing a contracted day '
+                        'count down.',
             style: GoogleFonts.spaceGrotesk(
                 color: _muted, fontSize: 11, height: 1.5)),
       ]),

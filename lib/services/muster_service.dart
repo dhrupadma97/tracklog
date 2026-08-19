@@ -102,11 +102,15 @@ class WorkshopPosition {
   /// been recorded yet.
   final double poValue;
 
+  /// Closed POs are shown when they carry days, but cannot take new ones.
+  final bool isClosed;
+
   const WorkshopPosition({
     required this.poNumber,
     required this.daysRecorded,
     required this.ratePerDay,
     required this.poValue,
+    this.isClosed = false,
   });
 
   double get accruedExclGst => daysRecorded * ratePerDay;
@@ -289,10 +293,25 @@ class MusterService {
         .toList();
   }
 
+  /// Every track PO that workshop can be or has been booked against.
+  ///
+  /// Unlike [workshopPos] this does not drop closed POs. A closed PO cannot
+  /// take new days but the days already on it still have to be reported -
+  /// 8242348442 is the historical "Track & Workshop Booking" PO, so that is
+  /// precisely where the older workshop days sit.
+  Future<List<Map<String, dynamic>>> _allWorkshopPos() async {
+    final rows = await _client
+        .from('po_trackers')
+        .select('po_number, po_status, total_po_value, valid_from')
+        .eq('category', 'track_booking')
+        .order('po_number');
+    return (rows as List).cast<Map<String, dynamic>>();
+  }
+
   /// Workshop position per PO: days recorded and what they accrue.
   Future<List<WorkshopPosition>> workshopPositions() async {
     final days = await workshopDaysByPo();
-    final pos = await workshopPos();
+    final pos = await _allWorkshopPos();
     final out = pos.map((p) {
       final number = (p['po_number'] as String? ?? '').trim();
       return WorkshopPosition(
@@ -300,10 +319,13 @@ class MusterService {
         daysRecorded: days[number] ?? 0,
         ratePerDay: kWorkshopRatePerDay,
         poValue: (p['total_po_value'] as num?)?.toDouble() ?? 0,
+        isClosed: (p['po_status'] as String? ?? '') == 'closed',
       );
     }).toList();
-    // A PO that has never had a workshop day recorded is still worth showing:
-    // it is where the next one goes.
+    // An open PO with no days yet is still worth showing - it is where the
+    // next one goes. A closed PO with no days is finished and empty, so it
+    // only earns a card if something was actually booked to it.
+    out.removeWhere((w) => w.isClosed && w.daysRecorded == 0);
     out.sort((a, b) => a.poNumber.compareTo(b.poNumber));
     return out;
   }
