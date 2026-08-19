@@ -86,18 +86,26 @@ class BillingBaseline {
   /// draws down the PO, so the workbook figure was the wrong one and has been
   /// brought into line rather than left to show a permanent variance.
   ///
-  /// May is still computed; NATRAX has not raised it.
+  /// May is invoice-backed as of INV/26-27/388.
   static const List<MonthBaseline> _mahindraEv = [
     MonthBaseline(
         month: '2026-03', trackAndAccessories: 138605, workshopRental: 55000),
     MonthBaseline(
         month: '2026-04', trackAndAccessories: 1012450, workshopRental: 150000),
-    // May's track cost now comes from the sessions logged in TrackLog rather
-    // than a fixed figure, so the corrected utilisation feeds through on its
-    // own. The workshop rental stays: it is a monthly booking, and no session
-    // record implies it.
+    // May was computed from logged sessions while NATRAX had not raised it.
+    // INV/26-27/388 (19-Aug-26, testing period 18-25 May, PO 8242348442)
+    // settles it: taxable 1,76,575 = five track lines totalling 1,73,500
+    // plus an EV Heavy Duty Charger line of 3,075 (123 Unt @ 25). The track
+    // total matches the workbook's May column to the rupee, which is what
+    // confirms the invoice covers the same period.
+    //
+    // The workshop rental stays at 40,000 and is deliberately NOT folded
+    // into the figure above: 388 carries no workshop line at all, so those
+    // 8 operational days are worked, owed and not yet billed. Adding them to
+    // trackAndAccessories would make the month reconcile against an invoice
+    // that does not contain them, and hide a 47,200 incl-GST shortfall.
     MonthBaseline(
-        month: '2026-05', trackAndAccessories: null, workshopRental: 40000),
+        month: '2026-05', trackAndAccessories: 176575, workshopRental: 40000),
   ];
 
   /// Costs carried against the project that appear on no monthly invoice.
