@@ -99,13 +99,14 @@ class BillingBaseline {
     //   track       workbook 9,66,000 vs invoice 9,91,000   25,000 under
     //   accessories workbook   38,969 vs invoice   21,450   17,519 over
     //
-    // The INVOICE wins here, deliberately. This figure drives PO drawdown,
-    // and the PO is drawn by what NATRAX billed, not by what the
-    // utilisation sheet logged. Carrying the workbook's 9,66,000 would
-    // under-state drawdown by 25,000 and leave a permanent variance that
-    // billing_maths_test pins to zero.
+    // THE INVOICE IS FINAL. 205 was raised, accepted and paid, so it is the
+    // figure of record for April and the one that drives PO drawdown - the
+    // PO is drawn by what NATRAX billed, not by what the utilisation sheet
+    // logged. The variances below are documented, not open: neither is
+    // being pursued, and nothing here should be re-derived from the
+    // workbook by a later change.
     //
-    // The 25,000 is now identified, and it is ONE LINE: T1 High Speed.
+    // For the record, the 25,000 is ONE LINE: T1 High Speed.
     // The workbook's Daily Track Billing sheet already applies the 2-hour
     // minimum itself (a "Subject to 2hr Min?" column feeding "Final
     // Billable Hrs"), so the comparison is like for like:
@@ -118,12 +119,11 @@ class BillingBaseline {
     //   T1       3 hrs  =    75,000   invoice     <- one hour more
     //
     // Four tracks agree to the rupee. April has a single T1 session, on
-    // 17-Apr, logged at 1.75 hrs and billable at 2 after the minimum.
-    // NATRAX invoiced 3. Unless a T1 session is missing from the log, that
-    // is an hour that was not run - 25,000 to query.
-    //
-    // The 17,519 of accessories in the workbook but not on the invoice is
-    // recorded as an UnbilledExtra below.
+    // 17-Apr, logged at 1.75 hrs and billable at 2 after the minimum, and
+    // NATRAX invoiced 3. Closed rather than queried, and the 17,519 of
+    // accessories they did not bill runs the other way, so the month was
+    // over-paid by 7,481 ex-GST net. Both stay recorded because a figure
+    // nobody can explain later is how a reconciliation gets reopened.
     MonthBaseline(
         month: '2026-04', trackAndAccessories: 1012450, workshopRental: 150000),
     // May was computed from logged sessions while NATRAX had not raised it.
