@@ -126,6 +126,14 @@ class BillingBaseline {
       exclGst: 85000,
     ),
     UnbilledExtra(
+      label: 'Vbox instrumentation hire - May 2026',
+      detail: 'Vbox 3i 6 days at 27,000 (MISC-15) and Vbox battery 8 days '
+          'at 1,000 (MISC-14). Both sit on the NATRAX rate card and both are '
+          'absent from INV/26-27/388. Unlike the shared workshop this is a '
+          'chargeable service that was used, so NATRAX may still raise it.',
+      exclGst: 170000,
+    ),
+    UnbilledExtra(
       label: 'Workshop - May 2026',
       detail: 'Shared workshop, not the exclusive continuous bay the '
           '5,000/day rate covers, so NATRAX did not charge it. '
