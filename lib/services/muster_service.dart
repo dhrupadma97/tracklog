@@ -209,7 +209,11 @@ class MusterService {
     String? projectName,
     String? notes,
     MusterKind kind = MusterKind.manpower,
-    bool includeWeekends = false,
+    /// Saturdays to count, as 'YYYY-MM-DD'. Saturday is worked some weeks
+    /// and not others, so it cannot be inferred - the caller names the ones
+    /// actually worked. Sunday is never counted here; a one-off Sunday is
+    /// recorded by saving that single date on its own.
+    Set<String> saturdaysWorked = const {},
   }) async {
     var day = DateTime(from.year, from.month, from.day);
     final end = DateTime(to.year, to.month, to.day);
@@ -217,13 +221,17 @@ class MusterService {
 
     final rows = <Map<String, dynamic>>[];
     while (!day.isAfter(end)) {
-      // The contract week is Mon-Fri. A range dragged across a weekend
-      // would otherwise book Saturday and Sunday as worked and draw them
-      // off the PO - the kind of silent over-count this register exists to
-      // stop. Weekend work happens, but it has to be asked for.
-      final isWeekend = day.weekday == DateTime.saturday ||
-          day.weekday == DateTime.sunday;
-      if (isWeekend && !includeWeekends) {
+      // The contract week is Mon-Fri. Dragging a range across a weekend
+      // must not book those days and draw them off the PO - the silent
+      // over-count this register exists to stop.
+      //
+      // Sunday is never worked, so a range never books one. Saturday is
+      // worked some weeks and not others, so each one in the range has to
+      // be named explicitly rather than guessed from a blanket setting.
+      final key = day.toIso8601String().split('T').first;
+      final skip = day.weekday == DateTime.sunday ||
+          (day.weekday == DateTime.saturday && !saturdaysWorked.contains(key));
+      if (skip) {
         day = DateTime(day.year, day.month, day.day + 1);
         continue;
       }
@@ -240,7 +248,7 @@ class MusterService {
       day = DateTime(day.year, day.month, day.day + 1);
     }
 
-    // A Sat-Sun only range with weekends excluded legitimately writes
+    // A weekend-only range with no Saturday ticked legitimately writes
     // nothing. Sending an empty list to upsert is not an error worth
     // raising at the user.
     if (rows.isEmpty) return 0;

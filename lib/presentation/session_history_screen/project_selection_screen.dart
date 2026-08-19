@@ -1002,10 +1002,7 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
             borderRadius: BorderRadius.circular(24),
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: Stack(children: [
-                _cardResting(p, meta, accent, glow, lastAct, isHovered),
-                _cardHoverSheet(p, meta, accent, isHovered),
-              ]),
+              child: _cardResting(p, meta, accent, glow, lastAct, isHovered),
             ),
           ),
         ),
@@ -1120,107 +1117,6 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
         child: Icon(Icons.arrow_forward_rounded, color: accent, size: 15),
       ),
     ]);
-  }
-
-  /// The description and spec sheet, revealed on hover. Printing them on every
-  /// card at all times is what made the card ~590px tall and forced the grid
-  /// onto a second row that nobody could see without scrolling.
-  Widget _cardHoverSheet(
-      _ProjectCard p, _ProjectMeta meta, Color accent, bool isHovered) {
-    return Positioned.fill(
-      child: IgnorePointer(
-        child: AnimatedOpacity(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-          opacity: isHovered ? 1 : 0,
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  const Color(0xFF060B14).withOpacity(0.97),
-                  accent.withOpacity(0.10),
-                ],
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(p.displayName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.spaceGrotesk(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white)),
-                const SizedBox(height: 2),
-                Text('${meta.vehicle}  ·  ${meta.vehicleType}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.spaceGrotesk(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: accent)),
-                const SizedBox(height: 10),
-                Text(meta.description,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.spaceGrotesk(
-                        fontSize: 10.5,
-                        color: const Color(0xFF94A3B8),
-                        height: 1.5)),
-                const SizedBox(height: 10),
-                Expanded(child: _detailList(meta, accent)),
-                const SizedBox(height: 6),
-                Row(children: [
-                  Text('OPEN PROGRAMME',
-                      style: GoogleFonts.spaceGrotesk(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          color: accent,
-                          letterSpacing: 1.6)),
-                  const SizedBox(width: 6),
-                  Icon(Icons.arrow_forward_rounded, color: accent, size: 13),
-                ]),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _detailList(_ProjectMeta meta, Color accent) {
-    return ListView(
-      padding: EdgeInsets.zero,
-      physics: const ClampingScrollPhysics(),
-      children: meta.details
-          .map((d) => Container(
-                margin: const EdgeInsets.only(bottom: 5),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                decoration: BoxDecoration(
-                  color: accent.withOpacity(0.06),
-                  borderRadius: BorderRadius.circular(8),
-                  border:
-                      Border.all(color: accent.withOpacity(0.14), width: 0.8),
-                ),
-                child: Row(children: [
-                  Icon(d.icon, color: accent, size: 11),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(d.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.spaceGrotesk(
-                            fontSize: 9.5, color: const Color(0xFFDFE2F0))),
-                  ),
-                ]),
-              ))
-          .toList(),
-    );
   }
 
   Widget _buildVehicleHero(_ProjectMeta meta, Color accent, _ProjectCard p, bool isHovered) {

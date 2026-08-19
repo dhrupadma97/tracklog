@@ -588,8 +588,9 @@ class _MusterScreenState extends State<MusterScreen> {
     // recorded as worked, and testing pauses between vehicles anyway, so
     // the gap is filled by re-saving rather than run on automatically.
     var stillRunning = false;
-    // The contract week is Mon-Fri.
-    var includeWeekends = false;
+    // Saturdays in the range that were actually worked, as date keys.
+    // Sunday is never offered - a one-off Sunday is saved as a single date.
+    var saturdaysWorked = <String>{};
     var count = existing?.headCount ?? 1;
     var kind = existing?.kind ?? MusterKind.manpower;
     var po = existing?.poNumber ?? _defaultPo;
@@ -696,8 +697,8 @@ class _MusterScreenState extends State<MusterScreen> {
                           ? Icons.calendar_today
                           : Icons.date_range),
                   stillRunning
-                      ? _openStretchLabel(date, includeWeekends)
-                      : _dateLabel(date, endDate, includeWeekends),
+                      ? _openStretchLabel(date, saturdaysWorked)
+                      : _dateLabel(date, endDate, saturdaysWorked),
                   enabled: existing == null),
             ),
             if (existing == null) ...[
@@ -713,13 +714,13 @@ class _MusterScreenState extends State<MusterScreen> {
                   if (v) endDate = null;
                 }),
               ),
-              const SizedBox(height: 8),
-              _sheetToggle(
-                icon: Icons.weekend_outlined,
-                label: 'Include Sat & Sun',
-                hint: 'Off by default - the week is Mon to Fri',
-                value: includeWeekends,
-                onChanged: (v) => setSheet(() => includeWeekends = v),
+              ..._saturdayPickers(
+                from: date,
+                to: stillRunning ? _today : endDate,
+                selected: saturdaysWorked,
+                onToggle: (k) => setSheet(() => saturdaysWorked.contains(k)
+                    ? saturdaysWorked.remove(k)
+                    : saturdaysWorked.add(k)),
               ),
             ],
             const SizedBox(height: 12),
@@ -786,8 +787,8 @@ class _MusterScreenState extends State<MusterScreen> {
                 alignment: Alignment.centerLeft,
                 child: Text(
                     'Recorded against each of the '
-                    '${_workingDays(date, stillRunning ? _today : endDate!, includeWeekends)} '
-                    '${includeWeekends ? 'days' : 'working days'}.',
+                    '${_workingDays(date, stillRunning ? _today : endDate!, saturdaysWorked)} '
+                    'working days.',
                     style: GoogleFonts.spaceGrotesk(
                         color: _muted, fontSize: 11)),
               ),
@@ -937,7 +938,7 @@ class _MusterScreenState extends State<MusterScreen> {
                               projectName: project,
                               notes: note,
                               kind: kind,
-                              includeWeekends: includeWeekends,
+                              saturdaysWorked: saturdaysWorked,
                             );
                           }
                         },
@@ -1028,6 +1029,89 @@ class _MusterScreenState extends State<MusterScreen> {
         ),
       );
 
+  /// One chip per Saturday inside the chosen range.
+  ///
+  /// Saturday is worked some weeks and not others, so neither "always" nor
+  /// "never" is right and a single switch cannot express it. Each Saturday in
+  /// the range is listed and ticked individually. Sunday is not offered at all.
+  List<Widget> _saturdayPickers({
+    required DateTime from,
+    required DateTime? to,
+    required Set<String> selected,
+    required void Function(String key) onToggle,
+  }) {
+    if (to == null) return const [];
+    final sats = <DateTime>[];
+    var d = DateTime(from.year, from.month, from.day);
+    final end = DateTime(to.year, to.month, to.day);
+    while (!d.isAfter(end)) {
+      if (d.weekday == DateTime.saturday) sats.add(d);
+      d = DateTime(d.year, d.month, d.day + 1);
+    }
+    if (sats.isEmpty) return const [];
+
+    return [
+      const SizedBox(height: 12),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+            sats.length == 1
+                ? 'Was this Saturday worked?'
+                : 'Which Saturdays were worked?',
+            style: GoogleFonts.spaceGrotesk(
+                color: Colors.white70,
+                fontSize: 12,
+                fontWeight: FontWeight.w600)),
+      ),
+      const SizedBox(height: 2),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: Text('Sundays are never counted.',
+            style: GoogleFonts.spaceGrotesk(color: _muted, fontSize: 10)),
+      ),
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: sats.map((s) {
+          final key = s.toIso8601String().split('T').first;
+          final on = selected.contains(key);
+          return GestureDetector(
+            onTap: () => onToggle(key),
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: on
+                      ? _teal.withAlpha(30)
+                      : const Color(0xFF050811).withAlpha(160),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                      color: on
+                          ? _teal.withAlpha(140)
+                          : const Color(0xFF849495).withAlpha(90)),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(on ? Icons.check_circle : Icons.circle_outlined,
+                      size: 13, color: on ? _teal : _muted),
+                  const SizedBox(width: 6),
+                  Text(DateFormat('d MMM').format(s),
+                      style: GoogleFonts.spaceGrotesk(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: on ? Colors.white : Colors.white60)),
+                ]),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    ];
+  }
+
   Widget _sheetToggle({
     required IconData icon,
     required String label,
@@ -1082,13 +1166,18 @@ class _MusterScreenState extends State<MusterScreen> {
       );
 
   /// Working days in an inclusive range, honouring the Mon-Fri default.
-  int _workingDays(DateTime from, DateTime to, bool includeWeekends) {
+  int _workingDays(DateTime from, DateTime to, Set<String> saturdays) {
     var d = DateTime(from.year, from.month, from.day);
     final end = DateTime(to.year, to.month, to.day);
     var n = 0;
     while (!d.isAfter(end)) {
-      final weekend = d.weekday == DateTime.saturday || d.weekday == DateTime.sunday;
-      if (includeWeekends || !weekend) n++;
+      final key = d.toIso8601String().split('T').first;
+      final counts = d.weekday == DateTime.sunday
+          ? false
+          : (d.weekday == DateTime.saturday
+              ? saturdays.contains(key)
+              : true);
+      if (counts) n++;
       d = DateTime(d.year, d.month, d.day + 1);
     }
     return n;
@@ -1100,11 +1189,11 @@ class _MusterScreenState extends State<MusterScreen> {
     return DateTime(n.year, n.month, n.day);
   }
 
-  String _openStretchLabel(DateTime from, bool includeWeekends) {
-    final n = _workingDays(from, _today, includeWeekends);
+  String _openStretchLabel(DateTime from, Set<String> saturdays) {
+    final n = _workingDays(from, _today, saturdays);
     final left = DateFormat('d MMM yyyy').format(from);
     if (_today.isBefore(from)) return '$left  -  still running';
-    return '$left  -  today   ·   $n ${includeWeekends ? 'days' : 'working days'} so far';
+    return '$left  -  today   ·   $n working days so far';
   }
 
   /// Days in an inclusive range - 19th to 19th is one day, not zero.
@@ -1115,16 +1204,16 @@ class _MusterScreenState extends State<MusterScreen> {
       1;
 
   String _dateLabel(DateTime from, DateTime? to,
-      [bool includeWeekends = false]) {
+      [Set<String> saturdays = const {}]) {
     if (to == null) return DateFormat('EEE, d MMM yyyy').format(from);
-    final n = _workingDays(from, to, includeWeekends);
+    final n = _workingDays(from, to, saturdays);
     final span = _daysInclusive(from, to);
     final sameYear = from.year == to.year;
     final left = DateFormat(sameYear ? 'd MMM' : 'd MMM yyyy').format(from);
     final right = DateFormat('d MMM yyyy').format(to);
     // Show both when a weekend is being skipped, so the difference between
     // the range dragged and the days actually booked is visible up front.
-    final tail = (!includeWeekends && n != span)
+    final tail = (n != span)
         ? '$n working days (of $span)'
         : '$n days';
     return '$left  -  $right   ·   $tail';
@@ -1138,7 +1227,7 @@ class _MusterScreenState extends State<MusterScreen> {
     String? projectName,
     String? notes,
     MusterKind kind = MusterKind.manpower,
-    bool includeWeekends = false,
+    Set<String> saturdaysWorked = const {},
   }) async {
     try {
       final n = await MusterService.instance.saveRange(
@@ -1149,7 +1238,7 @@ class _MusterScreenState extends State<MusterScreen> {
         projectName: projectName,
         notes: notes,
         kind: kind,
-        includeWeekends: includeWeekends,
+        saturdaysWorked: saturdaysWorked,
       );
       // Zero is a real outcome: a Sat-Sun range with weekends off.
       if (n == 0) {

@@ -99,13 +99,14 @@ class BillingBaseline {
     // total matches the workbook's May column to the rupee, which is what
     // confirms the invoice covers the same period.
     //
-    // The workshop rental stays at 40,000 and is deliberately NOT folded
-    // into the figure above: 388 carries no workshop line at all, so those
-    // 8 operational days are worked, owed and not yet billed. Adding them to
-    // trackAndAccessories would make the month reconcile against an invoice
-    // that does not contain them, and hide a 47,200 incl-GST shortfall.
+    // Workshop is 0, not 40,000. May ran in the SHARED workshop rather than
+    // the exclusive continuous bay, which is what the 5,000/day flat rate
+    // covers - so NATRAX did not charge it, and 388 carrying no workshop
+    // line is correct rather than an omission. The 8 days are recorded as an
+    // UnbilledExtra below so the occupancy stays visible without drawing
+    // down a PO it will never be billed against.
     MonthBaseline(
-        month: '2026-05', trackAndAccessories: 176575, workshopRental: 40000),
+        month: '2026-05', trackAndAccessories: 176575, workshopRental: 0),
   ];
 
   /// Costs carried against the project that appear on no monthly invoice.
@@ -123,6 +124,13 @@ class BillingBaseline {
       label: 'Instrumentation Parts',
       detail: 'Materials and assets upkeeping',
       exclGst: 85000,
+    ),
+    UnbilledExtra(
+      label: 'Workshop - May 2026',
+      detail: 'Shared workshop, not the exclusive continuous bay the '
+          '5,000/day rate covers, so NATRAX did not charge it. '
+          '8 operational days, carried for the record only.',
+      exclGst: 40000,
     ),
   ];
 
