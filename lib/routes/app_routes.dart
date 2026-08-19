@@ -11,6 +11,7 @@ import '../presentation/resources_screen/resources_screen.dart';
 import '../presentation/privacy_policy_screen/privacy_policy_screen.dart';
 import '../presentation/tracks_screen/tracks_screen.dart';
 import '../presentation/session_history_screen/project_selection_screen.dart';
+import '../presentation/session_history_screen/session_history_screen.dart';
 import '../presentation/settings_screen/settings_screen.dart';
 import '../presentation/splash_screen/splash_screen.dart';
 import '../services/engineer_auth_service.dart';
@@ -44,6 +45,9 @@ class AppRoutes {
   static const String instrumentation = '/instrumentation-screen';
   static const String testCases = '/test-cases';
   static const String muster = '/muster-screen';
+  // The daily log of individual track sessions. `sessionHistory` above is a
+  // misnomer kept for its URL - that branch renders the Tracks screen.
+  static const String dailyLog = '/daily-log-screen';
 }
 
 
@@ -250,6 +254,17 @@ final GoRouter appRouter = GoRouter(
             GoRoute(
               path: AppRoutes.muster,
               builder: (context, state) => const MusterScreen(),
+            ),
+          ],
+        ),
+        // Branch 14: Daily log - the per-session history for the active
+        // project. The screen was fully built but nothing routed to it, so
+        // it was unreachable from either navigation bar.
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: AppRoutes.dailyLog,
+              builder: (context, state) => const SessionHistoryScreen(),
             ),
           ],
         ),

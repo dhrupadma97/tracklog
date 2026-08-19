@@ -40,6 +40,14 @@ class _AppNavigationState extends State<AppNavigation>
       branchIndex: 4,
     ));
 
+    // 1b. Daily Log - per-session history for the active project.
+    list.add(const _TabSpec(
+      icon: 'receipt_long_outlined',
+      selectedIcon: 'receipt_long',
+      label: 'Daily Log',
+      branchIndex: 14,
+    ));
+
     // 2. Sessions (mobile only, center tab)
     if (!kIsWeb) {
       list.add(const _TabSpec(

@@ -104,6 +104,15 @@ class _WideScaffoldState extends State<_WideScaffold> {
       branch: 4,
     ));
 
+    // 1b. Daily Log - per-session history for the active project. Reads the
+    // same data as the Analyser, one row per session rather than aggregated.
+    items.add(const _NavItem(
+      icon: Icons.receipt_long_outlined,
+      activeIcon: Icons.receipt_long_rounded,
+      label: 'Daily Log',
+      branch: 14,
+    ));
+
     // 2. Sessions (mobile only, center tab)
     if (!kIsWeb) {
       items.add(const _NavItem(
@@ -180,6 +189,22 @@ class _WideScaffoldState extends State<_WideScaffold> {
       activeIcon: Icons.checklist_rtl,
       label: 'Test Cases',
       branch: 11,
+    ));
+
+    // 9. Resources - availability, allocation and utilisation.
+    items.add(const _NavItem(
+      icon: Icons.groups_2_outlined,
+      activeIcon: Icons.groups_2,
+      label: 'Resources',
+      branch: 12,
+    ));
+
+    // 10. Muster - daily contract manpower headcount.
+    items.add(const _NavItem(
+      icon: Icons.how_to_reg_outlined,
+      activeIcon: Icons.how_to_reg,
+      label: 'Muster',
+      branch: 13,
     ));
 
     return items;

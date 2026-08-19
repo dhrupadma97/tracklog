@@ -76,10 +76,10 @@ class ProjectCatalog {
       status: ProgrammeStatus.active,
     ),
     Programme(
-      key: 'hyundai poc',
-      displayName: 'Hyundai PoC',
-      vehicle: 'Hyundai CRETA EV',
-      powertrain: Powertrain.bev,
+      key: 'kia sonet poc',
+      displayName: 'Kia Sonet PoC',
+      vehicle: 'Kia Sonet',
+      powertrain: Powertrain.ice,
       status: ProgrammeStatus.upcoming,
     ),
     Programme(

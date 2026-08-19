@@ -118,24 +118,26 @@ const _knownProjects = {
       _CarDetail('Frequency Selective Damping (FSD)', Icons.build_circle_rounded),
     ],
   ),
-  'hyundai poc': _ProjectMeta(
-    displayName: 'Hyundai PoC',
-    vehicle: 'Hyundai CRETA EV',
-    vehicleType: 'Battery Electric Crossover',
-    description: 'Goodyear SightLine proof-of-concept on Hyundai\'s CRETA EV. '
-        'Evaluating aquaplaning detection speed recommendations, real-time inflation pressure '
-        'monitoring, and predictive maintenance data relay to fleet management systems.',
-    imagePath: 'assets/images/hyundai_creta_ev.png',
+  'kia sonet poc': _ProjectMeta(
+    displayName: 'Kia Sonet PoC',
+    vehicle: 'Kia Sonet',
+    vehicleType: 'Turbo Petrol Compact SUV',
+    description: 'Goodyear SightLine proof-of-concept on the Kia Sonet. The first sub-4m '
+        'compact SUV in the programme and the smallest wheel diameter tested so far, which '
+        'makes it the reference case for friction estimation and inflation pressure '
+        'monitoring on a higher-profile tyre.',
+    imagePath: 'assets/images/kia_sonet.avif',
+    imageHasBackdrop: true,
     status: ProjectStatus.upcoming,
-    accentColor: Color(0xFF00F3FF),
-    glowColor: Color(0xFF00B4D8),
-    specs: ['51.4 kWh Battery', 'Smart Regen', 'ADAS Level 2+'],
+    accentColor: Color(0xFFF5A524),
+    glowColor: Color(0xFFD97706),
+    specs: ['1.0L T-GDi Turbo', '7-Speed DCT', 'Sub-4m Compact SUV'],
     details: [
-      _CarDetail('Approved OEM Size: 215/60 R17', Icons.circle_outlined),
-      _CarDetail('51.4 kWh High-Density LFP Battery', Icons.battery_charging_full_rounded),
-      _CarDetail('Motor: 138 hp (102 kW) / 255 Nm', Icons.bolt_rounded),
-      _CarDetail('Platform: e-GMP derived K2 Platform', Icons.layers_rounded),
-      _CarDetail('Features: Smart Regen & V2L Power Output', Icons.settings_backup_restore_rounded),
+      _CarDetail('Approved OEM Size: 215/60 R16 (confirm variant)', Icons.circle_outlined),
+      _CarDetail('1.0L T-GDi Turbo Petrol', Icons.settings_suggest_rounded),
+      _CarDetail('Output: 120 PS @ 172 Nm Torque', Icons.speed_rounded),
+      _CarDetail('Transmission: 7-Speed DCT / 6-Speed iMT', Icons.settings_input_component_rounded),
+      _CarDetail('Smallest wheel and highest profile in the programme', Icons.circle_outlined),
     ],
   ),
   'tata harrier ev poc': _ProjectMeta(
@@ -195,6 +197,12 @@ class _ProjectCard {
 }
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
+// Card geometry. Fixed rather than intrinsic: the rail lays every card out
+// at one height, so a long description or an extra spec chip can no longer
+// change how much of the page the projects take up.
+const double _kCardHeight = 336;
+const double _kHeroHeight = 152;
+
 class ProjectSelectionScreen extends StatefulWidget {
   const ProjectSelectionScreen({super.key});
   @override
@@ -206,6 +214,22 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
   bool _isLoading = true;
   List<_ProjectCard> _projects = [];
   int? _hoveredIndex;
+
+  // Horizontal project rail. _railScroll mirrors the controller offset so
+  // the arrows and dots rebuild as it moves.
+  final ScrollController _railCtrl = ScrollController();
+  double _railScroll = 0;
+
+  // Completed programmes are kept out of the main rail but not dropped:
+  // they still carry the bulk of the spend and their own billing history.
+  List<_ProjectCard> _completed = [];
+  bool _showCompleted = false;
+
+  /// What the rail is currently laying out.
+  List<_ProjectCard> get _rail => _showCompleted ? _completed : _projects;
+
+  /// Every programme regardless of state, for the headline totals.
+  List<_ProjectCard> get _allProjects => [..._projects, ..._completed];
 
   late AnimationController _fadeCtrl;
   late AnimationController _pulseCtrl;
@@ -227,11 +251,16 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
     _pulseCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 3))..repeat(reverse: true);
     _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
     _pulseAnim = CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut);
+    _railCtrl.addListener(() {
+      if (!mounted || !_railCtrl.hasClients) return;
+      setState(() => _railScroll = _railCtrl.position.pixels);
+    });
     _loadProjects();
   }
 
   @override
   void dispose() {
+    _railCtrl.dispose();
     _fadeCtrl.dispose();
     _pulseCtrl.dispose();
     super.dispose();
@@ -330,9 +359,23 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
       // each project again here.
       final ordered = cardMap.values.toList();
 
+      // Active programmes lead, upcoming ones bring up the rear, and
+      // completed programmes move to their own tab. Partitioning rather
+      // than sorting keeps catalogue order inside each group - List.sort
+      // is not stable, so a comparator on status alone could shuffle two
+      // active programmes past each other between loads.
+      List<_ProjectCard> withStatus(ProjectStatus s) =>
+          ordered.where((p) => p.meta.status == s).toList();
+      final live = [
+        ...withStatus(ProjectStatus.active),
+        ...withStatus(ProjectStatus.upcoming),
+      ];
+      final done = withStatus(ProjectStatus.completed);
+
       if (mounted) {
         setState(() {
-          _projects = ordered;
+          _projects = live;
+          _completed = done;
           _isLoading = false;
         });
         _fadeCtrl.forward();
@@ -391,27 +434,20 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
         _buildTopBar(),
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(28, 20, 28, 48),
+            padding: const EdgeInsets.fromLTRB(28, 16, 28, 28),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Hero headline
+                // Headline and live stats, side by side where there is room.
                 _buildHeroHeadline(),
-                const SizedBox(height: 36),
-                // Project cards
-                LayoutBuilder(builder: (ctx, constraints) {
-                  final w = constraints.maxWidth;
-                  final columns = w >= 1280
-                      ? 4
-                      : w >= 900
-                          ? 3
-                          : w >= 600
-                              ? 2
-                              : 1;
-                  return _buildProjectGrid(w, columns);
-                }),
-                const SizedBox(height: 32),
-                // All projects button
+                const SizedBox(height: 18),
+                // Running vs completed - two views of the same rail.
+                _buildRailTabs(),
+                const SizedBox(height: 14),
+                // Every programme on one rail.
+                LayoutBuilder(
+                    builder: (ctx, c) => _buildProjectCarousel(c.maxWidth)),
+                const SizedBox(height: 20),
                 _buildAllProjectsButton(),
               ],
             ),
@@ -506,131 +542,155 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
 
   Widget _buildHeroHeadline() {
     // Compute totals across all loaded projects
-    final totalSessions = _projects.fold(0, (s, p) => s + p.sessions);
-    final totalSpendInclGst = _projects.fold(0.0, (s, p) => s + p.totalInclGst);
+    final all = _allProjects;
+    final totalSessions = all.fold(0, (s, p) => s + p.sessions);
+    final totalSpendInclGst = all.fold(0.0, (s, p) => s + p.totalInclGst);
     final activeCount =
-        _projects.where((p) => p.meta.status == ProjectStatus.active).length;
+        all.where((p) => p.meta.status == ProjectStatus.active).length;
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      // Label
-      Row(children: [
-        Container(
-          width: 6, height: 6,
-          decoration: const BoxDecoration(
-            color: Color(0xFF00F3FF),
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text('ACTIVE PROJECTS',
-            style: GoogleFonts.spaceGrotesk(
-                fontSize: 10, fontWeight: FontWeight.w700,
-                color: const Color(0xFF00F3FF), letterSpacing: 3)),
-      ]),
-      const SizedBox(height: 10),
-
-      // Main headline
-      RichText(
-        text: TextSpan(children: [
-          TextSpan(
-            text: 'Select your\n',
-            style: GoogleFonts.spaceGrotesk(
-                fontSize: 34, fontWeight: FontWeight.w800,
-                color: Colors.white, height: 1.15),
-          ),
-          TextSpan(
-            text: 'Project',
-            style: GoogleFonts.spaceGrotesk(
-              fontSize: 34, fontWeight: FontWeight.w800, height: 1.15,
-              foreground: Paint()..shader = const LinearGradient(
-                colors: [Color(0xFF00F3FF), Color(0xFF4A9EFF)],
-              ).createShader(const Rect.fromLTWH(0, 0, 260, 42)),
+    final title = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(children: [
+          Container(
+            width: 6, height: 6,
+            decoration: const BoxDecoration(
+              color: Color(0xFF00F3FF),
+              shape: BoxShape.circle,
             ),
           ),
+          const SizedBox(width: 8),
+          Text('ACTIVE PROJECTS',
+              style: GoogleFonts.spaceGrotesk(
+                  fontSize: 10, fontWeight: FontWeight.w700,
+                  color: const Color(0xFF00F3FF), letterSpacing: 3)),
         ]),
-      ),
-      const SizedBox(height: 10),
-      Text(
-        'Goodyear SightLine PoC validation · NATRAX Proving Ground, Indore',
-        style: GoogleFonts.spaceGrotesk(
-            fontSize: 13, color: const Color(0xFF94A3B8)),
-      ),
-
-      const SizedBox(height: 20),
-
-      // Live stats strip
-      Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft, end: Alignment.bottomRight,
-            colors: [
-              const Color(0xFF00F3FF).withOpacity(0.07),
-              const Color(0xFF4A9EFF).withOpacity(0.03),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFF00F3FF).withOpacity(0.2)),
-        ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // Stats row
-          Row(children: [
-            _statItem(
-              label: 'ACTIVE PoCs',
-              value: '$activeCount / ${_projects.length}',
-              color: const Color(0xFF00F3FF),
-              icon: Icons.science_rounded,
+        const SizedBox(height: 8),
+        // One line rather than two — the headline used to eat 78px of the
+        // height the cards need.
+        RichText(
+          text: TextSpan(children: [
+            TextSpan(
+              text: 'Select your ',
+              style: GoogleFonts.spaceGrotesk(
+                  fontSize: 30, fontWeight: FontWeight.w800,
+                  color: Colors.white, height: 1.1),
             ),
-            _statDivider(),
-            _statItem(
-              label: 'TOTAL SESSIONS',
-              value: '$totalSessions',
-              color: const Color(0xFF4A9EFF),
-              icon: Icons.directions_car_rounded,
-            ),
-            _statDivider(),
-            _statItem(
-              label: 'TOTAL SPEND',
-              value: _inrCompact.format(totalSpendInclGst),
-              color: const Color(0xFFE8002D),
-              icon: Icons.currency_rupee_rounded,
-            ),
-            _statDivider(),
-            _statItem(
-              label: 'LOCATION',
-              value: 'NATRAX',
-              color: const Color(0xFFF59E0B),
-              icon: Icons.location_on_rounded,
+            TextSpan(
+              text: 'Project',
+              style: GoogleFonts.spaceGrotesk(
+                fontSize: 30, fontWeight: FontWeight.w800, height: 1.1,
+                foreground: Paint()..shader = const LinearGradient(
+                  colors: [Color(0xFF00F3FF), Color(0xFF4A9EFF)],
+                ).createShader(const Rect.fromLTWH(0, 0, 220, 38)),
+              ),
             ),
           ]),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Goodyear SightLine PoC validation · NATRAX Proving Ground, Indore',
+          style: GoogleFonts.spaceGrotesk(
+              fontSize: 12, color: const Color(0xFF94A3B8)),
+        ),
+      ],
+    );
 
-          const SizedBox(height: 14),
-          Container(height: 1, color: Colors.white.withOpacity(0.06)),
-          const SizedBox(height: 12),
-
-          // Feature pills
-          Wrap(
-            spacing: 6, runSpacing: 6,
-            children: _tireFeatures.map((f) => Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: const Color(0xFF00F3FF).withOpacity(0.07),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFF00F3FF).withOpacity(0.18)),
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(f.icon, color: const Color(0xFF00F3FF), size: 11),
-                const SizedBox(width: 5),
-                Text(f.name,
-                    style: GoogleFonts.spaceGrotesk(
-                        fontSize: 10, fontWeight: FontWeight.w600,
-                        color: const Color(0xFF00F3FF).withOpacity(0.9))),
-              ]),
-            )).toList(),
+    final stats = Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFF00F3FF).withOpacity(0.07),
+            const Color(0xFF4A9EFF).withOpacity(0.03),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF00F3FF).withOpacity(0.2)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          _statItem(
+            label: 'ACTIVE PoCs',
+            value: '$activeCount / ${all.length}',
+            color: const Color(0xFF00F3FF),
+            icon: Icons.science_rounded,
+          ),
+          _statDivider(),
+          _statItem(
+            label: 'TOTAL SESSIONS',
+            value: '$totalSessions',
+            color: const Color(0xFF4A9EFF),
+            icon: Icons.directions_car_rounded,
+          ),
+          _statDivider(),
+          _statItem(
+            label: 'TOTAL SPEND',
+            value: _inrCompact.format(totalSpendInclGst),
+            color: const Color(0xFFE8002D),
+            icon: Icons.currency_rupee_rounded,
+          ),
+          _statDivider(),
+          _statItem(
+            label: 'LOCATION',
+            value: 'NATRAX',
+            color: const Color(0xFFF59E0B),
+            icon: Icons.location_on_rounded,
           ),
         ]),
-      ),
-    ]);
+        const SizedBox(height: 12),
+        Container(height: 1, color: Colors.white.withOpacity(0.06)),
+        const SizedBox(height: 10),
+        // Feature pills on a single scrollable line. They used to wrap onto
+        // two or three rows and push the cards below the fold.
+        SizedBox(
+          height: 24,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: _tireFeatures.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 6),
+            itemBuilder: (_, i) {
+              final f = _tireFeatures[i];
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00F3FF).withOpacity(0.07),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                      color: const Color(0xFF00F3FF).withOpacity(0.18)),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(f.icon, color: const Color(0xFF00F3FF), size: 11),
+                  const SizedBox(width: 5),
+                  Text(f.name,
+                      style: GoogleFonts.spaceGrotesk(
+                          fontSize: 10, fontWeight: FontWeight.w600,
+                          color: const Color(0xFF00F3FF).withOpacity(0.9))),
+                ]),
+              );
+            },
+          ),
+        ),
+      ]),
+    );
+
+    return LayoutBuilder(builder: (ctx, c) {
+      // Below ~900 the two blocks stop fitting beside each other legibly.
+      if (c.maxWidth < 900) {
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          title,
+          const SizedBox(height: 16),
+          stats,
+        ]);
+      }
+      return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        SizedBox(width: 330, child: title),
+        const SizedBox(width: 28),
+        Expanded(child: stats),
+      ]);
+    });
   }
 
   Widget _statItem({
@@ -662,30 +722,240 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
         margin: const EdgeInsets.symmetric(horizontal: 12),
       );
 
-  /// Cards flow into as many columns as the width allows, and wrap.
+  /// Every programme on a single horizontal rail.
   ///
-  /// This replaced a pair of builders that each assumed exactly three
-  /// programmes — one divided the row by three, the other indexed
-  /// `_projects[0..2]` directly. A fourth card overflowed the first and was
-  /// silently dropped by the second, so the layout had to be edited every time
-  /// a programme was added. It no longer does.
-  Widget _buildProjectGrid(double totalWidth, int desiredColumns) {
-    const gap = 24.0;
-    // Never more columns than there are cards, or three programmes on a wide
-    // monitor would each shrink to a quarter width and leave a hole.
-    final columns = math.min(desiredColumns, math.max(_projects.length, 1));
-    final cardWidth = (totalWidth - gap * (columns - 1)) / columns;
-    return Wrap(
-      spacing: gap,
-      runSpacing: gap,
-      children: _projects
-          .asMap()
-          .entries
-          .map((e) => SizedBox(
-                width: cardWidth,
-                child: _buildProjectCard(e.value, e.key),
-              ))
-          .toList(),
+  /// This replaced a wrapping grid. The grid was correct — it flowed into as
+  /// many columns as fit and wrapped — but each card was ~590px tall, so the
+  /// moment a fourth programme pushed onto a second row nothing below the
+  /// first row was visible without scrolling, and on a laptop even the first
+  /// row was clipped. The rail keeps every programme on one line: as many as
+  /// fit are shown at once, and any beyond that are one arrow, or one swipe,
+  /// away. The card itself is now a fixed [_kCardHeight] summary, with the
+  /// description and spec sheet revealed on hover instead of always printed.
+  Widget _buildProjectCarousel(double totalWidth) {
+    if (_rail.isEmpty) return const SizedBox.shrink();
+
+    const gap = 20.0;
+    final perView = totalWidth >= 1360
+        ? 4
+        : totalWidth >= 1040
+            ? 3
+            : totalWidth >= 700
+                ? 2
+                : 1;
+    // Never stretch fewer cards than fit across the full width, or two
+    // programmes on a wide monitor would each take half the screen.
+    final shown = math.min(perView, _rail.length);
+    final cardWidth = (totalWidth - gap * (shown - 1)) / shown;
+    final extent = cardWidth + gap;
+    final overflows = _rail.length > shown;
+    final steps = overflows ? _rail.length - shown : 0;
+    final atStart = _railScroll <= 1;
+    final atEnd = steps == 0 || _railScroll >= extent * steps - 1;
+
+    return Column(children: [
+      SizedBox(
+        height: _kCardHeight,
+        child: Stack(clipBehavior: Clip.none, children: [
+          ListView.separated(
+            controller: _railCtrl,
+            scrollDirection: Axis.horizontal,
+            physics: overflows
+                ? const BouncingScrollPhysics()
+                : const NeverScrollableScrollPhysics(),
+            itemCount: _rail.length,
+            separatorBuilder: (_, __) => const SizedBox(width: gap),
+            itemBuilder: (ctx, i) => SizedBox(
+              width: cardWidth,
+              child: _buildProjectCard(_rail[i], i),
+            ),
+          ),
+          if (overflows) ...[
+            Positioned(
+              left: -6, top: 0, bottom: 0,
+              child: Center(
+                child: _railArrow(
+                  Icons.chevron_left_rounded,
+                  enabled: !atStart,
+                  onTap: () => _nudgeRail(-extent),
+                ),
+              ),
+            ),
+            Positioned(
+              right: -6, top: 0, bottom: 0,
+              child: Center(
+                child: _railArrow(
+                  Icons.chevron_right_rounded,
+                  enabled: !atEnd,
+                  onTap: () => _nudgeRail(extent),
+                ),
+              ),
+            ),
+          ],
+        ]),
+      ),
+      if (overflows) ...[
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(steps + 1, (i) {
+            final active = (_railScroll / extent).round() == i;
+            return GestureDetector(
+              onTap: () => _scrollRailTo(extent * i),
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  width: active ? 22 : 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: active
+                        ? const Color(0xFF00F3FF)
+                        : Colors.white.withOpacity(0.22),
+                    borderRadius: BorderRadius.circular(4),
+                    boxShadow: active
+                        ? [
+                            BoxShadow(
+                                color: const Color(0xFF00F3FF).withOpacity(0.5),
+                                blurRadius: 8)
+                          ]
+                        : null,
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+      ],
+    ]);
+  }
+
+  /// Running programmes and finished ones answer different questions, so the
+  /// rail shows one set at a time. The default view is only what is live;
+  /// completed programmes keep their billing history one click away.
+  Widget _buildRailTabs() {
+    if (_completed.isEmpty) return const SizedBox.shrink();
+    return Row(children: [
+      _railTab(
+        label: 'RUNNING',
+        count: _projects.length,
+        selected: !_showCompleted,
+        color: const Color(0xFF00F3FF),
+        onTap: () => _switchRail(false),
+      ),
+      const SizedBox(width: 10),
+      _railTab(
+        label: 'COMPLETED',
+        count: _completed.length,
+        selected: _showCompleted,
+        color: const Color(0xFF22C55E),
+        onTap: () => _switchRail(true),
+      ),
+    ]);
+  }
+
+  Widget _railTab({
+    required String label,
+    required int count,
+    required bool selected,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: selected ? color.withOpacity(0.12) : Colors.white.withOpacity(0.03),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: selected ? color.withOpacity(0.55) : Colors.white.withOpacity(0.08),
+            ),
+            boxShadow: selected
+                ? [BoxShadow(color: color.withOpacity(0.18), blurRadius: 14)]
+                : null,
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              width: 6, height: 6,
+              decoration: BoxDecoration(
+                color: selected ? color : const Color(0xFF5A6480),
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(label,
+                style: GoogleFonts.spaceGrotesk(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.8,
+                    color: selected ? color : const Color(0xFF8892B0))),
+            const SizedBox(width: 8),
+            Text('$count',
+                style: GoogleFonts.spaceGrotesk(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: selected
+                        ? Colors.white
+                        : const Color(0xFF5A6480))),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  void _switchRail(bool completed) {
+    if (_showCompleted == completed) return;
+    if (_railCtrl.hasClients) _railCtrl.jumpTo(0);
+    setState(() {
+      _showCompleted = completed;
+      _hoveredIndex = null;
+    });
+  }
+
+  Widget _railArrow(IconData icon,
+      {required bool enabled, required VoidCallback onTap}) {
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 180),
+      opacity: enabled ? 1 : 0.25,
+      child: MouseRegion(
+        cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+        child: GestureDetector(
+          onTap: enabled ? onTap : null,
+          child: Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(
+              color: const Color(0xFF0D1520).withOpacity(0.9),
+              shape: BoxShape.circle,
+              border:
+                  Border.all(color: const Color(0xFF00F3FF).withOpacity(0.35)),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withOpacity(0.55), blurRadius: 16),
+              ],
+            ),
+            child: Icon(icon, color: const Color(0xFF00F3FF), size: 22),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _nudgeRail(double delta) {
+    if (!_railCtrl.hasClients) return;
+    _scrollRailTo(_railCtrl.position.pixels + delta);
+  }
+
+  void _scrollRailTo(double offset) {
+    if (!_railCtrl.hasClients) return;
+    _railCtrl.animateTo(
+      offset.clamp(_railCtrl.position.minScrollExtent,
+          _railCtrl.position.maxScrollExtent),
+      duration: const Duration(milliseconds: 380),
+      curve: Curves.easeOutCubic,
     );
   }
 
@@ -695,7 +965,7 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
     final accent = meta.accentColor;
     final glow = meta.glowColor;
     final lastAct = p.lastActivity != null
-        ? DateFormat('dd MMM yyyy').format(p.lastActivity!)
+        ? DateFormat('dd MMM yy').format(p.lastActivity!)
         : '—';
 
     return MouseRegion(
@@ -707,128 +977,35 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOut,
+          height: _kCardHeight,
           decoration: BoxDecoration(
             color: isHovered
                 ? accent.withOpacity(0.08)
                 : const Color(0xFF0D1520).withOpacity(0.75),
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
-              color: isHovered ? accent.withOpacity(0.6) : Colors.white.withOpacity(0.07),
+              color: isHovered
+                  ? accent.withOpacity(0.6)
+                  : Colors.white.withOpacity(0.07),
               width: isHovered ? 1.5 : 1,
             ),
             boxShadow: isHovered
-                ? [BoxShadow(color: glow.withOpacity(0.25), blurRadius: 40, spreadRadius: -4)]
+                ? [
+                    BoxShadow(
+                        color: glow.withOpacity(0.25),
+                        blurRadius: 40,
+                        spreadRadius: -4)
+                  ]
                 : [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 20)],
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(24),
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ── Floating vehicle hero image ──
-                  _buildVehicleHero(meta, accent, p, isHovered),
-
-                  // ── Card body ──
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Project name
-                        Text(p.displayName,
-                            style: GoogleFonts.spaceGrotesk(
-                                fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
-                        const SizedBox(height: 4),
-                        // Vehicle info
-                        Row(children: [
-                          Icon(
-                            meta.vehicleType.contains('Electric') ? Icons.electric_bolt_rounded : Icons.local_gas_station_rounded,
-                            color: accent, size: 13),
-                          const SizedBox(width: 4),
-                          Flexible(child: Text('${meta.vehicle}  ·  ${meta.vehicleType}',
-                              style: GoogleFonts.spaceGrotesk(
-                                  fontSize: 11, fontWeight: FontWeight.w600, color: accent),
-                              overflow: TextOverflow.ellipsis)),
-                        ]),
-                        const SizedBox(height: 10),
-                        // Description
-                        Text(meta.description,
-                            style: GoogleFonts.spaceGrotesk(
-                                fontSize: 11, color: const Color(0xFF94A3B8), height: 1.5),
-                            maxLines: 3, overflow: TextOverflow.ellipsis),
-
-                        const SizedBox(height: 10),
-                        // Vehicle spec chips
-                        Wrap(spacing: 6, runSpacing: 6,
-                          children: meta.specs.map((s) => Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: accent.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: accent.withOpacity(0.25)),
-                            ),
-                            child: Text(s,
-                                style: GoogleFonts.spaceGrotesk(
-                                    fontSize: 9, fontWeight: FontWeight.w700,
-                                    color: accent, letterSpacing: 1)),
-                          )).toList(),
-                        ),
-
-                        const SizedBox(height: 14),
-                        // Vehicle details
-                        ...(meta.details.map((d) => Container(
-                          margin: const EdgeInsets.only(bottom: 6),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: accent.withOpacity(0.04),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: accent.withOpacity(0.12),
-                              width: 0.8,
-                            ),
-                          ),
-                          child: Row(children: [
-                            Icon(d.icon, color: accent, size: 12),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(d.name,
-                                  style: GoogleFonts.spaceGrotesk(
-                                      fontSize: 10, color: const Color(0xFFDFE2F0))),
-                            ),
-                          ]),
-                        ))),
-
-                        const SizedBox(height: 14),
-                        Container(height: 1, color: Colors.white.withOpacity(0.06)),
-                        const SizedBox(height: 14),
-
-                        // KPI row
-                        Row(children: [
-                          _miniKpi('TOTAL (USD)', p.totalInclGst > 0 ? _fmtUsd(p.totalInclGst) : 'Upcoming', accent),
-                          const SizedBox(width: 16),
-                          _miniKpi('SESSIONS', '${p.sessions}', const Color(0xFF94A3B8)),
-                          const SizedBox(width: 16),
-                          _miniKpi('LAST ACTIVE', lastAct, const Color(0xFF94A3B8)),
-                          const Spacer(),
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            width: 36, height: 36,
-                            decoration: BoxDecoration(
-                              color: isHovered ? accent.withOpacity(0.25) : accent.withOpacity(0.1),
-                              shape: BoxShape.circle,
-                              border: Border.all(color: accent.withOpacity(isHovered ? 0.7 : 0.35)),
-                              boxShadow: isHovered ? [BoxShadow(color: glow.withOpacity(0.5), blurRadius: 12)] : [],
-                            ),
-                            child: Icon(Icons.arrow_forward_rounded, color: accent, size: 16),
-                          ),
-                        ]),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+              child: Stack(children: [
+                _cardResting(p, meta, accent, glow, lastAct, isHovered),
+                _cardHoverSheet(p, meta, accent, isHovered),
+              ]),
             ),
           ),
         ),
@@ -836,9 +1013,219 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
     );
   }
 
+  /// The card at rest: hero image, identity, and the three numbers a manager
+  /// scans for. Fixed height, so a long spec string cannot change it.
+  Widget _cardResting(_ProjectCard p, _ProjectMeta meta, Color accent,
+      Color glow, String lastAct, bool isHovered) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildVehicleHero(meta, accent, p, isHovered),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(p.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.spaceGrotesk(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white)),
+                const SizedBox(height: 3),
+                Row(children: [
+                  Icon(
+                      meta.vehicleType.contains('Electric')
+                          ? Icons.electric_bolt_rounded
+                          : Icons.local_gas_station_rounded,
+                      color: accent,
+                      size: 12),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text('${meta.vehicle}  ·  ${meta.vehicleType}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.spaceGrotesk(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                            color: accent)),
+                  ),
+                ]),
+                const SizedBox(height: 11),
+                _specChips(meta, accent),
+                const Spacer(),
+                Container(height: 1, color: Colors.white.withOpacity(0.06)),
+                const SizedBox(height: 12),
+                _kpiRow(p, accent, glow, lastAct, isHovered),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Spec chips on one scrollable line. Wrapping them made the card height
+  /// depend on how long a given set of spec strings happened to be.
+  Widget _specChips(_ProjectMeta meta, Color accent) {
+    return SizedBox(
+      height: 21,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: meta.specs.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 6),
+        itemBuilder: (_, i) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: accent.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: accent.withOpacity(0.25)),
+          ),
+          child: Text(meta.specs[i],
+              style: GoogleFonts.spaceGrotesk(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  color: accent,
+                  letterSpacing: 1)),
+        ),
+      ),
+    );
+  }
+
+  Widget _kpiRow(_ProjectCard p, Color accent, Color glow, String lastAct,
+      bool isHovered) {
+    return Row(children: [
+      _miniKpi('TOTAL (USD)',
+          p.totalInclGst > 0 ? _fmtUsd(p.totalInclGst) : 'Upcoming', accent),
+      const SizedBox(width: 12),
+      _miniKpi('SESSIONS', '${p.sessions}', const Color(0xFF94A3B8)),
+      const SizedBox(width: 12),
+      _miniKpi('LAST ACTIVE', lastAct, const Color(0xFF94A3B8)),
+      const Spacer(),
+      AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          color: isHovered ? accent.withOpacity(0.25) : accent.withOpacity(0.1),
+          shape: BoxShape.circle,
+          border: Border.all(color: accent.withOpacity(isHovered ? 0.7 : 0.35)),
+          boxShadow: isHovered
+              ? [BoxShadow(color: glow.withOpacity(0.5), blurRadius: 12)]
+              : [],
+        ),
+        child: Icon(Icons.arrow_forward_rounded, color: accent, size: 15),
+      ),
+    ]);
+  }
+
+  /// The description and spec sheet, revealed on hover. Printing them on every
+  /// card at all times is what made the card ~590px tall and forced the grid
+  /// onto a second row that nobody could see without scrolling.
+  Widget _cardHoverSheet(
+      _ProjectCard p, _ProjectMeta meta, Color accent, bool isHovered) {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          opacity: isHovered ? 1 : 0,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  const Color(0xFF060B14).withOpacity(0.97),
+                  accent.withOpacity(0.10),
+                ],
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(p.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.spaceGrotesk(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white)),
+                const SizedBox(height: 2),
+                Text('${meta.vehicle}  ·  ${meta.vehicleType}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.spaceGrotesk(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: accent)),
+                const SizedBox(height: 10),
+                Text(meta.description,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.spaceGrotesk(
+                        fontSize: 10.5,
+                        color: const Color(0xFF94A3B8),
+                        height: 1.5)),
+                const SizedBox(height: 10),
+                Expanded(child: _detailList(meta, accent)),
+                const SizedBox(height: 6),
+                Row(children: [
+                  Text('OPEN PROGRAMME',
+                      style: GoogleFonts.spaceGrotesk(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: accent,
+                          letterSpacing: 1.6)),
+                  const SizedBox(width: 6),
+                  Icon(Icons.arrow_forward_rounded, color: accent, size: 13),
+                ]),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _detailList(_ProjectMeta meta, Color accent) {
+    return ListView(
+      padding: EdgeInsets.zero,
+      physics: const ClampingScrollPhysics(),
+      children: meta.details
+          .map((d) => Container(
+                margin: const EdgeInsets.only(bottom: 5),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color: accent.withOpacity(0.06),
+                  borderRadius: BorderRadius.circular(8),
+                  border:
+                      Border.all(color: accent.withOpacity(0.14), width: 0.8),
+                ),
+                child: Row(children: [
+                  Icon(d.icon, color: accent, size: 11),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(d.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.spaceGrotesk(
+                            fontSize: 9.5, color: const Color(0xFFDFE2F0))),
+                  ),
+                ]),
+              ))
+          .toList(),
+    );
+  }
+
   Widget _buildVehicleHero(_ProjectMeta meta, Color accent, _ProjectCard p, bool isHovered) {
     return SizedBox(
-      height: 190,
+      height: _kHeroHeight,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -901,7 +1288,7 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
           // Floating vehicle image – background stripped via gradient mask
           else if (meta.imagePath != null)
             Positioned(
-              bottom: -30,
+              bottom: -24,
               right: -10,
               left: 20,
               child: AnimatedContainer(
@@ -925,7 +1312,7 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
                     blendMode: BlendMode.dstIn,
                     child: Image.asset(
                       meta.imagePath!,
-                      height: 170,
+                      height: 138,
                       fit: BoxFit.contain,
                       alignment: Alignment.centerRight,
                     ),

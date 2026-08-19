@@ -13,7 +13,14 @@
 - Background image: `GYRacing_DesktopTeamsWallpaper_5-1779284234231.png` — DO NOT REMOVE
 - Goodyear SightLine logo in splash and project selection — DO NOT REMOVE
 - Admin tab is shown ONLY to `userRole == 'manager'` (fixed from inverted bug)
-- Web shows: History, Manual, Analyser, Settings, Admin (if manager) — no Session or Gates tabs
+- Web sidebar (`app_scaffold.dart`) and mobile bottom nav (`app_navigation.dart`)
+  are two separate lists and drift apart easily — add a tab to both. Web shows:
+  Projects, Analyser, Daily Log, Tracks, Manual Entry, Settings, Admin (if
+  manager), Updates, Trends, Instruments, Test Cases, Resources, Muster.
+  No Session or Gates tabs on web.
+- Daily Log = `SessionHistoryScreen`, router branch 14 (`/daily-log-screen`).
+  Branch 1 is still named `AppRoutes.sessionHistory` but renders `TracksScreen`;
+  do not confuse the two.
 - Mobile shows all tabs
 - `ProjectManager` is the single source of truth for active project across all screens
 - Workshop rental hardcoded: ₹5,000/operational day (matches VBA macro)
@@ -24,7 +31,7 @@
 |---|---|---|---|
 | `mahindra ev poc` | Mahindra EV PoC | XEV 9e | Closed |
 | `mahindra ice poc` | Mahindra ICE PoC | XUV 7XO | Active |
-| `hyundai poc` | Hyundai PoC | CRETA EV | Upcoming |
+| `kia sonet poc` | Kia Sonet PoC | Kia Sonet | Upcoming |
 | `tata harrier ev poc` | Tata Harrier EV PoC | Harrier.ev QWD | Active |
 
 `lib/services/project_catalog.dart` is the single source of this list. Every
@@ -35,6 +42,16 @@ screen keeps a parallel `_knownProjects` map for hero image, accent colour and
 vehicle specs only; add the matching entry there, keyed identically.
 
 Empty/General `project_name` in DB → treated as Mahindra EV PoC.
+
+The selection screen partitions this list by status rather than showing it
+verbatim: active programmes lead the rail, upcoming ones bring up the rear,
+and completed programmes sit behind their own COMPLETED tab. Their spend and
+sessions still count towards the headline totals — Mahindra EV is most of both.
+
+Kia Sonet specs are placeholders pending confirmation of the variant — the OEM
+tyre size in particular. Its hero image is an AVIF photo with its own scenery, so
+it uses `imageHasBackdrop: true`; Flutter web decodes AVIF via the browser
+`ImageDecoder`, verified supported.
 
 Only Mahindra EV PoC has a hardcoded `BillingBaseline`. Every other programme
 costs live from what is logged — sessions for track time, `session_additional_
