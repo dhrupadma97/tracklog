@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../services/engineer_auth_service.dart';
+import '../../services/excel_backup_downloader.dart';
 import '../../services/invoice_opener.dart';
 import '../../services/invoice_service.dart';
 import '../../widgets/invoice_upload_flow.dart';
@@ -311,6 +312,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       SliverToBoxAdapter(child: _sectionLabel('PREFERENCES')),
                       SliverToBoxAdapter(child: _buildNotificationsSection()),
                       SliverToBoxAdapter(child: _buildExportSection()),
+                      SliverToBoxAdapter(child: _buildBackupSection()),
                       SliverToBoxAdapter(child: _sectionLabel('BILLING')),
                       SliverToBoxAdapter(child: _buildInvoicesSection()),
                       SliverToBoxAdapter(child: _sectionLabel('SECURITY')),
@@ -588,6 +590,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // ─── Notifications section ─────────────────────────────────────────────────
 
+  bool _backupBusy = false;
+  String? _backupNote;
+  bool _backupFailed = false;
+
   Widget _buildNotificationsSection() {
     return _card(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -658,6 +664,93 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // ─── Export section ────────────────────────────────────────────────────────
+
+  /// Full download of everything entered in the app, as a real .xlsx.
+  ///
+  /// A browser cannot write into the master workbook on someone's desktop, so
+  /// this produces a file to save wherever the backup lives. It reads Supabase
+  /// directly rather than any screen's state, so it captures the database, not
+  /// whatever happens to be loaded.
+  Widget _buildBackupSection() {
+    return _card(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _cardTitle(Icons.backup_outlined, 'Backup to Excel'),
+        const SizedBox(height: 6),
+        Text(
+            'Downloads every session, service line and muster day as a '
+            'spreadsheet. Four sheets, with a Summary that carries row counts '
+            'and totals so it can be checked against the app.',
+            style: GoogleFonts.spaceGrotesk(
+                fontSize: 11, color: const Color(0xFF6B7490))),
+        const SizedBox(height: 14),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _backupBusy ? null : _downloadBackup,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primary,
+              disabledBackgroundColor: AppTheme.primary.withAlpha(70),
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            icon: _backupBusy
+                ? const SizedBox(
+                    width: 15,
+                    height: 15,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Color(0xFF001A10)))
+                : const Icon(Icons.download_rounded,
+                    size: 18, color: Color(0xFF001A10)),
+            label: Text(_backupBusy ? 'Preparing…' : 'Download backup',
+                style: GoogleFonts.spaceGrotesk(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF001A10))),
+          ),
+        ),
+        if (_backupNote != null) ...[
+          const SizedBox(height: 10),
+          Text(_backupNote!,
+              style: GoogleFonts.spaceGrotesk(
+                  fontSize: 10.5,
+                  color: _backupFailed
+                      ? const Color(0xFFEF4444)
+                      : const Color(0xFF22C55E))),
+        ],
+      ]),
+    );
+  }
+
+  Future<void> _downloadBackup() async {
+    setState(() {
+      _backupBusy = true;
+      _backupNote = null;
+      _backupFailed = false;
+    });
+    try {
+      final result = await ExcelBackupDownloader.generate();
+      ExcelBackupDownloader.save(result.bytes, result.name);
+      if (!mounted) return;
+      final d = result.data;
+      setState(() {
+        _backupNote = 'Saved ${result.name} — '
+            '${d.sessions.length} sessions, ${d.services.length} services, '
+            '${d.muster.length} muster days.';
+        _backupFailed = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      // Surfaced, never swallowed. A backup that fails quietly is believed to
+      // have worked, which is worse than not having one.
+      setState(() {
+        _backupNote = 'Backup failed: $e';
+        _backupFailed = true;
+      });
+    } finally {
+      if (mounted) setState(() => _backupBusy = false);
+    }
+  }
 
   Widget _buildExportSection() {
     return _card(

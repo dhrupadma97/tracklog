@@ -76,15 +76,18 @@ void main() {
       final b = {
         for (final m in BillingBaseline.forProject(project)) m.month: m
       };
-      // March and April are pinned to their invoices; May is still computed.
+      // All three months are now pinned to a raised invoice.
       expect(b['2026-03']!.exclGst, 193605);
       expect(b['2026-03']!.inclGst, closeTo(228454, 0.5)); // INV/25-26/1869
       expect(b['2026-04']!.exclGst, 1162450);
       expect(b['2026-04']!.inclGst, closeTo(1371691, 0.5)); // INV/26-27/205
-      // May carries only its workshop rental; its track cost comes from the
-      // sessions logged in TrackLog.
-      expect(b['2026-05']!.isTrackComputed, isTrue);
-      expect(b['2026-05']!.exclGst, 40000);
+      // May was computed from sessions until INV/26-27/388 raised it.
+      // Workshop is 0 because that month ran in the shared workshop, which
+      // is not chargeable - 388 carries no workshop line, correctly.
+      expect(b['2026-05']!.isTrackComputed, isFalse);
+      expect(b['2026-05']!.trackAndAccessories, 176575); // INV/26-27/388
+      expect(b['2026-05']!.workshopRental, 0);
+      expect(b['2026-05']!.exclGst, 176575);
     });
 
     test('April now reconciles exactly, leaving no variance', () {
@@ -99,17 +102,21 @@ void main() {
       expect(balance, greaterThan(0), reason: 'the PO is not exhausted');
     });
 
-    test('May is costed from sessions, so its baseline is workshop only', () {
+    test('May is pinned to INV/26-27/388, workshop excluded', () {
       final may = BillingBaseline.forProject(project)
           .firstWhere((m) => m.month == '2026-05');
-      expect(may.isTrackComputed, isTrue);
-      expect(may.workshopRental, 40000);
+      expect(may.isTrackComputed, isFalse,
+          reason: 'no longer costed from sessions - the invoice was raised');
+      expect(may.trackAndAccessories, 176575);
+      // 1,73,500 track + 3,075 EV charger. No workshop line: that month
+      // used the shared workshop, not the exclusive bay the 5,000/day rate
+      // covers, so nothing was chargeable.
+      expect(may.workshopRental, 0);
 
-      // The baseline alone therefore contributes only the workshop rental.
-      // The PO Tracker adds that month's logged session cost on top at
-      // runtime, which is the whole point of costing it from sessions.
+      // May is the only month without an invoice in this list, so it is the
+      // whole of not-yet-billed: 1,76,575 x 1.18.
       expect(PoMaths.notYetBilled(project, [march, april]),
-          closeTo(47200, 0.5));
+          closeTo(208358.50, 0.5));
     });
 
     test('variance covers invoiced months only', () {
@@ -123,9 +130,12 @@ void main() {
       // 2,05,000 ex-GST of Vehicle Validation and Instrumentation appear on no
       // invoice. Counting them as PO drawdown is what made the balance read as
       // overspent; the balance comes from invoices instead.
-      expect(BillingBaseline.extrasTotal(project), 205000);
+      // Grown from 2,05,000 as reconciliation found more that no invoice
+      // carries: April's uninvoiced services 17,519, May's Vbox hire
+      // 1,70,000, and May's shared workshop 40,000.
+      expect(BillingBaseline.extrasTotal(project), 432519);
       expect(PoMaths.inclGst(BillingBaseline.extrasTotal(project)),
-          closeTo(241900, 1));
+          closeTo(510372.42, 1));
       expect(PoMaths.balance(poInclTax, [march, april]), closeTo(647018, 1));
     });
   });
@@ -208,8 +218,10 @@ void main() {
         // …but contributes no variance, having nothing to compare against.
         expect(PoMaths.variance(project, [stray]), 0);
         // …and leaves every baseline month still pending.
+        // Every baseline month incl GST: 1,93,605 + 11,62,450 + 1,76,575,
+        // times 1.18.
         expect(PoMaths.notYetBilled(project, [stray]),
-            closeTo(1647344.90, 0.5));
+            closeTo(1808503.40, 0.5));
       }
     });
 
