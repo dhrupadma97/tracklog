@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../services/engineer_auth_service.dart';
 import '../../services/excel_backup_downloader.dart';
+import '../../services/excel_backup_service.dart';
 import '../../services/invoice_opener.dart';
 import '../../services/invoice_service.dart';
 import '../../widgets/invoice_upload_flow.dart';
@@ -62,6 +63,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _loadProfile();
     _loadInvoices();
+    _loadLastBackup();
   }
 
   @override
@@ -593,6 +595,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _backupBusy = false;
   String? _backupNote;
   bool _backupFailed = false;
+  DateTime? _lastBackup;
+
+  Future<void> _loadLastBackup() async {
+    final at = await BackupRecency.last();
+    if (mounted) setState(() => _lastBackup = at);
+  }
 
   Widget _buildNotificationsSection() {
     return _card(
@@ -682,7 +690,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
             'and totals so it can be checked against the app.',
             style: GoogleFonts.spaceGrotesk(
                 fontSize: 11, color: const Color(0xFF6B7490))),
-        const SizedBox(height: 14),
+        const SizedBox(height: 12),
+        Builder(builder: (_) {
+          final now = DateTime.now();
+          final overdue = BackupRecency.isStale(_lastBackup, now);
+          final colour = overdue
+              ? const Color(0xFFF59E0B)
+              : const Color(0xFF22C55E);
+          return Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: colour.withAlpha(22),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: colour.withAlpha(90)),
+            ),
+            child: Row(children: [
+              Icon(overdue ? Icons.warning_amber_rounded : Icons.check_circle,
+                  color: colour, size: 15),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(BackupRecency.describe(_lastBackup, now),
+                    style: GoogleFonts.spaceGrotesk(
+                        fontSize: 10.5, height: 1.4, color: colour)),
+              ),
+            ]),
+          );
+        }),
+        const SizedBox(height: 12),
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
@@ -733,6 +767,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ExcelBackupDownloader.save(result.bytes, result.name);
       if (!mounted) return;
       final d = result.data;
+      await BackupRecency.record(DateTime.now());
+      if (!mounted) return;
+      await _loadLastBackup();
+      if (!mounted) return;
       setState(() {
         _backupNote = 'Saved ${result.name} — '
             '${d.sessions.length} sessions, ${d.services.length} services, '

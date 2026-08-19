@@ -105,10 +105,22 @@ class BillingBaseline {
     // under-state drawdown by 25,000 and leave a permanent variance that
     // billing_maths_test pins to zero.
     //
-    // Whether the 25,000 is over-billing is a separate, open question:
-    // T1/T2/T3 carry a 2-hour daily minimum, so 48 billed hours against
-    // 39.56 actual may be entirely correct. It needs the minimum applied
-    // per day before anyone raises it with NATRAX.
+    // The 25,000 is now identified, and it is ONE LINE: T1 High Speed.
+    // The workbook's Daily Track Billing sheet already applies the 2-hour
+    // minimum itself (a "Subject to 2hr Min?" column feeding "Final
+    // Billable Hrs"), so the comparison is like for like:
+    //
+    //   T2       5 hrs  =  1,00,000   both
+    //   T3 Wet  34 hrs  =  7,14,000   both
+    //   T3 Dry   3 hrs  =    57,000   both
+    //   T7       3 hrs  =    45,000   both
+    //   T1       2 hrs  =    50,000   workbook
+    //   T1       3 hrs  =    75,000   invoice     <- one hour more
+    //
+    // Four tracks agree to the rupee. April has a single T1 session, on
+    // 17-Apr, logged at 1.75 hrs and billable at 2 after the minimum.
+    // NATRAX invoiced 3. Unless a T1 session is missing from the log, that
+    // is an hour that was not run - 25,000 to query.
     //
     // The 17,519 of accessories in the workbook but not on the invoice is
     // recorded as an UnbilledExtra below.

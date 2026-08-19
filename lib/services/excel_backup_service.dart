@@ -2,19 +2,20 @@ import 'dart:typed_data';
 
 import 'package:excel/excel.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// One row of any backup sheet, already flattened to primitives.
 ///
 /// The rows are built from Supabase maps by [BackupData.fromRows] rather than
 /// inside the writer, so the writer itself takes no network, no Supabase types
 /// and no clock — which is what makes it testable.
-typedef Row = List<Object?>;
+typedef SheetRow = List<Object?>;
 
 /// Everything the backup workbook contains, already fetched and flattened.
 class BackupData {
-  final List<Row> sessions;
-  final List<Row> services;
-  final List<Row> muster;
+  final List<SheetRow> sessions;
+  final List<SheetRow> services;
+  final List<SheetRow> muster;
   final DateTime generatedAt;
 
   const BackupData({
@@ -74,7 +75,7 @@ class BackupData {
     required List<Map<String, dynamic>> musterRows,
     required DateTime generatedAt,
   }) {
-    final sessions = <Row>[];
+    final sessions = <SheetRow>[];
     for (final r in sessionRows) {
       sessions.add([
         _date(r['started_at']),
@@ -92,7 +93,7 @@ class BackupData {
       ]);
     }
 
-    final services = <Row>[];
+    final services = <SheetRow>[];
     for (final r in serviceRows) {
       // Supabase nests an embedded select under the table name. Fall back
       // to flat keys so a caller that pre-flattened still works.
@@ -108,7 +109,7 @@ class BackupData {
       ]);
     }
 
-    final muster = <Row>[];
+    final muster = <SheetRow>[];
     for (final r in musterRows) {
       muster.add([
         _date(r['muster_date']),
@@ -169,7 +170,7 @@ class ExcelBackupService {
   }
 
   static void _writeSheet(
-      Excel book, String name, List<String> headers, List<Row> rows) {
+      Excel book, String name, List<String> headers, List<SheetRow> rows) {
     final sheet = book[name];
     sheet.appendRow(headers.map((h) => TextCellValue(h)).toList());
     for (final r in rows) {
@@ -181,7 +182,7 @@ class ExcelBackupService {
   /// without re-adding thousands of rows by hand.
   static void _writeSummary(Excel book, BackupData data) {
     final sheet = book[sheetSummary];
-    double sum(List<Row> rows, int col) => BackupData.money(
+    double sum(List<SheetRow> rows, int col) => BackupData.money(
         rows.fold<double>(0, (s, r) => s + ((r[col] as num?)?.toDouble() ?? 0)));
 
     sheet.appendRow([TextCellValue('TrackLog backup')]);
@@ -216,4 +217,45 @@ class ExcelBackupService {
     if (v is double) return DoubleCellValue(v);
     return TextCellValue(v.toString());
   }
+}
+
+/// When the last successful backup was taken, and whether that is too long ago.
+///
+/// Stored locally rather than in Supabase on purpose: the point of a backup is
+/// to survive the database, so the record of having taken one must not live
+/// inside the thing being backed up.
+class BackupRecency {
+  const BackupRecency._();
+
+  static const _key = 'last_excel_backup_iso';
+
+  /// Past this, Settings starts saying so. Seven days is a working week - long
+  /// enough not to nag, short enough that a month never slips by unnoticed.
+  static const Duration stale = Duration(days: 7);
+
+  static Future<DateTime?> last() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_key);
+    return raw == null ? null : DateTime.tryParse(raw);
+  }
+
+  static Future<void> record(DateTime at) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_key, at.toIso8601String());
+  }
+
+  /// Null when never taken, which reads differently from merely overdue.
+  static String describe(DateTime? at, DateTime now) {
+    if (at == null) return 'No backup taken on this browser yet.';
+    final days = DateTime(now.year, now.month, now.day)
+        .difference(DateTime(at.year, at.month, at.day))
+        .inDays;
+    final when = DateFormat('d MMM yyyy, HH:mm').format(at);
+    if (days == 0) return 'Last backup today at ${DateFormat('HH:mm').format(at)}.';
+    if (days == 1) return 'Last backup yesterday, $when.';
+    return 'Last backup $days days ago — $when.';
+  }
+
+  static bool isStale(DateTime? at, DateTime now) =>
+      at == null || now.difference(at) > stale;
 }
