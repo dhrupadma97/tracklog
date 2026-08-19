@@ -133,7 +133,7 @@ const _knownProjects = {
     glowColor: Color(0xFFD97706),
     specs: ['1.0L T-GDi Turbo', '7-Speed DCT', 'Sub-4m Compact SUV'],
     details: [
-      _CarDetail('Approved OEM Size: 215/60 R16 (confirm variant)', Icons.circle_outlined),
+      _CarDetail('Approved OEM Size: 215/60 R16', Icons.circle_outlined),
       _CarDetail('1.0L T-GDi Turbo Petrol', Icons.settings_suggest_rounded),
       _CarDetail('Output: 120 PS @ 172 Nm Torque', Icons.speed_rounded),
       _CarDetail('Transmission: 7-Speed DCT / 6-Speed iMT', Icons.settings_input_component_rounded),

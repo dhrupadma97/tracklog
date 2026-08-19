@@ -48,10 +48,10 @@ verbatim: active programmes lead the rail, upcoming ones bring up the rear,
 and completed programmes sit behind their own COMPLETED tab. Their spend and
 sessions still count towards the headline totals — Mahindra EV is most of both.
 
-Kia Sonet specs are placeholders pending confirmation of the variant — the OEM
-tyre size in particular. Its hero image is an AVIF photo with its own scenery, so
-it uses `imageHasBackdrop: true`; Flutter web decodes AVIF via the browser
-`ImageDecoder`, verified supported.
+Kia Sonet OEM tyre size is confirmed at 215/60 R16. Its engine, transmission and
+output figures are still unconfirmed placeholders. The hero image is an AVIF
+photo carrying its own scenery, so it uses `imageHasBackdrop: true`; Flutter web
+decodes AVIF via the browser `ImageDecoder`, verified supported.
 
 Only Mahindra EV PoC has a hardcoded `BillingBaseline`. Every other programme
 costs live from what is logged — sessions for track time, `session_additional_
