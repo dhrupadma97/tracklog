@@ -23,7 +23,14 @@
   do not confuse the two.
 - Mobile shows all tabs
 - `ProjectManager` is the single source of truth for active project across all screens
-- Workshop rental hardcoded: ₹5,000/operational day (matches VBA macro)
+- Workshop rental hardcoded: ₹5,000/operational day (matches VBA macro).
+  Recorded in two places on purpose: as a WORKSHOP service line in Manual Entry
+  (rupees on an invoice) and as `kind = 'workshop'` rows in the muster (which
+  days). Workshop draws the NATRAX **track_booking** PO, not a manpower PO —
+  8242390552 is "Track & Workshop Booking". Those POs are lumpsum on actuals,
+  so workshop accrues rupees and has no days-remaining figure; manpower POs are
+  contracted in days and do. Manpower days = SUM(head_count); workshop days =
+  COUNT(rows), with head_count forced to 0.
 - Email reports To: `praharshithkumar_komaragiri@goodyear.com`, CC: vimal, ashish, yeswanth, niranjan
 
 ## Projects tracked

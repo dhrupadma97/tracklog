@@ -2,8 +2,40 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'supabase_service.dart';
 
-/// One day of the manpower muster: how many people were on site, and which
-/// manpower PO the day draws against.
+/// What a muster row records.
+///
+/// The two are counted differently and funded differently, which is why they
+/// are separate rows rather than two columns on one row:
+///
+///  - [manpower] is per person per day. Two people for a day is two man-days,
+///    so days used is the sum of head counts. Drawn against a MOICARS PO,
+///    contracted in days.
+///  - [workshop] is per day, flat, whoever is in it. Days used is a count of
+///    rows and head count is always zero. Drawn against the NATRAX track PO,
+///    a lumpsum billed on actuals, so it accrues rupees rather than drawing
+///    down a contracted number of days.
+enum MusterKind { manpower, workshop }
+
+extension MusterKindX on MusterKind {
+  String get label => this == MusterKind.manpower ? 'Manpower' : 'Workshop';
+
+  /// The `kind` column value. Must match the check constraint on
+  /// manpower_muster.kind.
+  String get dbValue => name;
+
+  /// PO category a day of this kind draws against.
+  String get poCategory =>
+      this == MusterKind.manpower ? 'manpower' : 'track_booking';
+
+  static MusterKind parse(String? raw) =>
+      (raw ?? '').trim() == 'workshop' ? MusterKind.workshop : MusterKind.manpower;
+}
+
+/// Workshop rental at NATRAX, per operational day. Matches the WORKSHOP
+/// service line in manual entry and the VBA macro.
+const double kWorkshopRatePerDay = 5000.0;
+
+/// One day of the muster: what was consumed, and which PO it draws against.
 class MusterDay {
   final String? id;
   final DateTime date;
@@ -11,6 +43,7 @@ class MusterDay {
   final String poNumber;
   final String? projectName;
   final String? notes;
+  final MusterKind kind;
 
   const MusterDay({
     this.id,
@@ -19,7 +52,12 @@ class MusterDay {
     required this.poNumber,
     this.projectName,
     this.notes,
+    this.kind = MusterKind.manpower,
   });
+
+  /// One day of drawdown, in the unit this kind is counted in.
+  int get daysConsumed =>
+      kind == MusterKind.workshop ? 1 : headCount;
 
   /// 'YYYY-MM-DD' — the form Postgres wants and the key the UI groups on.
   String get dateKey => date.toIso8601String().split('T').first;
@@ -33,15 +71,45 @@ class MusterDay {
         poNumber: j['po_number'] as String? ?? '',
         projectName: j['project_name'] as String?,
         notes: j['notes'] as String?,
+        kind: MusterKindX.parse(j['kind'] as String?),
       );
 
   Map<String, dynamic> toJson() => {
         'muster_date': dateKey,
-        'head_count': headCount,
         'po_number': poNumber,
         'project_name': projectName,
         'notes': notes,
+        'kind': kind.dbValue,
+        // Meaningless for a workshop day, which is flat per day. Forced
+        // to zero so it can never leak into the manpower sum.
+        'head_count': kind == MusterKind.workshop ? 0 : headCount,
       };
+}
+
+
+/// The workshop position for one PO.
+///
+/// Deliberately not a [ManpowerPosition]. Manpower POs are contracted in days,
+/// so they have a "days left"; the track PO workshop is billed on is a lumpsum
+/// on actuals, so there is no contracted day count to draw down. Reporting a
+/// days-remaining figure here would be inventing one.
+class WorkshopPosition {
+  final String poNumber;
+  final int daysRecorded;
+  final double ratePerDay;
+
+  /// The PO's lumpsum value, for context only. Zero where the value has not
+  /// been recorded yet.
+  final double poValue;
+
+  const WorkshopPosition({
+    required this.poNumber,
+    required this.daysRecorded,
+    required this.ratePerDay,
+    required this.poValue,
+  });
+
+  double get accruedExclGst => daysRecorded * ratePerDay;
 }
 
 /// The manpower position for one PO, in the unit it is actually contracted in.
@@ -109,12 +177,13 @@ class MusterService {
         .toList();
   }
 
-  /// Upsert on (muster_date, po_number), so recording the same day twice
-  /// corrects it instead of counting it twice.
+  /// Upsert on (muster_date, po_number, kind), so recording the same day
+  /// twice corrects it instead of counting it twice - while still letting a
+  /// workshop day and a manpower day share a date.
   Future<void> save(MusterDay day) async {
     await _client.from('manpower_muster').upsert(
           day.toJson(),
-          onConflict: 'muster_date,po_number',
+          onConflict: 'muster_date,po_number,kind',
         );
   }
 
@@ -135,6 +204,7 @@ class MusterService {
     required String poNumber,
     String? projectName,
     String? notes,
+    MusterKind kind = MusterKind.manpower,
   }) async {
     var day = DateTime(from.year, from.month, from.day);
     final end = DateTime(to.year, to.month, to.day);
@@ -148,6 +218,7 @@ class MusterService {
         poNumber: poNumber,
         projectName: projectName,
         notes: notes,
+        kind: kind,
       ).toJson());
       // Rebuilt from parts rather than adding a Duration, so the walk cannot
       // drift on a day that is not 24 hours long.
@@ -156,7 +227,7 @@ class MusterService {
 
     await _client.from('manpower_muster').upsert(
           rows,
-          onConflict: 'muster_date,po_number',
+          onConflict: 'muster_date,po_number,kind',
         );
     return rows.length;
   }
@@ -165,10 +236,17 @@ class MusterService {
     await _client.from('manpower_muster').delete().eq('id', id);
   }
 
-  /// Man-days mustered per PO.
+  /// Man-days mustered per PO — manpower rows only.
+  ///
+  /// Filtered on kind because workshop rows carry head_count 0 and are counted
+  /// by row, not by head. Summing across both kinds would report every workshop
+  /// day as zero man-days and quietly understate nothing, but the filter makes
+  /// the intent explicit rather than relying on that zero.
   Future<Map<String, int>> manDaysByPo() async {
-    final rows =
-        await _client.from('manpower_muster').select('po_number, head_count');
+    final rows = await _client
+        .from('manpower_muster')
+        .select('po_number, head_count')
+        .eq('kind', MusterKind.manpower.dbValue);
     final out = <String, int>{};
     for (final r in rows as List) {
       final po = (r['po_number'] as String? ?? '').trim();
@@ -177,6 +255,59 @@ class MusterService {
     }
     return out;
   }
+
+  /// Workshop days per PO — a row count, since the rental is flat per day.
+  Future<Map<String, int>> workshopDaysByPo() async {
+    final rows = await _client
+        .from('manpower_muster')
+        .select('po_number')
+        .eq('kind', MusterKind.workshop.dbValue);
+    final out = <String, int>{};
+    for (final r in rows as List) {
+      final po = (r['po_number'] as String? ?? '').trim();
+      if (po.isEmpty) continue;
+      out[po] = (out[po] ?? 0) + 1;
+    }
+    return out;
+  }
+
+  /// The POs a workshop day can be booked against.
+  ///
+  /// Workshop is billed on the NATRAX track PO, not a manpower one — 8242390552
+  /// is described in the source document as "Track & Workshop Booking". Those
+  /// POs are lumpsum billed on actuals rather than contracted in days, so a
+  /// workshop day accrues rupees against them instead of drawing a day down.
+  Future<List<Map<String, dynamic>>> workshopPos() async {
+    final rows = await _client
+        .from('po_trackers')
+        .select('po_number, po_status, total_po_value, valid_from')
+        .eq('category', 'track_booking')
+        .order('po_status');
+    return (rows as List)
+        .cast<Map<String, dynamic>>()
+        .where((r) => (r['po_status'] as String? ?? '') != 'closed')
+        .toList();
+  }
+
+  /// Workshop position per PO: days recorded and what they accrue.
+  Future<List<WorkshopPosition>> workshopPositions() async {
+    final days = await workshopDaysByPo();
+    final pos = await workshopPos();
+    final out = pos.map((p) {
+      final number = (p['po_number'] as String? ?? '').trim();
+      return WorkshopPosition(
+        poNumber: number,
+        daysRecorded: days[number] ?? 0,
+        ratePerDay: kWorkshopRatePerDay,
+        poValue: (p['total_po_value'] as num?)?.toDouble() ?? 0,
+      );
+    }).toList();
+    // A PO that has never had a workshop day recorded is still worth showing:
+    // it is where the next one goes.
+    out.sort((a, b) => a.poNumber.compareTo(b.poNumber));
+    return out;
+  }
+
 
   /// Builds the position for every manpower PO.
   ///

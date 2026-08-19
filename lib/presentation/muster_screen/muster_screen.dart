@@ -28,6 +28,10 @@ class _MusterScreenState extends State<MusterScreen> {
   List<MusterDay> _days = [];
   List<ManpowerPosition> _positions = [];
   List<Map<String, dynamic>> _pos = [];
+  // Workshop is billed on the NATRAX track PO, a different pool from the
+  // MOICARS manpower POs, so the sheet offers a different list per kind.
+  List<Map<String, dynamic>> _workshopPos = [];
+  List<WorkshopPosition> _workshopPositions = [];
 
   static const _teal = AppTheme.primary;
   static const _amber = Color(0xFFFFB547);
@@ -69,6 +73,8 @@ class _MusterScreenState extends State<MusterScreen> {
       final positions = await MusterService.instance
           .positions(invoicedExclGstByPo: invoicedExcl);
       final pos = await MusterService.instance.activeManpowerPos();
+      final wPos = await MusterService.instance.workshopPos();
+      final wPositions = await MusterService.instance.workshopPositions();
 
       if (!mounted) return;
       setState(() {
@@ -76,6 +82,8 @@ class _MusterScreenState extends State<MusterScreen> {
         _days = days;
         _positions = positions;
         _pos = pos;
+        _workshopPos = wPos;
+        _workshopPositions = wPositions;
         _loading = false;
       });
     } catch (e) {
@@ -100,10 +108,17 @@ class _MusterScreenState extends State<MusterScreen> {
     ));
   }
 
-  String get _defaultPo {
-    final active = _pos.firstWhere(
+  String get _defaultPo => _defaultPoFor(MusterKind.manpower);
+
+  List<Map<String, dynamic>> _posFor(MusterKind kind) =>
+      kind == MusterKind.workshop ? _workshopPos : _pos;
+
+  String _defaultPoFor(MusterKind kind) {
+    final list = _posFor(kind);
+    if (list.isEmpty) return '';
+    final active = list.firstWhere(
       (p) => (p['po_status'] as String? ?? '') == 'active',
-      orElse: () => _pos.isEmpty ? <String, dynamic>{} : _pos.first,
+      orElse: () => list.first,
     );
     return (active['po_number'] as String? ?? '').trim();
   }
@@ -151,6 +166,7 @@ class _MusterScreenState extends State<MusterScreen> {
                           _header(),
                           const SizedBox(height: 16),
                           ..._positions.map(_positionCard),
+                          ..._workshopPositions.map(_workshopCard),
                           const SizedBox(height: 8),
                           _register(),
                         ],
@@ -225,6 +241,50 @@ class _MusterScreenState extends State<MusterScreen> {
       ]);
 
   // ─── Position ──────────────────────────────────────────────────────────────
+
+  /// Workshop position: days recorded and what they accrue.
+  ///
+  /// Deliberately has no "days left" bar. The track PO workshop is billed on is
+  /// a lumpsum on actuals, not a contracted number of days, so there is no
+  /// remaining-days figure to show and inventing one would be worse than
+  /// leaving it out.
+  Widget _workshopCard(WorkshopPosition p) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0A1025).withAlpha(200),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _amber.withAlpha(60)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.home_repair_service, color: _amber, size: 15),
+          const SizedBox(width: 8),
+          Text('Workshop · PO ${p.poNumber}',
+              style: GoogleFonts.spaceGrotesk(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800)),
+        ]),
+        const SizedBox(height: 12),
+        Row(children: [
+          _stat('Days recorded', '${p.daysRecorded}', 'days', Colors.white),
+          _stat('Rate', _inr.format(p.ratePerDay), 'per day', Colors.white),
+          _stat('Accrued', _inr.format(p.accruedExclGst), 'excl GST', _amber),
+        ]),
+        const SizedBox(height: 10),
+        Text(
+            p.daysRecorded == 0
+                ? 'No workshop days recorded yet. Mark a day and pick '
+                    'WORKSHOP to start the count.'
+                : 'Billed on actuals against a lumpsum PO, so this accrues '
+                    'rather than drawing a contracted day count down.',
+            style: GoogleFonts.spaceGrotesk(
+                color: _muted, fontSize: 11, height: 1.5)),
+      ]),
+    );
+  }
 
   Widget _positionCard(ManpowerPosition p) {
     final incomplete = !p.isComplete;
@@ -407,7 +467,9 @@ class _MusterScreenState extends State<MusterScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: months.map((m) {
         final rows = byMonth[m]!;
-        final manDays = rows.fold<int>(0, (s, d) => s + d.headCount);
+        final manDays = rows
+            .where((d) => d.kind == MusterKind.manpower)
+            .fold<int>(0, (s, d) => s + d.headCount);
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 14, 4, 8),
@@ -430,6 +492,13 @@ class _MusterScreenState extends State<MusterScreen> {
   }
 
   Widget _dayTile(MusterDay d) {
+    final isWorkshop = d.kind == MusterKind.workshop;
+    // Amber zero means "day checked, nobody on site". A workshop day
+    // legitimately carries head_count 0, so it must not borrow that
+    // colour or it reads as an empty manpower day.
+    final emptyManpowerDay = !isWorkshop && d.headCount == 0;
+    final accent =
+        isWorkshop ? _amber : (emptyManpowerDay ? _amber : _teal);
     return GestureDetector(
       onTap: _readOnly ? null : () => _entrySheet(existing: d),
       child: Container(
@@ -439,8 +508,8 @@ class _MusterScreenState extends State<MusterScreen> {
           color: const Color(0xFF0A1025).withAlpha(170),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-              color: d.headCount == 0
-                  ? _amber.withAlpha(60)
+              color: emptyManpowerDay || isWorkshop
+                  ? accent.withAlpha(60)
                   : const Color(0xFF849495).withAlpha(60)),
         ),
         child: Row(children: [
@@ -449,14 +518,16 @@ class _MusterScreenState extends State<MusterScreen> {
             height: 38,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: (d.headCount == 0 ? _amber : _teal).withAlpha(26),
+              color: accent.withAlpha(26),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Text('${d.headCount}',
-                style: GoogleFonts.spaceGrotesk(
-                    color: d.headCount == 0 ? _amber : _teal,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800)),
+            child: isWorkshop
+                ? Icon(Icons.home_repair_service, color: accent, size: 17)
+                : Text('${d.headCount}',
+                    style: GoogleFonts.spaceGrotesk(
+                        color: accent,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800)),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -468,7 +539,8 @@ class _MusterScreenState extends State<MusterScreen> {
                       fontSize: 13,
                       fontWeight: FontWeight.w600)),
               Text(
-                  'PO ${d.poNumber}'
+                  '${isWorkshop ? 'Workshop' : '${d.headCount} on site'}'
+                  ' · PO ${d.poNumber}'
                   ' · ${ProjectCatalog.displayName(d.projectName)}'
                   '${(d.notes ?? '').isEmpty ? '' : ' · ${d.notes}'}',
                   maxLines: 1,
@@ -500,6 +572,7 @@ class _MusterScreenState extends State<MusterScreen> {
     // sheet takes a range and writes one row per day in it.
     DateTime? endDate;
     var count = existing?.headCount ?? 1;
+    var kind = existing?.kind ?? MusterKind.manpower;
     var po = existing?.poNumber ?? _defaultPo;
     // Which programme the day is worked against. Recorded on the row already,
     // but previously taken silently from whatever project was open elsewhere —
@@ -524,7 +597,39 @@ class _MusterScreenState extends State<MusterScreen> {
                     color: Colors.white,
                     fontSize: 17,
                     fontWeight: FontWeight.w800)),
-            const SizedBox(height: 18),
+            const SizedBox(height: 16),
+
+            // What is being recorded. Manpower is per head per day and
+            // draws a MOICARS PO; workshop is flat per day and is billed
+            // on the NATRAX track PO. Locked once a day is recorded -
+            // switching kind would move the row to a different PO pool.
+            if (existing == null)
+              Row(children: [
+                Expanded(
+                  child: _kindTab(
+                    label: 'MANPOWER',
+                    icon: Icons.groups,
+                    selected: kind == MusterKind.manpower,
+                    onTap: () => setSheet(() {
+                      kind = MusterKind.manpower;
+                      po = _defaultPoFor(kind);
+                    }),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _kindTab(
+                    label: 'WORKSHOP',
+                    icon: Icons.home_repair_service,
+                    selected: kind == MusterKind.workshop,
+                    onTap: () => setSheet(() {
+                      kind = MusterKind.workshop;
+                      po = _defaultPoFor(kind);
+                    }),
+                  ),
+                ),
+              ]),
+            if (existing == null) const SizedBox(height: 14),
 
             // Date
             GestureDetector(
@@ -557,7 +662,31 @@ class _MusterScreenState extends State<MusterScreen> {
             ),
             const SizedBox(height: 12),
 
-            // Headcount
+            // Headcount - manpower only. Workshop rental is flat per
+            // operational day whoever is in it, so a head count on a
+            // workshop day would be a number that bills nothing.
+            if (kind == MusterKind.workshop)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF050811).withAlpha(160),
+                  borderRadius: BorderRadius.circular(12),
+                  border:
+                      Border.all(color: const Color(0xFF849495).withAlpha(90)),
+                ),
+                child: Row(children: [
+                  const Icon(Icons.currency_rupee, color: _muted, size: 18),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                        'Flat ${_inr.format(kWorkshopRatePerDay)} per operational day',
+                        style: GoogleFonts.spaceGrotesk(
+                            color: Colors.white70, fontSize: 13)),
+                  ),
+                ]),
+              )
+            else
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
@@ -616,11 +745,11 @@ class _MusterScreenState extends State<MusterScreen> {
                   value: po.isEmpty ? null : po,
                   isExpanded: true,
                   dropdownColor: const Color(0xFF0A1025),
-                  hint: Text('Manpower PO',
+                  hint: Text('${kind.label} PO',
                       style: GoogleFonts.spaceGrotesk(
                           color: _muted, fontSize: 13)),
                   icon: const Icon(Icons.arrow_drop_down, color: _muted),
-                  items: _pos.map((p) {
+                  items: _posFor(kind).map((p) {
                     final n = (p['po_number'] as String? ?? '').trim();
                     final st = (p['po_status'] as String? ?? '');
                     return DropdownMenuItem(
@@ -732,6 +861,7 @@ class _MusterScreenState extends State<MusterScreen> {
                               poNumber: po,
                               projectName: project,
                               notes: note,
+                              kind: kind,
                             ));
                           } else {
                             await _saveRange(
@@ -741,6 +871,7 @@ class _MusterScreenState extends State<MusterScreen> {
                               poNumber: po,
                               projectName: project,
                               notes: note,
+                              kind: kind,
                             );
                           }
                         },
@@ -776,6 +907,45 @@ class _MusterScreenState extends State<MusterScreen> {
           ),
           if (enabled) const Icon(Icons.edit, color: _muted, size: 15),
         ]),
+      );
+
+  Widget _kindTab({
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) =>
+      GestureDetector(
+        onTap: onTap,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(vertical: 11),
+            decoration: BoxDecoration(
+              color: selected
+                  ? _teal.withAlpha(30)
+                  : const Color(0xFF050811).withAlpha(160),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: selected
+                    ? _teal.withAlpha(150)
+                    : const Color(0xFF849495).withAlpha(90),
+                width: selected ? 1.4 : 1,
+              ),
+            ),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(icon, size: 16, color: selected ? _teal : _muted),
+              const SizedBox(width: 8),
+              Text(label,
+                  style: GoogleFonts.spaceGrotesk(
+                      color: selected ? _teal : _muted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2)),
+            ]),
+          ),
+        ),
       );
 
   Widget _stepBtn(IconData icon, VoidCallback onTap) => GestureDetector(
@@ -814,6 +984,7 @@ class _MusterScreenState extends State<MusterScreen> {
     required String poNumber,
     String? projectName,
     String? notes,
+    MusterKind kind = MusterKind.manpower,
   }) async {
     try {
       final n = await MusterService.instance.saveRange(
@@ -823,6 +994,7 @@ class _MusterScreenState extends State<MusterScreen> {
         poNumber: poNumber,
         projectName: projectName,
         notes: notes,
+        kind: kind,
       );
       _snack('$n ${n == 1 ? 'day' : 'days'} recorded');
       await _load();
