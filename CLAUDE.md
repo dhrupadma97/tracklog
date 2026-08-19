@@ -82,3 +82,30 @@ and are deliberately not project-scoped.
 - `*.py` scripts
 - `stitch_tracklog_design_system (4)/`
 - `.bak` files
+
+## Testing venues
+`lib/services/track_venue_catalog.dart` declares the proving grounds; `VenueManager`
+holds the active one (mirrors `ProjectManager`, deliberately separate from it — one
+programme can run at more than one venue).
+
+| Key | Venue | Tracks | Rates |
+|---|---|---|---|
+| `natrax` | NATRAX Proving Ground, Indore | T1–T13, from `track_rates` | loaded |
+| `coastt` | CoASTT HPC, Coimbatore | CO-INT / CO-NAT / CO-HND / CO-EV | **pending** |
+| `mspt` | Mahindra SUV Proving Track, Chennai | none yet | pending |
+
+NATRAX is the default and the DB default on both `track_rates.venue` and
+`engineer_sessions.venue` — every session predating the column ran there, and NOT NULL
+DEFAULT beats nullable because NULL can't be told apart from "venue not known".
+
+`track_rates.rate_pending` separates "rate is zero" from "rate is not known". CoASTT
+seeds with rate 0 + `rate_pending = true`; manual entry then shows "— not recorded" and
+warns that the session saves with zero cost. CoASTT specs come from
+`CoASTT High Performance Centre - Coimbatore.pptx` (slides 6/7/9) — that deck contains
+**no rate card**. MSPT has no document at all, so it has no layouts; don't invent them.
+
+`track_code` is unique per venue, not globally (`track_rates_code_per_venue`), so
+`getTrackRate()` takes an optional `venue` — an unscoped lookup would throw on
+`maybeSingle()` the first time two venues shared a code.
+
+Still hardcoded to NATRAX: `tracks_screen.dart` (`_provingGroundName`, `_provingGroundLogo`).

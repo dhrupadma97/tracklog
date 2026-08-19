@@ -10,6 +10,8 @@ import '../../services/offline_queue_service.dart';
 import '../../services/project_catalog.dart';
 import '../../services/project_manager.dart';
 import '../../services/supabase_service.dart';
+import '../../services/track_venue_catalog.dart';
+import '../../services/venue_manager.dart';
 import '../../theme/app_theme.dart';
 
 // ─── NATRAX Other Service model ───────────────────────────────────────────────
@@ -90,7 +92,17 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
   bool _loadingEntries = true;
 
   // ── NATRAX tracks ─────────────────────────────────────────────────────────
-  static const _tracks = [
+  // Which proving ground the entry is for. Defaults to NATRAX, where every
+  // session logged so far ran.
+  String _venueKey = TrackVenueCatalog.defaultVenueKey;
+
+  TrackVenue get _venue => TrackVenueCatalog.resolve(_venueKey);
+
+  /// Layouts for the selected venue.
+  List<Map<String, dynamic>> get _tracks =>
+      _venueKey == 'coastt' ? _coasttTracks : _natraxTracks;
+
+  static const _natraxTracks = [
     {'code': 'T3W',  'name': 'T3 Wet Braking Track',     'rate': 21000.0, 'minHrs': 2.0},
     {'code': 'T3D',  'name': 'T3 Dry Braking Track',     'rate': 19000.0, 'minHrs': 2.0},
     {'code': 'T1',   'name': 'High Speed Track',          'rate': 25000.0, 'minHrs': 2.0},
@@ -102,6 +114,16 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     {'code': 'T11',  'name': 'Comfort Track',             'rate': 15000.0, 'minHrs': 1.0},
     {'code': 'T12',  'name': 'Fatigue Track',             'rate': 20000.0, 'minHrs': 2.0},
     {'code': 'T13',  'name': 'Gravel & Off-Road Track',   'rate': 15000.0, 'minHrs': 1.0},
+  ];
+
+  // CoASTT Coimbatore. Specs come from the CoASTT deck; rates are 0 because
+  // that deck states none, and the summary reads "not recorded" rather than
+  // printing the zero as though it were a price.
+  static const _coasttTracks = [
+    {'code': 'CO-INT', 'name': 'International Circuit',  'rate': 0.0, 'minHrs': 1.0},
+    {'code': 'CO-NAT', 'name': 'National Circuit',       'rate': 0.0, 'minHrs': 1.0},
+    {'code': 'CO-HND', 'name': 'Handling Circuit',       'rate': 0.0, 'minHrs': 1.0},
+    {'code': 'CO-EV',  'name': 'EV Testing Track',       'rate': 0.0, 'minHrs': 1.0},
   ];
 
   // ── NATRAX Other Services (from rate card) ────────────────────────────────
@@ -264,6 +286,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
         'engineer_id':    user.id,
         'track_code':     _trackCode,
         'track_name':     _trackName,
+        'venue':          _venue.dbValue,
         'vehicle_category':'below_3_5t',
         'booking_type':   'standard',
         'session_status': _status,
@@ -359,6 +382,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
           .insert({
             'engineer_id':     user.id,
             'track_code':      'MISC',
+            'venue':           _venue.dbValue,
             'track_name':      'Other Services',
             'vehicle_category':'below_3_5t',
             'booking_type':    'standard',
@@ -1428,6 +1452,77 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _cardTitle(Icons.location_on_rounded, 'Track Selection', const Color(0xFFFF9500)),
         const SizedBox(height: 12),
+
+        // Venue first: the track list depends on it, so choosing a track
+        // before a venue would offer layouts from the wrong proving ground.
+        Wrap(spacing: 8, runSpacing: 8,
+          children: TrackVenueCatalog.bookable.map((v) {
+            final sel = _venueKey == v.key;
+            return GestureDetector(
+              onTap: sel
+                  ? null
+                  : () => setState(() {
+                        _venueKey = v.key;
+                        VenueManager.instance.setVenue(v.key);
+                        // The old code belongs to the old venue, so reset to
+                        // this one's first layout rather than leaving a
+                        // NATRAX code selected under CoASTT.
+                        final first = _tracks.first;
+                        _trackCode = first['code'] as String;
+                        _trackName = first['name'] as String;
+                        _recalcCost();
+                      }),
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: sel
+                        ? const Color(0xFFFF9500).withAlpha(32)
+                        : Colors.white.withAlpha(10),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: sel
+                          ? const Color(0xFFFF9500).withAlpha(160)
+                          : Colors.white.withAlpha(28),
+                      width: sel ? 1.4 : 1,
+                    ),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.place_outlined,
+                        size: 13,
+                        color: sel
+                            ? const Color(0xFFFF9500)
+                            : Colors.white54),
+                    const SizedBox(width: 6),
+                    Text(v.shortName,
+                        style: GoogleFonts.spaceGrotesk(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
+                            color: sel
+                                ? const Color(0xFFFF9500)
+                                : Colors.white70)),
+                    if (v.ratesPending) ...[
+                      const SizedBox(width: 6),
+                      Text('rates pending',
+                          style: GoogleFonts.spaceGrotesk(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white38)),
+                    ],
+                  ]),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 10),
+        Text('${_venue.displayName} · ${_venue.location}',
+            style: GoogleFonts.spaceGrotesk(
+                fontSize: 10.5, color: Colors.white38)),
+        const SizedBox(height: 14),
         Wrap(spacing: 8, runSpacing: 8,
           children: _tracks.map((t) {
             final sel = _trackCode == t['code'];
@@ -1654,6 +1749,8 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
           
           _receiptRow('Project', _trackProject, valueBold: true),
           const SizedBox(height: 8),
+          _receiptRow('Venue', _venue.shortName, valueBold: true),
+          const SizedBox(height: 8),
           _receiptRow('Track', _trackCode, valueBold: true),
           const SizedBox(height: 8),
           _receiptRow('Track Name', _trackName, valueStyle: GoogleFonts.spaceGrotesk(fontSize: 11, color: Colors.white70)),
@@ -1664,7 +1761,41 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
           const SizedBox(height: 8),
           _receiptRow('Duration Entered', '${hrs}h ${mins}m'),
           const SizedBox(height: 8),
-          _receiptRow('Hourly Rate', '₹${rate.toStringAsFixed(0)}/hr'),
+          _receiptRow(
+              'Hourly Rate',
+              _venue.ratesPending
+                  ? '— not recorded'
+                  : '₹${rate.toStringAsFixed(0)}/hr'),
+
+          // A venue with no rate card would otherwise price every session at
+          // zero, which reads as billed rather than unpriced.
+          if (_venue.ratesPending) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF59E0B).withAlpha(24),
+                borderRadius: BorderRadius.circular(8),
+                border:
+                    Border.all(color: const Color(0xFFF59E0B).withAlpha(90)),
+              ),
+              child: Row(children: [
+                const Icon(Icons.warning_amber_rounded,
+                    color: Color(0xFFF59E0B), size: 15),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                      '${_venue.shortName} has no rate card loaded. This '
+                      'session saves with zero cost and will not appear in '
+                      'billing totals until rates are entered.',
+                      style: GoogleFonts.spaceGrotesk(
+                          fontSize: 9.5,
+                          height: 1.4,
+                          color: const Color(0xFFF59E0B))),
+                ),
+              ]),
+            ),
+          ],
           
           if (isMinHrsEnforced) ...[
             const SizedBox(height: 8),

@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import './supabase_service.dart';
+import './venue_manager.dart';
 
 class EngineerProfile {
   final String id;
@@ -112,6 +113,15 @@ class EngineerSession {
 class TrackRate {
   final String trackCode;
   final String trackName;
+
+  /// Which proving ground the layout belongs to. Defaults to NATRAX, where
+  /// every track predating the venue column sits.
+  final String venue;
+
+  /// True where the venue is usable but its rate card has not been recorded.
+  /// Distinguishes a genuine zero from an unknown, so the entry form can say
+  /// "not recorded" rather than printing a confident 0.
+  final bool ratePending;
   final double rateBelow3_5t;
   final double? rateAbove3_5t;
   final double? exclusiveRateBelow3_5t;
@@ -121,6 +131,8 @@ class TrackRate {
   TrackRate({
     required this.trackCode,
     required this.trackName,
+    this.venue = 'NATRAX',
+    this.ratePending = false,
     required this.rateBelow3_5t,
     this.rateAbove3_5t,
     this.exclusiveRateBelow3_5t,
@@ -132,6 +144,8 @@ class TrackRate {
     return TrackRate(
       trackCode: json['track_code'] as String,
       trackName: json['track_name'] as String,
+      venue: (json['venue'] as String? ?? 'NATRAX').trim(),
+      ratePending: json['rate_pending'] as bool? ?? false,
       rateBelow3_5t: (json['rate_below_3_5t'] as num).toDouble(),
       rateAbove3_5t: (json['rate_above_3_5t'] as num?)?.toDouble(),
       exclusiveRateBelow3_5t: (json['exclusive_rate_below_3_5t'] as num?)
@@ -217,6 +231,7 @@ class EngineerAuthService {
     String bookingType = 'standard',
     String projectName = 'General',
     String vehicleName = 'Standard Vehicle',
+    String? venue,
   }) async {
     final user = currentUser;
     if (user == null) throw Exception('Not signed in');
@@ -234,6 +249,7 @@ class EngineerAuthService {
           'hourly_rate': hourlyRate,
           'project_name': projectName,
           'vehicle_name': vehicleName,
+          'venue': (venue ?? VenueManager.instance.dbValue),
         })
         .select('id')
         .single();
@@ -309,13 +325,18 @@ class EngineerAuthService {
 
   // ── Track Rates ───────────────────────────────────────────────────────────
 
-  Future<List<TrackRate>> getTrackRates() async {
+  /// Active track rates, optionally for one venue only.
+  ///
+  /// Left unfiltered this returns every venue's layouts, which is what the
+  /// admin rate table wants. Pickers pass a venue, or T1..T13 and CoASTT's
+  /// circuits would appear in one undifferentiated grid.
+  Future<List<TrackRate>> getTrackRates({String? venue}) async {
     try {
-      final data = await _client
-          .from('track_rates')
-          .select()
-          .eq('is_active', true)
-          .order('track_code');
+      var q = _client.from('track_rates').select().eq('is_active', true);
+      if (venue != null && venue.trim().isNotEmpty) {
+        q = q.eq('venue', venue.trim().toUpperCase());
+      }
+      final data = await q.order('track_code');
       return (data as List)
           .map((e) => TrackRate.fromJson(e as Map<String, dynamic>))
           .toList();
@@ -324,13 +345,18 @@ class EngineerAuthService {
     }
   }
 
-  Future<TrackRate?> getTrackRate(String trackCode) async {
+  /// One track's rate.
+  ///
+  /// [venue] matters: track_code is unique per venue, not globally, so an
+  /// unscoped lookup would throw on maybeSingle() the first time two venues
+  /// shared a code.
+  Future<TrackRate?> getTrackRate(String trackCode, {String? venue}) async {
     try {
-      final data = await _client
-          .from('track_rates')
-          .select()
-          .eq('track_code', trackCode)
-          .maybeSingle();
+      var q = _client.from('track_rates').select().eq('track_code', trackCode);
+      if (venue != null && venue.trim().isNotEmpty) {
+        q = q.eq('venue', venue.trim().toUpperCase());
+      }
+      final data = await q.maybeSingle();
       if (data == null) return null;
       return TrackRate.fromJson(data);
     } catch (_) {
