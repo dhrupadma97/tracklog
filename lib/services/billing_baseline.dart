@@ -90,8 +90,27 @@ class BillingBaseline {
   static const List<MonthBaseline> _mahindraEv = [
     MonthBaseline(
         month: '2026-03', trackAndAccessories: 138605, workshopRental: 55000),
+    // April track comes from the workbook, not the invoice.
+    //
+    // INV/26-27/205 (24-Jun-26, testing period 01-30 April, PO 8242348442)
+    // bills 48 whole hours for 9,91,000. The workbook's Daily Final Summary
+    // puts April track at 9,66,000, and its Detailed Utilisation sheet logs
+    // 39.56 actual hours. The workbook is the utilisation record, so it is
+    // the figure carried here - 25,000 below what NATRAX invoiced.
+    //
+    // UNRESOLVED: whether that 25,000 is legitimate. T1/T2/T3 carry a
+    // 2-hour daily minimum, so billed hours exceeding actual hours is
+    // expected and 48 vs 39.56 may be entirely correct. Confirming it needs
+    // the minimum applied per day, which has not been done. Do not treat
+    // this as proven over-billing.
+    //
+    // Accessories stay at the invoiced 21,450 (sand bags 11,250, casual
+    // labour 2,200, EV charger 8,000). The workbook holds 38,969; the
+    // 17,519 difference is recorded as an UnbilledExtra below.
     MonthBaseline(
-        month: '2026-04', trackAndAccessories: 1012450, workshopRental: 150000),
+        month: '2026-04',
+        trackAndAccessories: 987450, // 9,66,000 workbook track + 21,450 acc
+        workshopRental: 150000), // PWT Power Train Lab, 30 days at 5,000
     // May was computed from logged sessions while NATRAX had not raised it.
     // INV/26-27/388 (19-Aug-26, testing period 18-25 May, PO 8242348442)
     // settles it: taxable 1,76,575 = five track lines totalling 1,73,500
@@ -124,6 +143,13 @@ class BillingBaseline {
       label: 'Instrumentation Parts',
       detail: 'Materials and assets upkeeping',
       exclGst: 85000,
+    ),
+    UnbilledExtra(
+      label: 'Uninvoiced services - April 2026',
+      detail: 'In the workbook but not on INV/26-27/205: conference hall '
+          '11,000, electricity 3,225, two extra labour days 2,200, and 1,094 '
+          'of EV charger metering (363.76 units logged, 320 billed).',
+      exclGst: 17519,
     ),
     UnbilledExtra(
       label: 'Vbox instrumentation hire - May 2026',
