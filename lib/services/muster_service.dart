@@ -209,6 +209,7 @@ class MusterService {
     String? projectName,
     String? notes,
     MusterKind kind = MusterKind.manpower,
+    bool includeWeekends = false,
   }) async {
     var day = DateTime(from.year, from.month, from.day);
     final end = DateTime(to.year, to.month, to.day);
@@ -216,6 +217,16 @@ class MusterService {
 
     final rows = <Map<String, dynamic>>[];
     while (!day.isAfter(end)) {
+      // The contract week is Mon-Fri. A range dragged across a weekend
+      // would otherwise book Saturday and Sunday as worked and draw them
+      // off the PO - the kind of silent over-count this register exists to
+      // stop. Weekend work happens, but it has to be asked for.
+      final isWeekend = day.weekday == DateTime.saturday ||
+          day.weekday == DateTime.sunday;
+      if (isWeekend && !includeWeekends) {
+        day = DateTime(day.year, day.month, day.day + 1);
+        continue;
+      }
       rows.add(MusterDay(
         date: day,
         headCount: headCount,
@@ -228,6 +239,11 @@ class MusterService {
       // drift on a day that is not 24 hours long.
       day = DateTime(day.year, day.month, day.day + 1);
     }
+
+    // A Sat-Sun only range with weekends excluded legitimately writes
+    // nothing. Sending an empty list to upsert is not an error worth
+    // raising at the user.
+    if (rows.isEmpty) return 0;
 
     await _client.from('manpower_muster').upsert(
           rows,

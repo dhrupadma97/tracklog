@@ -583,6 +583,13 @@ class _MusterScreenState extends State<MusterScreen> {
     // Null means a single day. Manpower is booked in stretches, so the
     // sheet takes a range and writes one row per day in it.
     DateTime? endDate;
+    // An open stretch: a start date with no known end, filled up to today.
+    // Never into the future - a day nobody has worked yet cannot be
+    // recorded as worked, and testing pauses between vehicles anyway, so
+    // the gap is filled by re-saving rather than run on automatically.
+    var stillRunning = false;
+    // The contract week is Mon-Fri.
+    var includeWeekends = false;
     var count = existing?.headCount ?? 1;
     var kind = existing?.kind ?? MusterKind.manpower;
     var po = existing?.poNumber ?? _defaultPo;
@@ -650,6 +657,21 @@ class _MusterScreenState extends State<MusterScreen> {
                   // edit corrects the headcount, not which day it was.
                   ? null
                   : () async {
+                      // An open stretch has no end to pick, so offering a
+                      // range picker would take an end date and then ignore
+                      // it. Ask for the start only.
+                      if (stillRunning) {
+                        final picked = await showDatePicker(
+                          context: ctx,
+                          initialDate: date,
+                          firstDate: DateTime(2026, 1, 1),
+                          lastDate: _today,
+                          helpText: 'Started on',
+                        );
+                        if (picked == null) return;
+                        setSheet(() => date = picked);
+                        return;
+                      }
                       final picked = await showDateRangePicker(
                         context: ctx,
                         firstDate: DateTime(2026, 1, 1),
@@ -668,10 +690,38 @@ class _MusterScreenState extends State<MusterScreen> {
                       });
                     },
               child: _field(
-                  endDate == null ? Icons.calendar_today : Icons.date_range,
-                  _dateLabel(date, endDate),
+                  stillRunning
+                      ? Icons.play_circle_outline
+                      : (endDate == null
+                          ? Icons.calendar_today
+                          : Icons.date_range),
+                  stillRunning
+                      ? _openStretchLabel(date, includeWeekends)
+                      : _dateLabel(date, endDate, includeWeekends),
                   enabled: existing == null),
             ),
+            if (existing == null) ...[
+              const SizedBox(height: 10),
+              _sheetToggle(
+                icon: Icons.all_inclusive,
+                label: 'Still running',
+                hint: 'Open-ended - records up to today',
+                value: stillRunning,
+                onChanged: (v) => setSheet(() {
+                  stillRunning = v;
+                  // An end date and an open stretch are contradictory.
+                  if (v) endDate = null;
+                }),
+              ),
+              const SizedBox(height: 8),
+              _sheetToggle(
+                icon: Icons.weekend_outlined,
+                label: 'Include Sat & Sun',
+                hint: 'Off by default - the week is Mon to Fri',
+                value: includeWeekends,
+                onChanged: (v) => setSheet(() => includeWeekends = v),
+              ),
+            ],
             const SizedBox(height: 12),
 
             // Headcount - manpower only. Workshop rental is flat per
@@ -730,13 +780,14 @@ class _MusterScreenState extends State<MusterScreen> {
                     () => setSheet(() => count = count < 50 ? count + 1 : 50)),
               ]),
             ),
-            if (endDate != null) ...[
+            if (endDate != null || stillRunning) ...[
               const SizedBox(height: 6),
               Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
                     'Recorded against each of the '
-                    '${_daysInclusive(date, endDate!)} days.',
+                    '${_workingDays(date, stillRunning ? _today : endDate!, includeWeekends)} '
+                    '${includeWeekends ? 'days' : 'working days'}.',
                     style: GoogleFonts.spaceGrotesk(
                         color: _muted, fontSize: 11)),
               ),
@@ -864,7 +915,9 @@ class _MusterScreenState extends State<MusterScreen> {
                           final note = notes.text.trim().isEmpty
                               ? null
                               : notes.text.trim();
-                          if (endDate == null) {
+                          final rangeEnd =
+                              stillRunning ? _today : endDate;
+                          if (rangeEnd == null) {
                             await _save(MusterDay(
                               id: existing?.id,
                               date:
@@ -878,12 +931,13 @@ class _MusterScreenState extends State<MusterScreen> {
                           } else {
                             await _saveRange(
                               from: date,
-                              to: endDate!,
+                              to: rangeEnd,
                               headCount: count,
                               poNumber: po,
                               projectName: project,
                               notes: note,
                               kind: kind,
+                              includeWeekends: includeWeekends,
                             );
                           }
                         },
@@ -974,6 +1028,85 @@ class _MusterScreenState extends State<MusterScreen> {
         ),
       );
 
+  Widget _sheetToggle({
+    required IconData icon,
+    required String label,
+    required String hint,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) =>
+      GestureDetector(
+        onTap: () => onChanged(!value),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: value
+                  ? _teal.withAlpha(22)
+                  : const Color(0xFF050811).withAlpha(160),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                  color: value
+                      ? _teal.withAlpha(120)
+                      : const Color(0xFF849495).withAlpha(90)),
+            ),
+            child: Row(children: [
+              Icon(icon, size: 17, color: value ? _teal : _muted),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(label,
+                          style: GoogleFonts.spaceGrotesk(
+                              color: value ? Colors.white : Colors.white70,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600)),
+                      Text(hint,
+                          style: GoogleFonts.spaceGrotesk(
+                              color: _muted, fontSize: 10)),
+                    ]),
+              ),
+              Switch(
+                value: value,
+                onChanged: onChanged,
+                activeThumbColor: Colors.white,
+                activeTrackColor: _teal,
+              ),
+            ]),
+          ),
+        ),
+      );
+
+  /// Working days in an inclusive range, honouring the Mon-Fri default.
+  int _workingDays(DateTime from, DateTime to, bool includeWeekends) {
+    var d = DateTime(from.year, from.month, from.day);
+    final end = DateTime(to.year, to.month, to.day);
+    var n = 0;
+    while (!d.isAfter(end)) {
+      final weekend = d.weekday == DateTime.saturday || d.weekday == DateTime.sunday;
+      if (includeWeekends || !weekend) n++;
+      d = DateTime(d.year, d.month, d.day + 1);
+    }
+    return n;
+  }
+
+  /// Today, as the end of an open stretch.
+  DateTime get _today {
+    final n = DateTime.now();
+    return DateTime(n.year, n.month, n.day);
+  }
+
+  String _openStretchLabel(DateTime from, bool includeWeekends) {
+    final n = _workingDays(from, _today, includeWeekends);
+    final left = DateFormat('d MMM yyyy').format(from);
+    if (_today.isBefore(from)) return '$left  -  still running';
+    return '$left  -  today   ·   $n ${includeWeekends ? 'days' : 'working days'} so far';
+  }
+
   /// Days in an inclusive range - 19th to 19th is one day, not zero.
   int _daysInclusive(DateTime from, DateTime to) =>
       DateTime(to.year, to.month, to.day)
@@ -981,12 +1114,20 @@ class _MusterScreenState extends State<MusterScreen> {
           .inDays +
       1;
 
-  String _dateLabel(DateTime from, DateTime? to) {
+  String _dateLabel(DateTime from, DateTime? to,
+      [bool includeWeekends = false]) {
     if (to == null) return DateFormat('EEE, d MMM yyyy').format(from);
-    final n = _daysInclusive(from, to);
+    final n = _workingDays(from, to, includeWeekends);
+    final span = _daysInclusive(from, to);
     final sameYear = from.year == to.year;
     final left = DateFormat(sameYear ? 'd MMM' : 'd MMM yyyy').format(from);
-    return '$left  -  ${DateFormat('d MMM yyyy').format(to)}   ·   $n days';
+    final right = DateFormat('d MMM yyyy').format(to);
+    // Show both when a weekend is being skipped, so the difference between
+    // the range dragged and the days actually booked is visible up front.
+    final tail = (!includeWeekends && n != span)
+        ? '$n working days (of $span)'
+        : '$n days';
+    return '$left  -  $right   ·   $tail';
   }
 
   Future<void> _saveRange({
@@ -997,6 +1138,7 @@ class _MusterScreenState extends State<MusterScreen> {
     String? projectName,
     String? notes,
     MusterKind kind = MusterKind.manpower,
+    bool includeWeekends = false,
   }) async {
     try {
       final n = await MusterService.instance.saveRange(
@@ -1007,7 +1149,14 @@ class _MusterScreenState extends State<MusterScreen> {
         projectName: projectName,
         notes: notes,
         kind: kind,
+        includeWeekends: includeWeekends,
       );
+      // Zero is a real outcome: a Sat-Sun range with weekends off.
+      if (n == 0) {
+        _snack('Nothing recorded - that range is all weekend. '
+            'Turn on Include Sat & Sun to book it.');
+        return;
+      }
       _snack('$n ${n == 1 ? 'day' : 'days'} recorded');
       await _load();
     } catch (e) {
