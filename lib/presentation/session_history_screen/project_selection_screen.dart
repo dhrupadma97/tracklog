@@ -126,7 +126,7 @@ const _knownProjects = {
         'compact SUV in the programme and the smallest wheel diameter tested so far, which '
         'makes it the reference case for friction estimation and inflation pressure '
         'monitoring on a higher-profile tyre.',
-    imagePath: 'assets/images/kia_sonet.avif',
+    imagePath: 'assets/images/kia_sonet.jpg',
     imageHasBackdrop: true,
     status: ProjectStatus.upcoming,
     accentColor: Color(0xFFF5A524),

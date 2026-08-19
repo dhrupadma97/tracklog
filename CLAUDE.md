@@ -56,9 +56,17 @@ and completed programmes sit behind their own COMPLETED tab. Their spend and
 sessions still count towards the headline totals — Mahindra EV is most of both.
 
 Kia Sonet OEM tyre size is confirmed at 215/60 R16. Its engine, transmission and
-output figures are still unconfirmed placeholders. The hero image is an AVIF
-photo carrying its own scenery, so it uses `imageHasBackdrop: true`; Flutter web
-decodes AVIF via the browser `ImageDecoder`, verified supported.
+output figures are still unconfirmed placeholders. The hero image carries its own
+scenery, so it uses `imageHasBackdrop: true`.
+
+**Flutter web does not render AVIF here.** An `<img>` tag decodes it and
+`ImageDecoder.isTypeSupported('image/avif')` returns true, but neither is the path
+Flutter takes to decode an asset — an AVIF `Image.asset` renders as nothing, with no
+error. That is why `Mahindra XUV 7X0.avif` and `front-left-side-47.avif` sit unused
+while the ICE card loads `mahindra_7xo.webp`. Use JPEG (opaque photos), WebP or PNG
+(cutouts needing alpha). To convert an AVIF on this machine see
+[[reference_machine_toolchain]] — Windows WIC reads it, GDI+ and ImageMagick are not
+available.
 
 Only Mahindra EV PoC has a hardcoded `BillingBaseline`. Every other programme
 costs live from what is logged — sessions for track time, `session_additional_
