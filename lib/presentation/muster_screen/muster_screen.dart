@@ -496,6 +496,9 @@ class _MusterScreenState extends State<MusterScreen> {
 
   Future<void> _entrySheet({MusterDay? existing}) async {
     var date = existing?.date ?? DateTime.now();
+    // Null means a single day. Manpower is booked in stretches, so the
+    // sheet takes a range and writes one row per day in it.
+    DateTime? endDate;
     var count = existing?.headCount ?? 1;
     var po = existing?.poNumber ?? _defaultPo;
     // Which programme the day is worked against. Recorded on the row already,
@@ -525,18 +528,31 @@ class _MusterScreenState extends State<MusterScreen> {
 
             // Date
             GestureDetector(
-              onTap: () async {
-                final picked = await showDatePicker(
-                  context: ctx,
-                  initialDate: date,
-                  firstDate: DateTime(2026, 1, 1),
-                  lastDate: DateTime.now().add(const Duration(days: 1)),
-                );
-                if (picked != null) setSheet(() => date = picked);
-              },
+              onTap: existing != null
+                  // The date is what identifies a recorded day, so an
+                  // edit corrects the headcount, not which day it was.
+                  ? null
+                  : () async {
+                      final picked = await showDateRangePicker(
+                        context: ctx,
+                        firstDate: DateTime(2026, 1, 1),
+                        lastDate: DateTime.now().add(const Duration(days: 1)),
+                        initialDateRange: DateTimeRange(
+                            start: date, end: endDate ?? date),
+                        helpText: 'Days worked',
+                        saveText: 'Done',
+                      );
+                      if (picked == null) return;
+                      setSheet(() {
+                        date = picked.start;
+                        endDate = picked.end.difference(picked.start).inDays < 1
+                            ? null
+                            : picked.end;
+                      });
+                    },
               child: _field(
-                  Icons.calendar_today,
-                  DateFormat('EEE, d MMM yyyy').format(date),
+                  endDate == null ? Icons.calendar_today : Icons.date_range,
+                  _dateLabel(date, endDate),
                   enabled: existing == null),
             ),
             const SizedBox(height: 12),
@@ -573,6 +589,17 @@ class _MusterScreenState extends State<MusterScreen> {
                     () => setSheet(() => count = count < 50 ? count + 1 : 50)),
               ]),
             ),
+            if (endDate != null) ...[
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                    'Recorded against each of the '
+                    '${_daysInclusive(date, endDate!)} days.',
+                    style: GoogleFonts.spaceGrotesk(
+                        color: _muted, fontSize: 11)),
+              ),
+            ],
             const SizedBox(height: 12),
 
             // PO
@@ -693,16 +720,29 @@ class _MusterScreenState extends State<MusterScreen> {
                       ? null
                       : () async {
                           Navigator.pop(ctx);
-                          await _save(MusterDay(
-                            id: existing?.id,
-                            date: DateTime(date.year, date.month, date.day),
-                            headCount: count,
-                            poNumber: po,
-                            projectName: project,
-                            notes: notes.text.trim().isEmpty
-                                ? null
-                                : notes.text.trim(),
-                          ));
+                          final note = notes.text.trim().isEmpty
+                              ? null
+                              : notes.text.trim();
+                          if (endDate == null) {
+                            await _save(MusterDay(
+                              id: existing?.id,
+                              date:
+                                  DateTime(date.year, date.month, date.day),
+                              headCount: count,
+                              poNumber: po,
+                              projectName: project,
+                              notes: note,
+                            ));
+                          } else {
+                            await _saveRange(
+                              from: date,
+                              to: endDate!,
+                              headCount: count,
+                              poNumber: po,
+                              projectName: project,
+                              notes: note,
+                            );
+                          }
                         },
                   child: Text('Save',
                       style: GoogleFonts.spaceGrotesk(
@@ -751,6 +791,45 @@ class _MusterScreenState extends State<MusterScreen> {
           child: Icon(icon, color: _teal, size: 17),
         ),
       );
+
+  /// Days in an inclusive range - 19th to 19th is one day, not zero.
+  int _daysInclusive(DateTime from, DateTime to) =>
+      DateTime(to.year, to.month, to.day)
+          .difference(DateTime(from.year, from.month, from.day))
+          .inDays +
+      1;
+
+  String _dateLabel(DateTime from, DateTime? to) {
+    if (to == null) return DateFormat('EEE, d MMM yyyy').format(from);
+    final n = _daysInclusive(from, to);
+    final sameYear = from.year == to.year;
+    final left = DateFormat(sameYear ? 'd MMM' : 'd MMM yyyy').format(from);
+    return '$left  -  ${DateFormat('d MMM yyyy').format(to)}   ·   $n days';
+  }
+
+  Future<void> _saveRange({
+    required DateTime from,
+    required DateTime to,
+    required int headCount,
+    required String poNumber,
+    String? projectName,
+    String? notes,
+  }) async {
+    try {
+      final n = await MusterService.instance.saveRange(
+        from: from,
+        to: to,
+        headCount: headCount,
+        poNumber: poNumber,
+        projectName: projectName,
+        notes: notes,
+      );
+      _snack('$n ${n == 1 ? 'day' : 'days'} recorded');
+      await _load();
+    } catch (e) {
+      _snack('Could not save: $e', error: true);
+    }
+  }
 
   Future<void> _save(MusterDay day) async {
     try {

@@ -118,6 +118,49 @@ class MusterService {
         );
   }
 
+
+  /// Upserts one row per day across an inclusive date range.
+  ///
+  /// Contract manpower is booked in stretches, not a day at a time, and
+  /// marking a fortnight meant fourteen trips through the sheet. The stored
+  /// shape does not change: still one row per day, so the drawdown maths, the
+  /// per-day edit and the unique constraint all keep working. The range is an
+  /// input convenience only.
+  ///
+  /// Returns how many days were written.
+  Future<int> saveRange({
+    required DateTime from,
+    required DateTime to,
+    required int headCount,
+    required String poNumber,
+    String? projectName,
+    String? notes,
+  }) async {
+    var day = DateTime(from.year, from.month, from.day);
+    final end = DateTime(to.year, to.month, to.day);
+    if (end.isBefore(day)) return 0;
+
+    final rows = <Map<String, dynamic>>[];
+    while (!day.isAfter(end)) {
+      rows.add(MusterDay(
+        date: day,
+        headCount: headCount,
+        poNumber: poNumber,
+        projectName: projectName,
+        notes: notes,
+      ).toJson());
+      // Rebuilt from parts rather than adding a Duration, so the walk cannot
+      // drift on a day that is not 24 hours long.
+      day = DateTime(day.year, day.month, day.day + 1);
+    }
+
+    await _client.from('manpower_muster').upsert(
+          rows,
+          onConflict: 'muster_date,po_number',
+        );
+    return rows.length;
+  }
+
   Future<void> delete(String id) async {
     await _client.from('manpower_muster').delete().eq('id', id);
   }

@@ -834,8 +834,6 @@ class _LoginScreenState extends State<LoginScreen>
                     _buildLoginCard(),
                     const SizedBox(height: 20),
                     _buildToggleRow(),
-                    const SizedBox(height: 20),
-                    _buildDemoCredentials(),
                   ],
                 ),
               ),
@@ -861,8 +859,6 @@ class _LoginScreenState extends State<LoginScreen>
           _buildLoginCard(),
           const SizedBox(height: 20),
           _buildToggleRow(),
-          const SizedBox(height: 24),
-          _buildDemoCredentials(),
           const SizedBox(height: 32),
           _buildFooter(),
         ],
@@ -1409,54 +1405,6 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  // ── Demo credentials ──────────────────────────────────────────────────
-  Widget _buildDemoCredentials() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white.withAlpha(8),
-        borderRadius: BorderRadius.circular(14.0),
-        border: Border.all(color: Colors.white.withAlpha(15)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(5),
-                decoration: BoxDecoration(
-                  color: AppTheme.info.withAlpha(25),
-                  borderRadius: BorderRadius.circular(6.0),
-                ),
-                child: const Icon(
-                  Icons.info_outline_rounded,
-                  color: AppTheme.info,
-                  size: 14,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Demo Accounts',
-                style: GoogleFonts.spaceGrotesk(
-                  color: AppTheme.info,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _demoCredRow('arjun.sharma@goodyear.com', 'Goodyear@2026'),
-          const SizedBox(height: 6),
-          _demoCredRow('priya.nair@goodyear.com', 'Goodyear@2026'),
-          const SizedBox(height: 6),
-          _demoCredRow('rahul.mehta@goodyear.com', 'Goodyear@2026'),
-        ],
-      ),
-    );
-  }
-
   // ── Footer ────────────────────────────────────────────────────────────
   Widget _buildFooter() {
     return Column(
@@ -1573,33 +1521,6 @@ class _LoginScreenState extends State<LoginScreen>
       style: GoogleFonts.spaceGrotesk(color: const Color(0xFFdfe2f0), fontSize: 14),
       decoration: _inputDecoration(hint: hint, icon: icon),
       validator: validator,
-    );
-  }
-
-  Widget _demoCredRow(String email, String password) {
-    return Row(
-      children: [
-        Container(
-          width: 5,
-          height: 5,
-          decoration: const BoxDecoration(
-            color: Color(0xFF00F3FF),
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            '$email  /  $password',
-            style: GoogleFonts.spaceGrotesk(
-              color: Colors.white.withAlpha(160),
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-            ),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
     );
   }
 }
