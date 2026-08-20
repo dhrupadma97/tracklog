@@ -74,7 +74,8 @@ class _MusterScreenState extends State<MusterScreen> {
           .positions(invoicedExclGstByPo: invoicedExcl);
       final pos = await MusterService.instance.activeManpowerPos();
       final wPos = await MusterService.instance.workshopPos();
-      final wPositions = await MusterService.instance.workshopPositions();
+      final wPositions = await MusterService.instance
+          .workshopPositions(invoicedExclGstByPo: invoicedExcl);
 
       if (!mounted) return;
       setState(() {
@@ -281,6 +282,17 @@ class _MusterScreenState extends State<MusterScreen> {
           _stat('Rate', _inr.format(p.ratePerDay), 'per day', Colors.white),
           _stat('Accrued', _inr.format(p.accruedExclGst), 'excl GST', _amber),
         ]),
+        if (p.balanceExclGst != null) ...[
+          const SizedBox(height: 10),
+          Row(children: [
+            _stat('PO value', _inr.format(p.poValue), 'excl GST',
+                Colors.white),
+            _stat('Invoiced', _inr.format(p.invoicedExclGst), 'excl GST',
+                _muted),
+            _stat('Balance', _inr.format(p.balanceExclGst!), 'excl GST',
+                p.balanceExclGst! <= 0 ? _red : _green),
+          ]),
+        ],
         const SizedBox(height: 10),
         Text(
             p.isClosed
@@ -348,6 +360,23 @@ class _MusterScreenState extends State<MusterScreen> {
                     ? _red
                     : (p.daysLeft <= 10 ? _amber : _green)),
           ]),
+          const SizedBox(height: 10),
+          // Money left on the PO. Measured against what has been INVOICED,
+          // not against days worked: a day draws nothing down until it is
+          // billed, and counting accrual as drawdown is what once made a PO
+          // read overspent with 6.4 lakh still on it.
+          Builder(builder: (_) {
+            final value = p.daysContracted * p.ratePerDay;
+            final billed = p.manDaysInvoiced * p.ratePerDay;
+            final left = value - billed;
+            return Row(children: [
+              _stat('PO value', _inr.format(value), 'excl GST',
+                  Colors.white),
+              _stat('Invoiced', _inr.format(billed), 'excl GST', _muted),
+              _stat('Balance', _inr.format(left), 'excl GST',
+                  left <= 0 ? _red : _green),
+            ]);
+          }),
           if (p.manDaysOpening > 0) ...[
             const SizedBox(height: 8),
             Text(
@@ -650,6 +679,18 @@ class _MusterScreenState extends State<MusterScreen> {
                 ),
               ]),
             if (existing == null) const SizedBox(height: 14),
+
+            // What is already on the books for this kind and PO.
+            if (existing == null)
+              ..._runBanner(
+                kind: kind,
+                po: po,
+                onExtend: (runStart) => setSheet(() {
+                  date = runStart;
+                  stillRunning = true;
+                  endDate = null;
+                }),
+              ),
 
             // Date
             GestureDetector(
@@ -1194,6 +1235,136 @@ class _MusterScreenState extends State<MusterScreen> {
     final left = DateFormat('d MMM yyyy').format(from);
     if (_today.isBefore(from)) return '$left  -  still running';
     return '$left  -  today   ·   $n working days so far';
+  }
+
+  /// The most recent unbroken run of recorded days for one kind and PO.
+  ///
+  /// There is no stored "this stretch is open" flag - the rows are the record,
+  /// so the run is derived from them. Weekends are stepped over rather than
+  /// treated as breaks, since Mon-Fri work leaves a two-day hole every week
+  /// that is not a pause in the stretch.
+  ///
+  /// Returns null when nothing is recorded for that kind and PO.
+  ({DateTime from, DateTime to, int days})? _currentRun(
+      MusterKind kind, String po) {
+    final keys = _days
+        .where((d) => d.kind == kind && d.poNumber == po)
+        .map((d) => DateTime(d.date.year, d.date.month, d.date.day))
+        .toSet()
+        .toList()
+      ..sort();
+    if (keys.isEmpty) return null;
+
+    final last = keys.last;
+    var start = last;
+    var count = 1;
+    // Walk backwards while the previous recorded day is the previous working
+    // day. Anything further back is a separate stretch.
+    for (var i = keys.length - 2; i >= 0; i--) {
+      var probe = DateTime(start.year, start.month, start.day - 1);
+      while (probe.weekday == DateTime.saturday ||
+          probe.weekday == DateTime.sunday) {
+        probe = DateTime(probe.year, probe.month, probe.day - 1);
+      }
+      if (keys[i] == probe || keys[i] == DateTime(start.year, start.month, start.day - 1)) {
+        start = keys[i];
+        count++;
+      } else {
+        break;
+      }
+    }
+    return (from: start, to: last, days: count);
+  }
+
+  /// Working days between the end of a run and today, excluding both ends.
+  int _gapToToday(DateTime lastRecorded) {
+    var d = DateTime(lastRecorded.year, lastRecorded.month, lastRecorded.day + 1);
+    var n = 0;
+    while (d.isBefore(_today) || d.isAtSameMomentAs(_today)) {
+      if (d.weekday != DateTime.saturday && d.weekday != DateTime.sunday) n++;
+      d = DateTime(d.year, d.month, d.day + 1);
+    }
+    return n;
+  }
+
+  /// Shows what is already recorded for the selected kind and PO, so opening
+  /// the sheet tells you where the stretch stands instead of presenting a
+  /// blank form. "Still running" only ever affected writing - it filled rows up
+  /// to that day and left nothing behind saying a run was open, which is why
+  /// a reopened sheet looked empty.
+  List<Widget> _runBanner({
+    required MusterKind kind,
+    required String po,
+    required void Function(DateTime from) onExtend,
+  }) {
+    if (po.isEmpty) return const [];
+    final run = _currentRun(kind, po);
+    if (run == null) return const [];
+
+    final gap = _gapToToday(run.to);
+    final upToDate = gap == 0;
+    final colour = upToDate ? _green : _amber;
+    final label = kind == MusterKind.workshop ? 'Workshop' : 'Manpower';
+
+    return [
+      Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: colour.withAlpha(20),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: colour.withAlpha(90)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(upToDate ? Icons.check_circle : Icons.pending_actions,
+                size: 15, color: colour),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                  '$label recorded '
+                  '${DateFormat('d MMM').format(run.from)} - '
+                  '${DateFormat('d MMM').format(run.to)}'
+                  '   ${run.days} day${run.days == 1 ? '' : 's'}',
+                  style: GoogleFonts.spaceGrotesk(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700)),
+            ),
+          ]),
+          const SizedBox(height: 4),
+          Text(
+              upToDate
+                  ? 'Up to date. Nothing further to record for this stretch.'
+                  : '$gap working day${gap == 1 ? '' : 's'} since, not yet '
+                      'recorded. Extend if the stretch ran on; leave it if it '
+                      'stopped on ${DateFormat('d MMM').format(run.to)}.',
+              style: GoogleFonts.spaceGrotesk(
+                  color: _muted, fontSize: 10.5, height: 1.4)),
+          if (!upToDate) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => onExtend(run.from),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: colour.withAlpha(140)),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+                icon: Icon(Icons.fast_forward_rounded, size: 15, color: colour),
+                label: Text('Extend to today',
+                    style: GoogleFonts.spaceGrotesk(
+                        color: colour,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ],
+        ]),
+      ),
+      const SizedBox(height: 12),
+    ];
   }
 
   /// Days in an inclusive range - 19th to 19th is one day, not zero.

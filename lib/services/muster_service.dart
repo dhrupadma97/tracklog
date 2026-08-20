@@ -105,13 +105,26 @@ class WorkshopPosition {
   /// Closed POs are shown when they carry days, but cannot take new ones.
   final bool isClosed;
 
+  /// Billed against this PO so far, ex-GST, from the invoice register.
+  final double invoicedExclGst;
+
   const WorkshopPosition({
     required this.poNumber,
     required this.daysRecorded,
     required this.ratePerDay,
     required this.poValue,
     this.isClosed = false,
+    this.invoicedExclGst = 0,
   });
+
+  /// What is left on the PO: its value less what has been billed against
+  /// it. Deliberately measured against INVOICED, not against days recorded -
+  /// a day worked draws nothing down until someone bills it, and treating
+  /// accrual as drawdown is what once made a PO read overspent with 6.4
+  /// lakh still on it. Zero PO value means the figure was never recorded,
+  /// so there is no balance to state.
+  double? get balanceExclGst =>
+      poValue > 0 ? poValue - invoicedExclGst : null;
 
   double get accruedExclGst => daysRecorded * ratePerDay;
 }
@@ -333,7 +346,9 @@ class MusterService {
   }
 
   /// Workshop position per PO: days recorded and what they accrue.
-  Future<List<WorkshopPosition>> workshopPositions() async {
+  Future<List<WorkshopPosition>> workshopPositions({
+    Map<String, double> invoicedExclGstByPo = const {},
+  }) async {
     final days = await workshopDaysByPo();
     final pos = await _allWorkshopPos();
     final out = pos.map((p) {
@@ -344,6 +359,7 @@ class MusterService {
         ratePerDay: kWorkshopRatePerDay,
         poValue: (p['total_po_value'] as num?)?.toDouble() ?? 0,
         isClosed: (p['po_status'] as String? ?? '') == 'closed',
+        invoicedExclGst: invoicedExclGstByPo[number] ?? 0,
       );
     }).toList();
     // An open PO with no days yet is still worth showing - it is where the

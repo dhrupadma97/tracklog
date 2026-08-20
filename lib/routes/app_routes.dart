@@ -7,7 +7,6 @@ import '../presentation/gate_management_screen/gate_management_screen.dart';
 import '../presentation/login_screen/login_screen.dart';
 import '../presentation/manual_entry_screen/manual_entry_screen.dart';
 import '../presentation/po_tracker_screen/po_tracker_screen.dart';
-import '../presentation/resources_screen/resources_screen.dart';
 import '../presentation/privacy_policy_screen/privacy_policy_screen.dart';
 import '../presentation/tracks_screen/tracks_screen.dart';
 import '../presentation/session_history_screen/project_selection_screen.dart';
@@ -112,18 +111,6 @@ final GoRouter appRouter = GoRouter(
       ),
     ),
 
-    GoRoute(
-      path: AppRoutes.poTracker,
-      pageBuilder: (context, state) => CustomTransitionPage(
-        key: state.pageKey,
-        child: const PoTrackerScreen(),
-        transitionDuration: const Duration(milliseconds: 280),
-        transitionsBuilder: (context, animation, _, child) => FadeTransition(
-          opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
-          child: child,
-        ),
-      ),
-    ),
     GoRoute(
       path: AppRoutes.emailReports,
       pageBuilder: (context, state) => CustomTransitionPage(
@@ -239,12 +226,20 @@ final GoRouter appRouter = GoRouter(
             ),
           ],
         ),
-        // Branch 12: Testing resources
+        // Branch 12: PO Tracker.
+        // Was Testing Resources, whose tab was removed. Reused rather than
+        // deleted: StatefulShellRoute addresses branches by index, so
+        // removing one would shift Muster 13 -> 12 and Daily Log 14 -> 13 and
+        // every nav entry pointing at them would open the wrong screen.
+        //
+        // The PO Tracker used to be a standalone route pushed from Settings.
+        // A branch cannot share a path with a top-level GoRoute, so that one
+        // is removed - it lives here now and is reached from the nav bar.
         StatefulShellBranch(
           routes: [
             GoRoute(
-              path: AppRoutes.resources,
-              builder: (context, state) => const ResourcesScreen(),
+              path: AppRoutes.poTracker,
+              builder: (context, state) => const PoTrackerScreen(),
             ),
           ],
         ),

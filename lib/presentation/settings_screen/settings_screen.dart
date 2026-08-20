@@ -514,14 +514,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 fontSize: 11, color: const Color(0xFF6B7490))),
         const SizedBox(height: 16),
         _navRow(
-          icon: Icons.receipt_long_rounded,
-          iconColor: const Color(0xFF4A9EFF),
-          title: 'PO Tracker',
-          subtitle: 'Purchase orders, utilisation & attachments',
-          onTap: () => context.push(AppRoutes.poTracker),
-        ),
-        _divider(),
-        _navRow(
           icon: Icons.email_rounded,
           iconColor: const Color(0xFF4CAF50),
           title: 'Email Reports',

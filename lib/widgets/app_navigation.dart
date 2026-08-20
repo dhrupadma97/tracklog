@@ -128,11 +128,11 @@ class _AppNavigationState extends State<AppNavigation>
       branchIndex: 11,
     ));
 
-    // 10. Resources — availability, allocation and utilisation
+    // 10. PO Tracker — purchase orders, drawdown and attachments.
     list.add(const _TabSpec(
-      icon: 'groups_2_outlined',
-      selectedIcon: 'groups_2',
-      label: 'Resources',
+      icon: 'receipt_long_outlined',
+      selectedIcon: 'receipt_long',
+      label: 'PO Tracker',
       branchIndex: 12,
     ));
 

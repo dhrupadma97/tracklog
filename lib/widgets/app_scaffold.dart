@@ -191,11 +191,12 @@ class _WideScaffoldState extends State<_WideScaffold> {
       branch: 11,
     ));
 
-    // 9. Resources - availability, allocation and utilisation.
+    // 9. PO Tracker - purchase orders, drawdown and attachments. Moved out
+    // of Settings, which is where it used to be buried.
     items.add(const _NavItem(
-      icon: Icons.groups_2_outlined,
-      activeIcon: Icons.groups_2,
-      label: 'Resources',
+      icon: Icons.receipt_long_outlined,
+      activeIcon: Icons.receipt_long,
+      label: 'PO Tracker',
       branch: 12,
     ));
 
