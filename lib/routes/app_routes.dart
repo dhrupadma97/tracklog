@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -50,8 +52,42 @@ class AppRoutes {
 }
 
 
+/// Bridges Supabase auth events to GoRouter's `refreshListenable`.
+///
+/// The redirect below reads `isSignedIn` synchronously, so on its own it is
+/// only ever consulted during a navigation. A session dying mid-visit would
+/// leave the user parked in the shell - signed out, every query failing, but
+/// never routed to login.
+///
+/// Only a real change of signed-in state notifies. `onAuthStateChange` also
+/// emits on every token renewal, and refreshing the router on those would
+/// rebuild the shell for nothing.
+class _AuthRefreshNotifier extends ChangeNotifier {
+  _AuthRefreshNotifier() {
+    _signedIn = EngineerAuthService.instance.isSignedIn;
+    _sub = EngineerAuthService.instance.authStateChanges.listen((_) {
+      final signedIn = EngineerAuthService.instance.isSignedIn;
+      if (signedIn == _signedIn) return;
+      _signedIn = signedIn;
+      notifyListeners();
+    });
+  }
+
+  bool _signedIn = false;
+  late final StreamSubscription<dynamic> _sub;
+
+  @override
+  void dispose() {
+    _sub.cancel();
+    super.dispose();
+  }
+}
+
+final _authRefreshNotifier = _AuthRefreshNotifier();
+
 final GoRouter appRouter = GoRouter(
   initialLocation: AppRoutes.initial,
+  refreshListenable: _authRefreshNotifier,
   redirect: (context, state) {
     final isLoggedIn = EngineerAuthService.instance.isSignedIn;
     final isSplash = state.matchedLocation == AppRoutes.splash;

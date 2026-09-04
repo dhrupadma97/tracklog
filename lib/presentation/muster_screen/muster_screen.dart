@@ -868,6 +868,7 @@ class _MusterScreenState extends State<MusterScreen> {
                 ),
               ),
             ),
+            _destinationHint(kind, po),
             const SizedBox(height: 12),
 
             // Project the day is booked to
@@ -1365,6 +1366,76 @@ class _MusterScreenState extends State<MusterScreen> {
       ),
       const SizedBox(height: 12),
     ];
+  }
+
+  /// Names the card this entry will land on, and what is already sitting
+  /// there.
+  ///
+  /// Cards are grouped by PO number alone, so the PO picked above is the
+  /// whole answer to where a saved day turns up. The two drift apart easily:
+  /// workshop defaults to the current track PO while the historical one is
+  /// usually the card on screen, so a day saved against 8242390552 looks like
+  /// it went nowhere when the 8242348442 card is the one being watched.
+  ///
+  /// Unlike [_runBanner] this shows even when nothing is recorded yet - a PO
+  /// with no days is exactly the case that needs telling where to look.
+  Widget _destinationHint(MusterKind kind, String po) {
+    if (po.isEmpty) return const SizedBox.shrink();
+    final isWorkshop = kind == MusterKind.workshop;
+    final colour = isWorkshop ? _amber : _teal;
+    // Matches the card headings verbatim, so the hint names something the
+    // eye can actually find on the page behind the sheet.
+    final title = isWorkshop ? 'Workshop · PO $po' : 'PO $po';
+
+    // Read off the same position lists the cards are built from, so this
+    // cannot disagree with the number the card shows.
+    String standing = 'Nothing recorded there yet — this starts its count.';
+    if (isWorkshop) {
+      for (final w in _workshopPositions) {
+        if (w.poNumber != po) continue;
+        if (w.daysRecorded > 0) {
+          standing = '${w.daysRecorded} day'
+              '${w.daysRecorded == 1 ? '' : 's'} already recorded there.';
+        }
+        break;
+      }
+    } else {
+      for (final m in _positions) {
+        if (m.poNumber != po) continue;
+        if (m.manDaysUsed > 0) {
+          standing = '${m.manDaysUsed.toStringAsFixed(0)} man-days '
+              'already used there.';
+        }
+        break;
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colour.withAlpha(16),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colour.withAlpha(70)),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(Icons.subdirectory_arrow_right_rounded, size: 15, color: colour),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Goes on the "$title" card',
+                style: GoogleFonts.spaceGrotesk(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700)),
+            const SizedBox(height: 3),
+            Text(standing,
+                style: GoogleFonts.spaceGrotesk(
+                    color: _muted, fontSize: 10.5, height: 1.4)),
+          ]),
+        ),
+      ]),
+    );
   }
 
   /// Days in an inclusive range - 19th to 19th is one day, not zero.

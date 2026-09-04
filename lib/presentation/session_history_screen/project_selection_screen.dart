@@ -3,10 +3,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
+import 'dart:async';
 import 'dart:ui';
 import 'dart:math' as math;
 
 import '../../services/project_manager.dart';
+import '../../services/session_keepalive.dart';
 
 // ─── Project metadata registry ────────────────────────────────────────────────
 class _CarDetail {
@@ -215,6 +217,20 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
   List<_ProjectCard> _projects = [];
   int? _hoveredIndex;
 
+  /// Why the last load failed, or null if it did not. Kept separate from an
+  /// empty project list: "nothing came back" and "the query never landed"
+  /// look identical on screen otherwise, and only one of them is worth a
+  /// retry button.
+  String? _error;
+
+  /// Reloads once a resumed session has a usable token again, so a tab woken
+  /// after the token's hour repairs itself instead of sitting on the error.
+  StreamSubscription<void>? _keepaliveSub;
+
+  /// Retrying and the keepalive's own reload can land together, since the
+  /// retry is what renewed the token in the first place. One load is enough.
+  bool _loadInFlight = false;
+
   // Horizontal project rail. _railScroll mirrors the controller offset so
   // the arrows and dots rebuild as it moves.
   final ScrollController _railCtrl = ScrollController();
@@ -255,11 +271,15 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
       if (!mounted || !_railCtrl.hasClients) return;
       setState(() => _railScroll = _railCtrl.position.pixels);
     });
+    _keepaliveSub = SessionKeepalive.instance.onSessionRefreshed.listen((_) {
+      if (mounted) _loadProjects();
+    });
     _loadProjects();
   }
 
   @override
   void dispose() {
+    _keepaliveSub?.cancel();
     _railCtrl.dispose();
     _fadeCtrl.dispose();
     _pulseCtrl.dispose();
@@ -267,7 +287,12 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
   }
 
   Future<void> _loadProjects() async {
-    setState(() => _isLoading = true);
+    if (_loadInFlight) return;
+    _loadInFlight = true;
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
     try {
       final client = Supabase.instance.client;
       final sessionsRaw = await client
@@ -380,9 +405,46 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
         });
         _fadeCtrl.forward();
       }
-    } catch (_) {
-      if (mounted) setState(() => _isLoading = false);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _error = _describeFailure(e);
+      });
+      // Forward on the failure path too. The content sits inside a
+      // FadeTransition driven by this controller, so leaving it at 0 renders
+      // the whole page - error message included - completely invisible.
+      _fadeCtrl.forward();
+    } finally {
+      _loadInFlight = false;
     }
+  }
+
+  /// A short, actionable reason for a failed load. An expired token is worth
+  /// naming outright: it is the one cause the user can clear themselves, and
+  /// it is what a tab left open past the token's hour always hits.
+  static String _describeFailure(Object e) {
+    const expired =
+        'Your session expired while this tab was idle. Retry to sign back in.';
+    if (e is AuthException) return expired;
+    if (e is PostgrestException) {
+      final message = e.message.toLowerCase();
+      if (e.code == 'PGRST301' ||
+          e.code == '401' ||
+          message.contains('jwt') ||
+          message.contains('expired')) {
+        return expired;
+      }
+      return e.message;
+    }
+    return 'Could not reach the database. Check your connection and retry.';
+  }
+
+  /// Renew the token before querying again - a plain reload would just take
+  /// the same 401 a second time.
+  Future<void> _retry() async {
+    await SessionKeepalive.instance.refreshIfStale();
+    if (mounted) await _loadProjects();
   }
 
   void _selectProject(_ProjectCard p) {
@@ -402,10 +464,12 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
           Positioned.fill(child: _DeepSpaceBackground(pulseAnim: _pulseAnim)),
           // Content
           SafeArea(
-            child: _isLoading ? _buildLoader() : FadeTransition(
-              opacity: _fadeAnim,
-              child: _buildContent(),
-            ),
+            child: _isLoading
+                ? _buildLoader()
+                : FadeTransition(
+                    opacity: _fadeAnim,
+                    child: _error != null ? _buildError() : _buildContent(),
+                  ),
           ),
         ],
       ),
@@ -424,6 +488,77 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
             style: GoogleFonts.spaceGrotesk(
                 fontSize: 11, color: const Color(0xFF94A3B8), letterSpacing: 2)),
       ]),
+    );
+  }
+
+  Widget _buildError() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildTopBar(),
+        Expanded(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Padding(
+                padding: const EdgeInsets.all(28),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Container(
+                    width: 56, height: 56,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF6B6B).withOpacity(0.08),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                          color: const Color(0xFFFF6B6B).withOpacity(0.3)),
+                    ),
+                    child: const Icon(Icons.cloud_off_rounded,
+                        color: Color(0xFFFF6B6B), size: 24),
+                  ),
+                  const SizedBox(height: 20),
+                  Text('COULD NOT LOAD PROGRAMMES',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.spaceGrotesk(
+                          fontSize: 11, fontWeight: FontWeight.w700,
+                          color: const Color(0xFFFF6B6B), letterSpacing: 2)),
+                  const SizedBox(height: 12),
+                  Text(_error!,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.spaceGrotesk(
+                          fontSize: 13, height: 1.5,
+                          color: const Color(0xFF94A3B8))),
+                  const SizedBox(height: 24),
+                  GestureDetector(
+                    onTap: _retry,
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF00F3FF).withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                              color: const Color(0xFF00F3FF).withOpacity(0.3)),
+                        ),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          const Icon(Icons.refresh_rounded,
+                              color: Color(0xFF00F3FF), size: 18),
+                          const SizedBox(width: 10),
+                          Text('RETRY',
+                              style: GoogleFonts.spaceGrotesk(
+                                  fontSize: 12, fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF00F3FF),
+                                  letterSpacing: 2)),
+                        ]),
+                      ),
+                    ),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

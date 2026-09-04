@@ -4,6 +4,7 @@ import 'package:universal_html/html.dart' as html;
 
 import './core/app_export.dart';
 import './routes/app_routes.dart';
+import './services/session_keepalive.dart';
 import './services/supabase_service.dart';
 import './widgets/custom_error_widget.dart';
 
@@ -33,6 +34,11 @@ void main() async {
   } catch (e) {
     debugPrint('Failed to initialize Supabase: $e');
   }
+
+  // Renew the access token whenever the app returns to the foreground.
+  // Without this a tab left open past the token's hour wakes up still
+  // signed in but unable to read anything. See SessionKeepalive.
+  SessionKeepalive.instance.start();
 
   bool hasShownError = false;
 
