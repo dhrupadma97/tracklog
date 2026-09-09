@@ -102,6 +102,12 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
   List<Map<String, dynamic>> _recentEntries = [];
   bool _loadingEntries = true;
 
+  // ── Today's entries (all sessions on the selected date) ───────────────────
+  /// All sessions saved for the current _date, shown in the sidebar so the
+  /// user can see exactly what's been logged while making a new entry.
+  List<Map<String, dynamic>> _todayEntries = [];
+  bool _loadingTodayEntries = false;
+
   // ── NATRAX tracks ─────────────────────────────────────────────────────────
   // Which proving ground the entry is for. Defaults to NATRAX, where every
   // session logged so far ran.
@@ -217,6 +223,30 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     }
   }
 
+  /// Loads every track session saved for [_date], regardless of track or
+  /// whether it was a manual entry. Shown in the "Today's Entries" panel
+  /// so the user can see the full picture at a glance while at the track.
+  Future<void> _loadTodayEntries() async {
+    setState(() => _loadingTodayEntries = true);
+    try {
+      final dayStart = DateTime(_date.year, _date.month, _date.day);
+      final dayEnd   = dayStart.add(const Duration(days: 1));
+      final data = await SupabaseService.instance.client
+          .from('engineer_sessions')
+          .select()
+          .gte('started_at', dayStart.toIso8601String())
+          .lt('started_at',  dayEnd.toIso8601String())
+          .neq('track_code', 'MISC')   // exclude Other Services containers
+          .order('started_at', ascending: true);
+      if (mounted) setState(() {
+        _todayEntries = List<Map<String, dynamic>>.from(data as List);
+        _loadingTodayEntries = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingTodayEntries = false);
+    }
+  }
+
   // ── Track session helpers ─────────────────────────────────────────────────
 
   /// Fetches already-booked minutes and cost on this track + date and then
@@ -248,6 +278,8 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
           _loadingDayTotal = false;
         });
         _recalcCost();
+        // Refresh the Today's Entries panel at the same time.
+        _loadTodayEntries();
       }
     } catch (_) {
       if (mounted) setState(() => _loadingDayTotal = false);
@@ -818,7 +850,13 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
               width: 380,
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
-                child: _buildTrackCheckoutCard(),
+                child: Column(
+                  children: [
+                    _buildTrackCheckoutCard(),
+                    const SizedBox(height: 12),
+                    _buildTodayEntriesCard(),
+                  ],
+                ),
               ),
             ),
           ],
@@ -847,6 +885,8 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                   _buildStatusNotesCard(),
                   const SizedBox(height: 16),
                   _buildTrackSaveButton(),
+                  const SizedBox(height: 20),
+                  _buildTodayEntriesCard(),
                   if (!_loadingEntries && _recentEntries.isNotEmpty) ...[
                     const SizedBox(height: 20),
                     _buildRecentEntriesCard(),
@@ -1773,6 +1813,165 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
         );
       }),
     ]));
+  }
+
+  Widget _buildTodayEntriesCard() {
+    final dateLabel = DateFormat('dd MMM yyyy').format(_date);
+    final isToday = _date.year == DateTime.now().year &&
+        _date.month == DateTime.now().month &&
+        _date.day == DateTime.now().day;
+    final title = isToday ? "Today's Entries" : 'Entries on $dateLabel';
+
+    // Running totals across all sessions that day.
+    int totalMins  = 0;
+    double totalCost = 0.0;
+    for (final e in _todayEntries) {
+      totalMins  += (e['duration_minutes'] as int?  ?? 0);
+      totalCost  += (e['total_cost']       as num? ?? 0).toDouble();
+    }
+
+    return _card(
+      accentColor: const Color(0xFF00F3FF),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Header row with refresh button
+        Row(children: [
+          Icon(Icons.list_alt_rounded, color: const Color(0xFF00F3FF), size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(title,
+                style: GoogleFonts.spaceGrotesk(
+                    fontSize: 13, fontWeight: FontWeight.w800,
+                    color: const Color(0xFF00F3FF))),
+          ),
+          if (_loadingTodayEntries)
+            const SizedBox(
+              width: 14, height: 14,
+              child: CircularProgressIndicator(
+                  strokeWidth: 1.5, color: Color(0xFF00F3FF)),
+            )
+          else
+            GestureDetector(
+              onTap: _loadTodayEntries,
+              child: const Icon(Icons.refresh_rounded,
+                  color: Color(0xFF00F3FF), size: 16),
+            ),
+        ]),
+        const SizedBox(height: 10),
+
+        if (_loadingTodayEntries && _todayEntries.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Center(
+              child: Text('Loading…',
+                  style: GoogleFonts.spaceGrotesk(
+                      fontSize: 11, color: const Color(0xFF6B7490))),
+            ),
+          )
+        else if (_todayEntries.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Center(
+              child: Column(children: [
+                Icon(Icons.inbox_rounded,
+                    color: const Color(0xFF4A5470), size: 28),
+                const SizedBox(height: 6),
+                Text('No sessions logged for this date',
+                    style: GoogleFonts.spaceGrotesk(
+                        fontSize: 11, color: const Color(0xFF4A5470))),
+              ]),
+            ),
+          )
+        else ...[
+          // One row per session
+          ..._todayEntries.map((e) {
+            final code     = e['track_code']  as String? ?? '';
+            final name     = e['track_name']  as String? ?? '';
+            final mins     = e['duration_minutes'] as int? ?? 0;
+            final cost     = (e['total_cost'] as num? ?? 0).toDouble();
+            final project  = e['project_name'] as String? ?? '';
+            final startedAt = DateTime.tryParse(e['started_at'] as String? ?? '');
+            final endedAt   = DateTime.tryParse(e['ended_at']   as String? ?? '');
+            final timeSlot  = (startedAt != null && endedAt != null)
+                ? '${DateFormat('HH:mm').format(startedAt)} – ${DateFormat('HH:mm').format(endedAt)}'
+                : '—';
+            final trackColor = _getTrackColor(code);
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white.withAlpha(6),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: trackColor.withAlpha(60)),
+                ),
+                child: Row(children: [
+                  Container(
+                    width: 36, height: 36,
+                    decoration: BoxDecoration(
+                      color: trackColor.withAlpha(28),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Center(
+                      child: Text(code,
+                          style: GoogleFonts.spaceGrotesk(
+                              fontSize: 9, fontWeight: FontWeight.w900,
+                              color: trackColor)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(name,
+                          style: GoogleFonts.spaceGrotesk(
+                              fontSize: 11, fontWeight: FontWeight.w700,
+                              color: Colors.white),
+                          overflow: TextOverflow.ellipsis),
+                      Text('$timeSlot  ·  ${mins ~/ 60}h ${mins % 60}m',
+                          style: GoogleFonts.spaceGrotesk(
+                              fontSize: 10, color: const Color(0xFF6B7490))),
+                      if (project.isNotEmpty)
+                        Text(ProjectCatalog.displayName(project),
+                            style: GoogleFonts.spaceGrotesk(
+                                fontSize: 9, color: const Color(0xFF4A5470)),
+                            overflow: TextOverflow.ellipsis),
+                    ],
+                  )),
+                  Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    Text('₹${cost.toStringAsFixed(0)}',
+                        style: GoogleFonts.spaceGrotesk(
+                            fontSize: 12, fontWeight: FontWeight.w800,
+                            color: const Color(0xFF00F3FF))),
+                    Text('excl. GST',
+                        style: GoogleFonts.spaceGrotesk(
+                            fontSize: 8, color: const Color(0xFF4A5470))),
+                  ]),
+                ]),
+              ),
+            );
+          }),
+
+          // Day running total
+          const DottedLine(color: Colors.white12, height: 1),
+          const SizedBox(height: 8),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            Text(
+              'Day total  ${totalMins ~/ 60}h ${totalMins % 60}m · ${_todayEntries.length} session${_todayEntries.length == 1 ? '' : 's'}',
+              style: GoogleFonts.spaceGrotesk(
+                  fontSize: 10, fontWeight: FontWeight.w700,
+                  color: const Color(0xFF6B7490)),
+            ),
+            Text(
+              '₹${totalCost.toStringAsFixed(0)}',
+              style: GoogleFonts.spaceGrotesk(
+                  fontSize: 13, fontWeight: FontWeight.w900,
+                  color: const Color(0xFF00F3FF)),
+            ),
+          ]),
+        ],
+      ]),
+    );
   }
 
   Widget _buildTrackCheckoutCard() {

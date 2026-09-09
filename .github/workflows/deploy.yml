@@ -1,4 +1,4 @@
-name: Deploy TrackLog to GitHub Pages
+name: Deploy TrackLog to GitHub Pages + Firebase
 
 on:
   push:
@@ -35,7 +35,7 @@ jobs:
       - name: Configure Flutter for Web
         run: flutter create . --platforms web
 
-      - name: Build Flutter Web
+      - name: Build Flutter Web (GitHub Pages — base-href /tracklog/)
         run: |
           flutter build web --release \
             --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
@@ -45,7 +45,7 @@ jobs:
             --dart-define=RESEND_API_KEY=${{ secrets.RESEND_API_KEY }} \
             --base-href "/${{ github.event.repository.name }}/"
 
-      - name: Inject Google Maps API key into index.html
+      - name: Inject Google Maps API key into index.html (Pages)
         run: |
           MAPS_KEY="${{ secrets.GOOGLE_MAPS_API_KEY }}"
           sed -i "s|<!-- GOOGLE_MAPS_SCRIPT_PLACEHOLDER -->|<script src=\"https://maps.googleapis.com/maps/api/js?key=${MAPS_KEY}\"></script>|g" build/web/index.html
@@ -53,6 +53,28 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
+          path: build/web
+
+      # Firebase is hosted at the root, so it needs base-href "/".
+      - name: Rebuild Flutter Web (Firebase — base-href /)
+        run: |
+          flutter build web --release \
+            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
+            --dart-define=GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }} \
+            --dart-define=GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }} \
+            --dart-define=RESEND_API_KEY=${{ secrets.RESEND_API_KEY }} \
+            --base-href "/"
+
+      - name: Inject Google Maps API key into index.html (Firebase)
+        run: |
+          MAPS_KEY="${{ secrets.GOOGLE_MAPS_API_KEY }}"
+          sed -i "s|<!-- GOOGLE_MAPS_SCRIPT_PLACEHOLDER -->|<script src=\"https://maps.googleapis.com/maps/api/js?key=${MAPS_KEY}\"></script>|g" build/web/index.html
+
+      - name: Upload Firebase build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firebase-web-build
           path: build/web
 
   deploy:
@@ -65,6 +87,27 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  deploy-firebase:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Firebase build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: firebase-web-build
+          path: build/web
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          channelId: live
+          projectId: sightlinevalidation
 
   build-apk:
     runs-on: ubuntu-latest
