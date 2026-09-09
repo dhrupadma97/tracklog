@@ -59,6 +59,17 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
   String _status    = 'completed';
   bool _savingTrack = false;
 
+  /// Already-booked minutes on the same track + date in the DB.
+  /// Used to apply the minimum booking charge correctly across multiple entries.
+  int _sameDayMinutes = 0;
+
+  /// Already-booked cost (excl. GST) on the same track + date in the DB.
+  /// Used to compute the incremental cost of a new entry.
+  double _sameDayCost = 0.0;
+
+  /// True while fetching the same-day total from Supabase.
+  bool _loadingDayTotal = false;
+
   /// The programme this track session bills to.
   ///
   /// It used to be read straight off ProjectManager at save time with nothing
@@ -155,6 +166,9 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     _trackProject = ProjectManager.instance.activeProject;
     _initOffline();
     _loadRecentEntries();
+    // Seed the day total for today + default track so the cost field is
+    // correct from the moment the screen opens.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _fetchSameDayMinutes());
   }
 
   @override
@@ -205,18 +219,68 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
 
   // ── Track session helpers ─────────────────────────────────────────────────
 
+  /// Fetches already-booked minutes and cost on this track + date and then
+  /// recomputes the cost for the current entry. Called whenever _date or
+  /// _trackCode changes so the minimum-hours rule is applied per day, not
+  /// per individual entry.
+  Future<void> _fetchSameDayMinutes() async {
+    setState(() => _loadingDayTotal = true);
+    try {
+      final dayStart = DateTime(_date.year, _date.month, _date.day);
+      final dayEnd   = dayStart.add(const Duration(days: 1));
+      final rows = await SupabaseService.instance.client
+          .from('engineer_sessions')
+          .select('duration_minutes, total_cost')
+          .eq('track_code', _trackCode)
+          .gte('started_at', dayStart.toIso8601String())
+          .lt('started_at', dayEnd.toIso8601String());
+      final list = List<Map<String, dynamic>>.from(rows as List);
+      int totalMins  = 0;
+      double totalCost = 0.0;
+      for (final r in list) {
+        totalMins  += (r['duration_minutes'] as int?  ?? 0);
+        totalCost  += (r['total_cost']       as num? ?? 0).toDouble();
+      }
+      if (mounted) {
+        setState(() {
+          _sameDayMinutes = totalMins;
+          _sameDayCost    = totalCost;
+          _loadingDayTotal = false;
+        });
+        _recalcCost();
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingDayTotal = false);
+    }
+  }
+
+  /// Computes the incremental cost for THIS entry, respecting the per-day
+  /// minimum-hours rule across all sessions already saved for the same track
+  /// and date.
+  ///
+  /// Logic:
+  ///   dayTotal = _sameDayMinutes + thisEntryMins
+  ///   billableDay = max(dayTotal, minHrs × 60)
+  ///   thisCost = billableDay × rate/60 − _sameDayCost
+  ///
+  /// This ensures the minimum is only charged once per track per day.
   void _recalcCost() {
     final hrs  = int.tryParse(_hrsCtrl.text)  ?? 0;
     final mins = int.tryParse(_minsCtrl.text) ?? 0;
-    final totalMins = hrs * 60 + mins;
-    if (totalMins <= 0) { _costCtrl.text = ''; return; }
+    final entryMins = hrs * 60 + mins;
+    if (entryMins <= 0) { _costCtrl.text = ''; return; }
 
-    final track  = _tracks.firstWhere((t) => t['code'] == _trackCode, orElse: () => _tracks.first);
-    final rate   = (track['rate'] as double);
-    final minHrs = (track['minHrs'] as double);
-    double hours = totalMins / 60.0;
-    if (hours < minHrs) hours = minHrs;
-    _costCtrl.text = (hours * rate).toStringAsFixed(0);
+    final track   = _tracks.firstWhere((t) => t['code'] == _trackCode, orElse: () => _tracks.first);
+    final rate    = (track['rate'] as double);
+    final minMins = ((track['minHrs'] as double) * 60).round();
+
+    // Day total if this entry is added.
+    final dayTotalMins = _sameDayMinutes + entryMins;
+    // Billable day total — minimum applies once to the whole day.
+    final billableDayMins = dayTotalMins < minMins ? minMins : dayTotalMins;
+    // Incremental cost = what the whole day costs minus what's already saved.
+    final cost = (billableDayMins / 60.0) * rate - _sameDayCost;
+    _costCtrl.text = cost.clamp(0, double.infinity).toStringAsFixed(0);
   }
 
   void _recalcFromTime() {
@@ -240,7 +304,10 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
         child: child!,
       ),
     );
-    if (p != null) setState(() => _date = p);
+    if (p != null) {
+      setState(() => _date = p);
+      _fetchSameDayMinutes();
+    }
   }
 
   Future<void> _pickSvcDate() async {
@@ -324,6 +391,9 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
       _start = TimeOfDay.now();
       _end   = TimeOfDay(hour: (TimeOfDay.now().hour + 1) % 24, minute: TimeOfDay.now().minute);
     });
+    // Re-fetch the day total so the next entry already accounts for what was
+    // just saved — the cost calculation must reflect the updated DB state.
+    _fetchSameDayMinutes();
   }
 
   // ── Other Services save ───────────────────────────────────────────────────
@@ -1461,7 +1531,8 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
             return GestureDetector(
               onTap: sel
                   ? null
-                  : () => setState(() {
+                  : () {
+                      setState(() {
                         _venueKey = v.key;
                         VenueManager.instance.setVenue(v.key);
                         // The old code belongs to the old venue, so reset to
@@ -1470,8 +1541,9 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                         final first = _tracks.first;
                         _trackCode = first['code'] as String;
                         _trackName = first['name'] as String;
-                        _recalcCost();
-                      }),
+                      });
+                      _fetchSameDayMinutes();
+                    },
               child: MouseRegion(
                 cursor: SystemMouseCursors.click,
                 child: AnimatedContainer(
@@ -1528,11 +1600,13 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
             final sel = _trackCode == t['code'];
             final trackColor = _getTrackColor(t['code'] as String);
             return GestureDetector(
-              onTap: () => setState(() {
-                _trackCode = t['code'] as String;
-                _trackName = t['name'] as String;
-                _recalcCost();
-              }),
+              onTap: () {
+                setState(() {
+                  _trackCode = t['code'] as String;
+                  _trackName = t['name'] as String;
+                });
+                _fetchSameDayMinutes();
+              },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1705,12 +1779,17 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     final track = _tracks.firstWhere((t) => t['code'] == _trackCode, orElse: () => _tracks.first);
     final rate = track['rate'] as double;
     final minHrs = track['minHrs'] as double;
-    
+    final minMins = (minHrs * 60).round();
+
     final hrs = int.tryParse(_hrsCtrl.text) ?? 0;
     final mins = int.tryParse(_minsCtrl.text) ?? 0;
-    final durationHrs = hrs + (mins / 60.0);
-    final isMinHrsEnforced = durationHrs > 0 && durationHrs < minHrs;
-    
+    final entryMins = hrs * 60 + mins;
+    final dayTotalMins = _sameDayMinutes + entryMins;
+
+    // Min is enforced on the day total, not per entry.
+    final dayAlreadySatisfied = _sameDayMinutes >= minMins;
+    final isMinHrsEnforced = !dayAlreadySatisfied && entryMins > 0 && dayTotalMins < minMins;
+
     final baseCost = _trackBaseCost;
     final gst = baseCost * 0.18;
     final totalCost = baseCost * 1.18;
@@ -1760,6 +1839,23 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
           _receiptRow('Time Slot', '${_start.format(context)} - ${_end.format(context)}'),
           const SizedBox(height: 8),
           _receiptRow('Duration Entered', '${hrs}h ${mins}m'),
+
+          // Show how much has already been logged today on this track.
+          if (_sameDayMinutes > 0) ...[
+            const SizedBox(height: 8),
+            _receiptRow(
+              'Day logged so far',
+              _loadingDayTotal
+                  ? '…'
+                  : '${_sameDayMinutes ~/ 60}h ${_sameDayMinutes % 60}m on $_trackCode',
+              valueStyle: GoogleFonts.spaceGrotesk(
+                  fontSize: 11,
+                  color: dayAlreadySatisfied
+                      ? const Color(0xFF4CAF50)
+                      : const Color(0xFFFFB547)),
+            ),
+          ],
+
           const SizedBox(height: 8),
           _receiptRow(
               'Hourly Rate',
@@ -1796,29 +1892,50 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
               ]),
             ),
           ],
-          
-          if (isMinHrsEnforced) ...[
+
+          // Minimum-hours notice — context-aware:
+          //   • Green: minimum already met by earlier sessions today.
+          //   • Amber: this entry (alone) triggers the minimum.
+          if (entryMins > 0) ...[
             const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFF9500).withAlpha(20),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: const Color(0xFFFF9500).withAlpha(40)),
-              ),
-              child: Row(
-                children: [
+            if (dayAlreadySatisfied)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4CAF50).withAlpha(20),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFF4CAF50).withAlpha(40)),
+                ),
+                child: Row(children: [
+                  const Icon(Icons.check_circle_outline_rounded, color: Color(0xFF4CAF50), size: 12),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Min ${minHrs.toStringAsFixed(1)} hrs already met today — charged at raw duration.',
+                      style: GoogleFonts.spaceGrotesk(fontSize: 10, color: const Color(0xFF4CAF50), fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ]),
+              )
+            else if (isMinHrsEnforced)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF9500).withAlpha(20),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFFFF9500).withAlpha(40)),
+                ),
+                child: Row(children: [
                   const Icon(Icons.info_outline_rounded, color: Color(0xFFFF9500), size: 12),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      'Min booking of ${minHrs.toStringAsFixed(1)} hrs enforced.',
+                      'Day total ${dayTotalMins ~/ 60}h ${dayTotalMins % 60}m < min ${minHrs.toStringAsFixed(0)} hrs. Min booking applied.',
                       style: GoogleFonts.spaceGrotesk(fontSize: 10, color: const Color(0xFFFF9500), fontWeight: FontWeight.w600),
                     ),
                   ),
-                ],
+                ]),
               ),
-            ),
           ],
           
           const SizedBox(height: 16),
