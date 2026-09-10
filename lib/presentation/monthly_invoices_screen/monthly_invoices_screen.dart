@@ -6,6 +6,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../services/billing_baseline.dart';
+import '../../services/muster_service.dart';
 import '../../services/project_catalog.dart';
 import '../../services/project_manager.dart';
 import '../../theme/app_theme.dart';
@@ -43,12 +44,19 @@ class _MonthGroup {
   final String monthKey; // 'YYYY-MM'
   final String label;    // 'April 2026'
   final List<_Session> sessions;
-  final double workshopRental;
+  final double workshopRental;   // from BillingBaseline (pinned months only)
   final double? trackAccOverride;
+  final double manpowerCost;      // sum of head_count × rate from manpower_muster (kind=manpower)
+  final double workshopMusterCost; // sum of workshop days × ₹5,000 from manpower_muster (kind=workshop)
 
   double get trackAcc =>
       trackAccOverride ?? sessions.fold(0.0, (s, e) => s + e.subtotalExcl);
-  double get subtotalExcl => trackAcc + workshopRental;
+
+  /// Total ex-GST for the month: track + workshop rental (baseline) +
+  /// manpower (muster) + workshop muster. Workshop rental and workshopMusterCost
+  /// are never both non-zero for the same month — pinned months use the baseline
+  /// rental, computed months use the muster.
+  double get subtotalExcl => trackAcc + workshopRental + manpowerCost + workshopMusterCost;
   double get gst => subtotalExcl * 0.18;
   double get totalIncl => subtotalExcl * 1.18;
   int get totalMinutes =>
@@ -60,6 +68,8 @@ class _MonthGroup {
     required this.sessions,
     required this.workshopRental,
     this.trackAccOverride,
+    this.manpowerCost = 0.0,
+    this.workshopMusterCost = 0.0,
   });
 }
 
@@ -287,6 +297,50 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
         ));
       }
 
+      // ── Muster data: manpower + workshop charges ─────────────────────────
+      // Fetch all muster rows for this project.
+      final musterRaw = await client
+          .from('manpower_muster')
+          .select('muster_date, head_count, kind, po_number, project_name')
+          .eq('project_name', _activeProject);
+
+      // Fetch PO rates: rate = total_po_value / manpower_days.
+      final posRaw = await client
+          .from('po_trackers')
+          .select('po_number, total_po_value, manpower_days')
+          .eq('category', 'manpower');
+
+      final Map<String, double> poRateByNumber = {};
+      for (final p in (posRaw as List)) {
+        final num = (p['po_number'] as String? ?? '').trim();
+        final value = (p['total_po_value'] as num?)?.toDouble() ?? 0.0;
+        final days  = (p['manpower_days'] as num?)?.toDouble() ?? 0.0;
+        poRateByNumber[num] = days > 0 ? value / days : 0.0;
+      }
+
+      // Group muster costs by month.
+      final Map<String, double> manpowerByMonth    = {};
+      final Map<String, double> workshopMusterByMonth = {};
+      for (final row in (musterRaw as List)) {
+        final kind    = (row['kind'] as String? ?? 'manpower').trim();
+        final dateStr = row['muster_date'] as String? ?? '';
+        if (dateStr.length < 7) continue;
+        final monthKey = dateStr.substring(0, 7); // 'YYYY-MM'
+
+        if (kind == 'workshop') {
+          // One workshop day = ₹5,000 flat.
+          workshopMusterByMonth[monthKey] =
+              (workshopMusterByMonth[monthKey] ?? 0) + kWorkshopRatePerDay;
+        } else {
+          // Manpower: head_count man-days × PO rate.
+          final poNum   = (row['po_number'] as String? ?? '').trim();
+          final heads   = (row['head_count'] as int? ?? 0);
+          final rate    = poRateByNumber[poNum] ?? 0.0;
+          manpowerByMonth[monthKey] =
+              (manpowerByMonth[monthKey] ?? 0) + (heads * rate);
+        }
+      }
+
       final Map<String, List<_Session>> byMonth = {};
       for (final s in allSessions) {
         final mk = s.date.toIso8601String().substring(0, 7);
@@ -300,15 +354,48 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
         final label = DateFormat('MMMM yyyy').format(dt);
         final rental = isMahindraEV ? (_workshopByMonth[e.key] ?? 0.0) : 0.0;
         final trackAccOverride = isMahindraEV ? _trackAccByMonth[e.key] : null;
+        // Only use muster workshop cost for months not already pinned in
+        // BillingBaseline — pinned months carry an invoice-backed workshop
+        // rental and adding the muster on top would double-count it.
+        final useBaselineWorkshop = rental > 0;
         return _MonthGroup(
           monthKey: e.key,
           label: label,
           sessions: e.value..sort((a, b) => a.date.compareTo(b.date)),
           workshopRental: rental,
           trackAccOverride: trackAccOverride,
+          manpowerCost: manpowerByMonth[e.key] ?? 0.0,
+          workshopMusterCost: useBaselineWorkshop
+              ? 0.0
+              : (workshopMusterByMonth[e.key] ?? 0.0),
         );
       }).toList()
         ..sort((a, b) => b.monthKey.compareTo(a.monthKey));
+
+      // Also add months that have muster data but no track sessions yet.
+      final existingKeys = monthGroups.map((m) => m.monthKey).toSet();
+      final allMusterMonths = {
+        ...manpowerByMonth.keys,
+        ...workshopMusterByMonth.keys,
+      };
+      for (final mk in allMusterMonths) {
+        if (existingKeys.contains(mk)) continue;
+        final dt = DateTime.parse('$mk-01');
+        final label = DateFormat('MMMM yyyy').format(dt);
+        final rental = isMahindraEV ? (_workshopByMonth[mk] ?? 0.0) : 0.0;
+        final useBaselineWorkshop = rental > 0;
+        monthGroups.add(_MonthGroup(
+          monthKey: mk,
+          label: label,
+          sessions: [],
+          workshopRental: rental,
+          manpowerCost: manpowerByMonth[mk] ?? 0.0,
+          workshopMusterCost: useBaselineWorkshop
+              ? 0.0
+              : (workshopMusterByMonth[mk] ?? 0.0),
+        ));
+      }
+      monthGroups.sort((a, b) => b.monthKey.compareTo(a.monthKey));
 
       if (mounted) {
         setState(() {
@@ -322,11 +409,15 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
     }
   }
 
+
+
   _MonthGroup? get _allMonthsGroup {
     if (_months.isEmpty) return null;
     final allSessions = _months.expand((m) => m.sessions).toList()
       ..sort((a, b) => a.date.compareTo(b.date));
     final totalWorkshop = _months.fold(0.0, (s, m) => s + m.workshopRental);
+    final totalManpower = _months.fold(0.0, (s, m) => s + m.manpowerCost);
+    final totalWorkshopMuster = _months.fold(0.0, (s, m) => s + m.workshopMusterCost);
     final totalTrackAccOverride = _months.any((m) => m.trackAccOverride != null)
         ? _months.fold(0.0, (s, m) => s + (m.trackAccOverride ?? m.trackAcc))
         : null;
@@ -336,6 +427,8 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
       sessions: allSessions,
       workshopRental: totalWorkshop,
       trackAccOverride: totalTrackAccOverride,
+      manpowerCost: totalManpower,
+      workshopMusterCost: totalWorkshopMuster,
     );
   }
 
@@ -1143,10 +1236,20 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
           Container(height: 1, color: Colors.white.withOpacity(0.08)),
           const SizedBox(height: 20),
           _invoiceRow('Track Access + Accessories', _inr.format(m.trackAcc)),
-          const SizedBox(height: 10),
-          if (m.workshopRental > 0) ...[
-            _invoiceRow('Workshop Rental', _inr.format(m.workshopRental)),
+          if (m.manpowerCost > 0) ...[
             const SizedBox(height: 10),
+            _invoiceRow('Manpower', _inr.format(m.manpowerCost),
+                accent: const Color(0xFFA855F7)),
+          ],
+          if (m.workshopMusterCost > 0) ...[
+            const SizedBox(height: 10),
+            _invoiceRow('Workshop Charges', _inr.format(m.workshopMusterCost),
+                accent: const Color(0xFFF59E0B)),
+          ],
+          if (m.workshopRental > 0) ...[
+            const SizedBox(height: 10),
+            _invoiceRow('Workshop Rental', _inr.format(m.workshopRental),
+                accent: const Color(0xFFF59E0B)),
           ],
           _invoiceRow('Subtotal (Excl. GST)', _inr.format(subtotal)),
           const SizedBox(height: 10),
@@ -1197,28 +1300,38 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
     );
   }
 
-  Widget _invoiceRow(String label, String value) {
+  Widget _invoiceRow(String label, String value, {Color? accent}) {
+    final rowAccent = accent ?? primaryColor;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: primaryColor.withOpacity(0.04),
+        color: rowAccent.withOpacity(0.04),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: primaryColor.withOpacity(0.12),
+          color: rowAccent.withOpacity(0.14),
           width: 0.8,
         ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: GoogleFonts.spaceGrotesk(
-              fontSize: 11,
-              color: const Color(0xFFDFE2F0).withOpacity(0.85),
-              fontWeight: FontWeight.w600,
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            if (accent != null) ...[
+              Container(
+                width: 6, height: 6,
+                decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              label,
+              style: GoogleFonts.spaceGrotesk(
+                fontSize: 11,
+                color: const Color(0xFFDFE2F0).withOpacity(0.85),
+                fontWeight: FontWeight.w600,
+              ),
             ),
-          ),
+          ]),
           Text(
             value,
             style: GoogleFonts.spaceGrotesk(
@@ -1235,8 +1348,13 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
   Widget _buildCostBreakdownBarsOnly(_MonthGroup m) {
     final total = m.subtotalExcl;
     if (total == 0) return const SizedBox.shrink();
-    final trackPct = (m.trackAcc / total).clamp(0.0, 1.0);
-    final rentalPct = m.workshopRental > 0 ? (m.workshopRental / total).clamp(0.0, 1.0) : 0.0;
+    final trackPct     = (m.trackAcc / total).clamp(0.0, 1.0);
+    final manpowerPct  = m.manpowerCost > 0 ? (m.manpowerCost / total).clamp(0.0, 1.0) : 0.0;
+    final wsMusterPct  = m.workshopMusterCost > 0 ? (m.workshopMusterCost / total).clamp(0.0, 1.0) : 0.0;
+    final rentalPct    = m.workshopRental > 0 ? (m.workshopRental / total).clamp(0.0, 1.0) : 0.0;
+
+    const manpowerColor = Color(0xFFA855F7);
+    const workshopColor = Color(0xFFF59E0B);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1255,42 +1373,69 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
           borderRadius: BorderRadius.circular(6),
           child: Row(
             children: [
-              Flexible(
-                flex: (trackPct * 100).round(),
-                child: Container(height: 10, color: primaryColor),
-              ),
+              if ((trackPct * 100).round() > 0)
+                Flexible(
+                  flex: (trackPct * 100).round(),
+                  child: Container(height: 10, color: primaryColor),
+                ),
+              if (manpowerPct > 0)
+                Flexible(
+                  flex: (manpowerPct * 100).round(),
+                  child: Container(height: 10, color: manpowerColor),
+                ),
+              if (wsMusterPct > 0)
+                Flexible(
+                  flex: (wsMusterPct * 100).round(),
+                  child: Container(height: 10, color: workshopColor),
+                ),
               if (rentalPct > 0)
                 Flexible(
                   flex: (rentalPct * 100).round(),
-                  child: Container(height: 10, color: const Color(0xFFF59E0B)),
+                  child: Container(height: 10, color: workshopColor),
                 ),
             ],
           ),
         ),
         const SizedBox(height: 12),
-        Row(
+        Wrap(
+          spacing: 16,
+          runSpacing: 6,
           children: [
-            _legendDot(primaryColor),
-            const SizedBox(width: 6),
-            Text(
-              'Track + Accessories  ${(trackPct * 100).toStringAsFixed(0)}%',
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 11,
-                color: const Color(0xFF94A3B8),
-              ),
-            ),
-            if (rentalPct > 0) ...[
-              const SizedBox(width: 16),
-              _legendDot(const Color(0xFFF59E0B)),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              _legendDot(primaryColor),
               const SizedBox(width: 6),
               Text(
-                'Workshop Rental  ${(rentalPct * 100).toStringAsFixed(0)}%',
-                style: GoogleFonts.spaceGrotesk(
-                  fontSize: 11,
-                  color: const Color(0xFF94A3B8),
-                ),
+                'Track + Accessories  ${(trackPct * 100).toStringAsFixed(0)}%',
+                style: GoogleFonts.spaceGrotesk(fontSize: 11, color: const Color(0xFF94A3B8)),
               ),
-            ],
+            ]),
+            if (manpowerPct > 0)
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                _legendDot(manpowerColor),
+                const SizedBox(width: 6),
+                Text(
+                  'Manpower  ${(manpowerPct * 100).toStringAsFixed(0)}%',
+                  style: GoogleFonts.spaceGrotesk(fontSize: 11, color: const Color(0xFF94A3B8)),
+                ),
+              ]),
+            if (wsMusterPct > 0)
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                _legendDot(workshopColor),
+                const SizedBox(width: 6),
+                Text(
+                  'Workshop  ${(wsMusterPct * 100).toStringAsFixed(0)}%',
+                  style: GoogleFonts.spaceGrotesk(fontSize: 11, color: const Color(0xFF94A3B8)),
+                ),
+              ]),
+            if (rentalPct > 0)
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                _legendDot(workshopColor),
+                const SizedBox(width: 6),
+                Text(
+                  'Workshop Rental  ${(rentalPct * 100).toStringAsFixed(0)}%',
+                  style: GoogleFonts.spaceGrotesk(fontSize: 11, color: const Color(0xFF94A3B8)),
+                ),
+              ]),
           ],
         ),
       ],
