@@ -1,3 +1,4 @@
+import 'package:intl/intl.dart';
 import '../../../core/app_export.dart';
 
 // Anatomy locked: value top + label bottom + accent icon, horizontal scroll (or vertical on tablet)
@@ -19,6 +20,13 @@ class MonthlySummaryCardWidget extends StatelessWidget {
     this.isLastMonth = false,
   });
 
+  /// The month this card is describing, from today rather than a fixed date.
+  String get monthLabel {
+    final now = DateTime.now();
+    final m = DateTime(now.year, now.month - (isLastMonth ? 1 : 0));
+    return DateFormat('MMMM yyyy').format(m);
+  }
+
   String _formatAvgDuration(int minutes) {
     final h = minutes ~/ 60;
     final m = minutes % 60;
@@ -36,7 +44,10 @@ class MonthlySummaryCardWidget extends StatelessWidget {
         value: '₹${(totalCost / 1000).toStringAsFixed(1)}K',
         iconName: 'currency_rupee',
         color: AppTheme.secondary,
-        subtitle: isLastMonth ? 'April 2026' : 'May 2026',
+        // Named from the date, not pinned. This read 'May 2026' whatever the
+        // month actually was, so the card labelled live figures with a month
+        // four months gone.
+        subtitle: monthLabel,
       ),
       _SummaryData(
         label: 'Track Hours',

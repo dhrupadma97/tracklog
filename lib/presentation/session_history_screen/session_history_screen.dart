@@ -189,14 +189,25 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
   List<Map<String, dynamic>> get _currentPeriodSessions =>
       _getSessionsForPeriod(_selectedPeriod);
 
+  /// The month a period refers to, counted back from today.
+  ///
+  /// This was pinned to May and April 2026, so 'This Month' meant May whatever
+  /// the date actually was. From June onwards the screen showed a fixed
+  /// four-month-old window and labelled it as current — a programme that
+  /// started in September could only ever read as empty.
+  DateTime monthFor(int period) {
+    final now = DateTime.now();
+    // Year/month arithmetic rather than subtracting days, so stepping back
+    // from the 31st cannot land in the wrong month.
+    return DateTime(now.year, now.month - period);
+  }
+
   List<Map<String, dynamic>> _getSessionsForPeriod(int period) {
-    // Period 0 = This Month (May 2026), Period 1 = Last Month (April 2026)
-    final targetMonth = period == 0 ? 5 : 4;
-    final targetYear = 2026;
+    final target = monthFor(period);
     return _sessionMaps.where((s) {
       final dt = DateTime.tryParse(s['startTime'] as String? ?? '');
       if (dt == null) return false;
-      return dt.month == targetMonth && dt.year == targetYear;
+      return dt.month == target.month && dt.year == target.year;
     }).toList();
   }
 
@@ -205,17 +216,19 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
         (sum, s) => sum + (s['durationMinutes'] as int) / 60.0,
       );
 
-  double get _currentCost {
-    final isMahindraEV = _activeProject.toLowerCase() == 'mahindra ev poc';
-    if (isMahindraEV) {
-      return _selectedPeriod == 0 ? 377739.0 : 1152375.0; // Exact Excl. GST subtotals
-    } else {
-      return _currentPeriodSessions.fold(
+  /// Summed from the sessions on screen, for every programme.
+  ///
+  /// Mahindra EV PoC used to return two hardcoded figures — 377739 and
+  /// 1152375 — the exact ex-GST subtotals for May and April 2026. Correct the
+  /// day they were typed and wrong every month after: the screen reported
+  /// those two numbers whatever period was selected and whatever the sessions
+  /// beneath them said, so a new session could never move it. Pinned
+  /// invoice-reconciled figures belong in BillingBaseline, which the Analyser
+  /// reads, not in a getter the rest of this screen treats as live.
+  double get _currentCost => _currentPeriodSessions.fold(
         0.0,
         (sum, s) => sum + (s['costINR'] as double),
       );
-    }
-  }
 
   int get _currentSessionCount => _currentPeriodSessions.length;
 
@@ -229,12 +242,11 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
   }
 
   List<Map<String, dynamic>> get _displaySessions {
-    final targetMonth = _selectedPeriod == 0 ? 5 : 4;
-    final targetYear = 2026;
+    final target = monthFor(_selectedPeriod);
     return _filteredSessions.where((s) {
       final dt = DateTime.tryParse(s['startTime'] as String? ?? '');
       if (dt == null) return false;
-      return dt.month == targetMonth && dt.year == targetYear;
+      return dt.month == target.month && dt.year == target.year;
     }).toList();
   }
 

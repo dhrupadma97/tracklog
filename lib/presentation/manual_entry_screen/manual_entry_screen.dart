@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:ui';
 
@@ -121,16 +122,59 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
   List<Map<String, dynamic>> get _tracks =>
       _venueKey == 'coastt' ? _coasttTracks : _natraxTracks;
 
+  /// NATRAX rate card, reconciled line by line against real invoices:
+  /// INV/26-27/205 (April 2026) and INV/26-27/388 (18-25 May 2026), both of
+  /// which tie out to the rupee against BillingBaseline.
+  ///
+  /// Five rates here were wrong and are corrected below:
+  ///
+  ///   T2  Dynamic Platform   25,000 -> 20,000   (April and May invoices)
+  ///   T7  4W Handling        18,000 -> 15,000   (April invoice)
+  ///   T10 Wet Skid Pad       18,000 -> 15,000   (May invoice)
+  ///   T11 Comfort            15,000 -> 10,500   (May invoice)
+  ///   T16 General Road       absent -> 9,000    (May invoice; was not listed)
+  ///
+  /// T3W 21,000, T3D 19,000 and T1 25,000 were already right. T3W billed
+  /// 19,000 in March, so the wet braking rate rose from April — a March
+  /// figure will not reconcile against this card.
+  ///
+  /// T8, T9, T12 and T13 have not appeared on any invoice yet, so their rates
+  /// are still unverified and are left as they were.
+  ///
+  /// A day's usage on a track is summed, rounded UP to the whole hour, and
+  /// then floored at `minHrs`. T1, T2 and T3W carry a two-hour minimum; every
+  /// other track bills from one hour.
+  ///
+  /// The split is read off the invoices, not assumed:
+  ///
+  ///   T3W  two-hour  — May bills 41 min and 60 min on separate days as 4 Hrs
+  ///   T2   two-hour  — April bills 35 min on 9 Apr within a 5 Hrs total
+  ///   T3D  two-hour  — per the programme owner; both braking tracks are
+  ///                    two-hour bookings
+  ///   T7   one-hour  — April bills a 30 min day as 1 Hr
+  ///
+  /// Reading April alone would put T3D at one hour: three days of 36, 49 and
+  /// 50 minutes invoiced as 3 Hrs, where a two-hour minimum gives 6. That
+  /// inference is not trusted, because the imported March-May rows carry wrong
+  /// track labels and rates — May's 'T11' rows sit at 25,000 against an invoice
+  /// line of 10,500 for Comfort Track — so those session codes cannot be tied
+  /// to invoice lines with confidence. The booking terms win over arithmetic
+  /// on data known to be mislabelled.
+  ///
+  /// None of T8, T9, T12 or T13 has appeared on an invoice yet, so their
+  /// minimums come from the programme owner rather than from arithmetic:
+  /// T8, T9 and T13 bill from one hour, T12 from two.
   static const _natraxTracks = [
     {'code': 'T3W',  'name': 'T3 Wet Braking Track',     'rate': 21000.0, 'minHrs': 2.0},
     {'code': 'T3D',  'name': 'T3 Dry Braking Track',     'rate': 19000.0, 'minHrs': 2.0},
     {'code': 'T1',   'name': 'High Speed Track',          'rate': 25000.0, 'minHrs': 2.0},
-    {'code': 'T2',   'name': 'Dynamic Platform Track',    'rate': 25000.0, 'minHrs': 2.0},
-    {'code': 'T7',   'name': 'Handling Track 4W (1.6km)', 'rate': 18000.0, 'minHrs': 2.0},
+    {'code': 'T2',   'name': 'Dynamic Platform Track',    'rate': 20000.0, 'minHrs': 2.0},
+    {'code': 'T7',   'name': 'Handling Track 4W (1.6km)', 'rate': 15000.0, 'minHrs': 1.0},
+    {'code': 'T16',  'name': 'General Road Track',        'rate':  9000.0, 'minHrs': 1.0},
     {'code': 'T8',   'name': 'Gradient Track',            'rate': 15000.0, 'minHrs': 1.0},
     {'code': 'T9',   'name': 'Noise Track',               'rate': 20000.0, 'minHrs': 1.0},
-    {'code': 'T10',  'name': 'Wet Skid Pad',              'rate': 18000.0, 'minHrs': 1.0},
-    {'code': 'T11',  'name': 'Comfort Track',             'rate': 15000.0, 'minHrs': 1.0},
+    {'code': 'T10',  'name': 'Wet Skid Pad',              'rate': 15000.0, 'minHrs': 1.0},
+    {'code': 'T11',  'name': 'Comfort Track',             'rate': 10500.0, 'minHrs': 1.0},
     {'code': 'T12',  'name': 'Fatigue Track',             'rate': 20000.0, 'minHrs': 2.0},
     {'code': 'T13',  'name': 'Gravel & Off-Road Track',   'rate': 15000.0, 'minHrs': 1.0},
   ];
@@ -228,6 +272,99 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
   /// Loads every track session saved for [_date], regardless of track or
   /// whether it was a manual entry. Shown in the "Today's Entries" panel
   /// so the user can see the full picture at a glance while at the track.
+  /// Remove a logged session, after confirming.
+  ///
+  /// Deleting changes what the rest of that day costs — the day's minutes drop,
+  /// so it may round down to fewer billable hours and the remaining sessions
+  /// are then over-charged between them. The app cannot silently rewrite rows
+  /// the user did not ask it to touch, so this says plainly what is left and
+  /// what it now ought to cost, and the user re-enters to settle it.
+  Future<void> _confirmDeleteEntry(Map<String, dynamic> entry) async {
+    final id = entry['id'] as String?;
+    if (id == null) return;
+    final code = entry['track_code'] as String? ?? '';
+    final mins = entry['duration_minutes'] as int? ?? 0;
+    final cost = (entry['total_cost'] as num? ?? 0).toDouble();
+    final started = DateTime.tryParse(entry['started_at'] as String? ?? '');
+    final slot = started == null ? '' : DateFormat('HH:mm').format(started);
+
+    // What the day looks like once this one is gone.
+    final track = _tracks.firstWhere((t) => t['code'] == code,
+        orElse: () => _tracks.first);
+    final rate = track['rate'] as double;
+    final remainingMins = _sameDayMinutes - mins;
+    final remainingDue = _ceilHours(remainingMins) * rate;
+    final remainingBilled = _sameDayCost - cost;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0A1025),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Delete this session?',
+            style: GoogleFonts.spaceGrotesk(
+                color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800)),
+        content: Column(mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('$code  ·  $slot  ·  ${mins ~/ 60}h ${mins % 60}m  ·  '
+              '${_inr.format(cost)}',
+              style: GoogleFonts.spaceGrotesk(
+                  color: Colors.white70, fontSize: 12)),
+          const SizedBox(height: 12),
+          if (remainingMins > 0)
+            Text(
+                '${_todayEntries.length - 1} session'
+                '${_todayEntries.length - 1 == 1 ? '' : 's'} left on $code that '
+                'day: ${remainingMins ~/ 60}h ${remainingMins % 60}m, which '
+                'bills ${_ceilHours(remainingMins).toStringAsFixed(0)} hr at '
+                '${_inr.format(remainingDue)}.'
+                '${(remainingBilled - remainingDue).abs() < 1 ? '' : ' They '
+                    'currently carry ${_inr.format(remainingBilled)} between '
+                    'them, so re-enter them to settle the difference.'}',
+                style: GoogleFonts.spaceGrotesk(
+                    color: const Color(0xFFFFB547), fontSize: 11, height: 1.4))
+          else
+            Text('Nothing else is logged on $code that day.',
+                style: GoogleFonts.spaceGrotesk(
+                    color: const Color(0xFF6B7490), fontSize: 11)),
+          const SizedBox(height: 8),
+          Text('This cannot be undone.',
+              style: GoogleFonts.spaceGrotesk(
+                  color: const Color(0xFF6B7490), fontSize: 10)),
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel',
+                style: GoogleFonts.spaceGrotesk(
+                    color: const Color(0xFF6B7490))),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Delete',
+                style: GoogleFonts.spaceGrotesk(
+                    color: AppTheme.error, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    try {
+      await SupabaseService.instance.client
+          .from('engineer_sessions')
+          .delete()
+          .eq('id', id);
+      _snack('Session deleted');
+      // Refetch the day so the next entry's cost is computed against what is
+      // actually left, not against the row just removed.
+      await _fetchSameDayMinutes();
+      _backUpAfterEntry();
+    } catch (e) {
+      _snack('Could not delete: $e', error: true);
+    }
+  }
+
   Future<void> _loadTodayEntries() async {
     setState(() => _loadingTodayEntries = true);
     try {
@@ -318,16 +455,32 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
 
     final track   = _tracks.firstWhere((t) => t['code'] == _trackCode, orElse: () => _tracks.first);
     final rate    = (track['rate'] as double);
-    final minMins = ((track['minHrs'] as double) * 60).round();
+    final minHrs  = (track['minHrs'] as double);
 
-    // Day total if this entry is added.
+    // NATRAX bills WHOLE HOURS, rounded up, per track per day. Verified against
+    // invoice INV/26-27/205 (April 2026): 30.75 h of wet braking across ten
+    // days invoiced as 34 Hrs, which is the sum of each day rounded up. Dry
+    // braking and handling reconcile the same way, to the rupee.
+    //
+    // Billing the fraction under-charged every part-hour day — 2.35 h was
+    // quoted as Rs 49,350 where NATRAX will invoice 3 Hrs at Rs 63,000.
     final dayTotalMins = _sameDayMinutes + entryMins;
-    // Billable day total — minimum applies once to the whole day.
-    final billableDayMins = dayTotalMins < minMins ? minMins : dayTotalMins;
-    // Incremental cost = what the whole day costs minus what's already saved.
-    final cost = (billableDayMins / 60.0) * rate - _sameDayCost;
+    final billableHours =
+        math.max(_ceilHours(dayTotalMins), minHrs);
+
+    // Incremental: what the whole day now costs, less what is already billed
+    // for it. So the first entry of a day carries the rounding up and a later
+    // one adds nothing until the day crosses into the next whole hour.
+    final cost = billableHours * rate - _sameDayCost;
     _costCtrl.text = cost.clamp(0, double.infinity).toStringAsFixed(0);
   }
+
+  /// Minutes to whole billable hours, always rounding up.
+  ///
+  /// Zero stays zero: a day with nothing logged has nothing to bill. One
+  /// minute is an hour, which is the floor NATRAX charges.
+  double _ceilHours(int minutes) =>
+      minutes <= 0 ? 0 : (minutes / 60.0).ceilToDouble();
 
   void _recalcFromTime() {
     final s = _start.hour * 60 + _start.minute;
@@ -1994,6 +2147,23 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                         style: GoogleFonts.spaceGrotesk(
                             fontSize: 8, color: const Color(0xFF4A5470))),
                   ]),
+                  // Delete, so a wrong entry can be removed and logged again.
+                  // There is no edit: changing one session's duration changes
+                  // how the whole day rounds, and therefore what every other
+                  // session that day should carry. Deleting and re-entering
+                  // makes the app recompute all of them from scratch, which
+                  // an in-place edit would have to do by hand and could get
+                  // subtly wrong.
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    onTap: () => _confirmDeleteEntry(e),
+                    behavior: HitTestBehavior.opaque,
+                    child: Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: Icon(Icons.delete_outline_rounded,
+                          size: 16, color: Colors.white.withAlpha(90)),
+                    ),
+                  ),
                 ]),
               ),
             );
@@ -2024,17 +2194,18 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
   Widget _buildTrackCheckoutCard() {
     final track = _tracks.firstWhere((t) => t['code'] == _trackCode, orElse: () => _tracks.first);
     final rate = track['rate'] as double;
-    final minHrs = track['minHrs'] as double;
-    final minMins = (minHrs * 60).round();
 
     final hrs = int.tryParse(_hrsCtrl.text) ?? 0;
     final mins = int.tryParse(_minsCtrl.text) ?? 0;
     final entryMins = hrs * 60 + mins;
     final dayTotalMins = _sameDayMinutes + entryMins;
 
-    // Min is enforced on the day total, not per entry.
-    final dayAlreadySatisfied = _sameDayMinutes >= minMins;
-    final isMinHrsEnforced = !dayAlreadySatisfied && entryMins > 0 && dayTotalMins < minMins;
+    // Rounding is applied to the day total, not per entry. 'Already satisfied'
+    // now means the day has whole hours banked that this entry can use before
+    // it costs anything; 'enforced' means the day is being rounded up.
+    final dayAlreadySatisfied = _sameDayMinutes > 0;
+    final isMinHrsEnforced =
+        entryMins > 0 && dayTotalMins % 60 != 0 && _sameDayMinutes == 0;
 
     final baseCost = _trackBaseCost;
     final gst = baseCost * 0.18;
@@ -2157,7 +2328,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      'Min ${minHrs.toStringAsFixed(1)} hrs already met today — charged at raw duration.',
+                      'Day already billed at ${_ceilHours(_sameDayMinutes).toStringAsFixed(0)} hr on $_trackCode — this entry adds only what crosses into the next whole hour.',
                       style: GoogleFonts.spaceGrotesk(fontSize: 10, color: const Color(0xFF4CAF50), fontWeight: FontWeight.w600),
                     ),
                   ),
@@ -2176,7 +2347,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      'Day total ${dayTotalMins ~/ 60}h ${dayTotalMins % 60}m < min ${minHrs.toStringAsFixed(0)} hrs. Min booking applied.',
+                      'Day total ${dayTotalMins ~/ 60}h ${dayTotalMins % 60}m rounds up to ${_ceilHours(dayTotalMins).toStringAsFixed(0)} billable hrs — NATRAX bills whole hours.',
                       style: GoogleFonts.spaceGrotesk(fontSize: 10, color: const Color(0xFFFF9500), fontWeight: FontWeight.w600),
                     ),
                   ),
