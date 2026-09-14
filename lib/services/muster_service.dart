@@ -348,9 +348,18 @@ class MusterService extends ChangeNotifier {
       // Sunday is never worked, so a range never books one. Saturday is
       // worked some weeks and not others, so each one in the range has to
       // be named explicitly rather than guessed from a blanket setting.
+      //
+      // Workshop is the exception, the other way round: the rental is payable
+      // for every calendar day of the hire, whether or not anybody is in the
+      // workshop that day. So a workshop range books all seven days and skips
+      // nothing. Manpower keeps the weekday rule, because a technician is paid
+      // for days actually worked.
       final key = day.toIso8601String().split('T').first;
-      final skip = day.weekday == DateTime.sunday ||
-          (day.weekday == DateTime.saturday && !saturdaysWorked.contains(key));
+      final skip = kind == MusterKind.workshop
+          ? false
+          : (day.weekday == DateTime.sunday ||
+              (day.weekday == DateTime.saturday &&
+                  !saturdaysWorked.contains(key)));
       if (skip) {
         day = DateTime(day.year, day.month, day.day + 1);
         continue;
