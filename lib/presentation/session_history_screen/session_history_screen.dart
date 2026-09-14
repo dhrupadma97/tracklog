@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/app_export.dart';
+import '../../services/day_note_service.dart';
 import '../../services/engineer_auth_service.dart';
 import '../../services/muster_service.dart';
 import '../../services/project_manager.dart';
@@ -14,6 +15,31 @@ import './widgets/hero_metric_widget.dart';
 import './widgets/monthly_summary_card_widget.dart';
 import './widgets/session_chart_widget.dart';
 import './widgets/session_list_widget.dart';
+
+/// What a full-history row records. Track time and the two muster kinds are
+/// funded and counted differently, so they stay distinguishable rather than
+/// being flattened into one "entry".
+enum _HistoryKind { track, manpower, workshop }
+
+class _HistoryEntry {
+  final DateTime date;
+  final _HistoryKind kind;
+  final String title;
+  final String detail;
+
+  /// Null where this screen cannot price the row honestly — a manpower day is
+  /// worth its PO's day rate, which is not loaded here. Shown as an em dash
+  /// rather than as zero, which would read as free.
+  final double? amount;
+
+  const _HistoryEntry({
+    required this.date,
+    required this.kind,
+    required this.title,
+    required this.detail,
+    this.amount,
+  });
+}
 
 // TODO: Replace with Riverpod/Bloc for production
 class SessionHistoryScreen extends StatefulWidget {
@@ -30,6 +56,20 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
   List<Map<String, dynamic>> _sessionMaps = [];
   bool _isLoading = true;
   String _activeProject = '';
+
+  /// Widen the register to every programme. Off by default — the screen is
+  /// normally read one programme at a time — but without it there was no way
+  /// to see the whole history at once, or to compare a gap in one programme
+  /// against another without leaving the screen.
+  bool _allProjects = false;
+
+  /// Muster days in the current scope, for the full-history timeline.
+  List<MusterDay> _musterDays = [];
+
+  /// Why a day carries muster but no track session, keyed
+  /// 'YYYY-MM-DD|project'. Empty until the day_notes migration is applied.
+  Map<String, DayNote> _dayNotes = {};
+
   int _selectedPeriod = 0; // 0 = This Month, 1 = Last Month
 
   @override
@@ -59,7 +99,9 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
       final client = SupabaseService.instance.client;
       final sessions = await EngineerAuthService.instance.getMySessionHistory();
       final pm = ProjectManager.instance;
-      final filtered = sessions.where((s) => pm.sessionBelongsToProject(s.projectName)).toList();
+      final filtered = _allProjects
+          ? sessions
+          : sessions.where((s) => pm.sessionBelongsToProject(s.projectName)).toList();
 
       final sessionIds = filtered.map((s) => s.id).toList();
       List<dynamic> svcsRaw = [];
@@ -76,6 +118,26 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
         final c = (svc['total_cost'] as num?)?.toDouble() ?? 0.0;
         svcMap[sid] = (svcMap[sid] ?? 0) + c;
       }
+
+      // The muster for the same scope, so the full history below can show
+      // track time, manpower and workshop as one chronology. The sessions
+      // list above stays month-pinned; this does not touch it.
+      try {
+        final days = await MusterService.instance.list();
+        final musterDays = _allProjects
+            ? days
+            : days
+                .where((d) => ProjectManager.sessionBelongsTo(
+                    d.projectName, _activeProject))
+                .toList();
+        if (mounted) _musterDays = musterDays;
+      } catch (_) {
+        // An unreadable muster must not take the session history down.
+        if (mounted) _musterDays = [];
+      }
+      // Returns empty rather than throwing if the table is not there yet.
+      final notes = await DayNoteService.instance.byDay();
+      if (mounted) _dayNotes = notes;
 
       final mapped = filtered
           .map(
@@ -273,8 +335,466 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
         ),
         SliverToBoxAdapter(child: _buildFilterRow(theme)),
         SessionListWidget(sessions: _displaySessions),
+        SliverToBoxAdapter(child: _buildGapPrompt()),
+        SliverToBoxAdapter(child: _buildFullHistory()),
         const SliverToBoxAdapter(child: SizedBox(height: 120)),
       ],
+    );
+  }
+
+  /// Everything logged for the current scope, across every month.
+  ///
+  /// Track time, manpower and workshop in one chronology. The Sessions list
+  /// above is deliberately pinned to a single month and shows track only, so
+  /// there was no way to see a programme's whole life — or to notice that a
+  /// day carries muster but no track session, which is exactly how weeks of
+  /// work went unbilled.
+  Widget _buildFullHistory() {
+    final entries = <_HistoryEntry>[];
+    for (final s in _sessionMaps) {
+      final dt = DateTime.tryParse(s['startTime'] as String? ?? '');
+      if (dt == null) continue;
+      entries.add(_HistoryEntry(
+        date: dt,
+        kind: _HistoryKind.track,
+        title: (s['gate'] ?? '').toString(),
+        detail: '${s['trackType']} · ${s['durationMinutes']} min'
+            '${(s['status'] ?? '') == 'completed' ? '' : ' · ${s['status']}'}',
+        amount: (s['costINR'] as num?)?.toDouble() ?? 0,
+      ));
+    }
+    for (final d in _musterDays) {
+      final workshop = d.kind == MusterKind.workshop;
+      entries.add(_HistoryEntry(
+        date: d.date,
+        kind: workshop ? _HistoryKind.workshop : _HistoryKind.manpower,
+        title: workshop ? 'Workshop' : 'Manpower',
+        detail: workshop
+            ? 'PO ${d.poNumber}'
+            : '${d.headCount} on site · PO ${d.poNumber}',
+        // Workshop is a flat daily rental. Manpower is priced off its PO's
+        // day rate, which this screen does not hold, so it shows the days
+        // rather than inventing a rupee figure.
+        amount: workshop ? kWorkshopRatePerDay : null,
+      ));
+    }
+    if (entries.isEmpty) return const SizedBox.shrink();
+    entries.sort((a, b) => b.date.compareTo(a.date));
+
+    final byMonth = <String, List<_HistoryEntry>>{};
+    for (final e in entries) {
+      byMonth
+          .putIfAbsent(DateFormat('yyyy-MM').format(e.date), () => [])
+          .add(e);
+    }
+    final months = byMonth.keys.toList()..sort((a, b) => b.compareTo(a));
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.history_rounded,
+              color: AppTheme.primary, size: 16),
+          const SizedBox(width: 8),
+          Text('Full History',
+              style: GoogleFonts.spaceGrotesk(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800)),
+          const Spacer(),
+          Text(
+              '${entries.length} entries · '
+              '${_allProjects ? 'all programmes' : _activeProject}',
+              style: GoogleFonts.spaceGrotesk(
+                  color: const Color(0xFF6B7490), fontSize: 10)),
+        ]),
+        const SizedBox(height: 4),
+        Text(
+            'Track, manpower and workshop together, every month. '
+            'Workshop is accrued at the full daily rental as a worst case — '
+            'the invoice is often lower, or absent.',
+            style: GoogleFonts.spaceGrotesk(
+                color: const Color(0xFF6B7490), fontSize: 10, height: 1.4)),
+        const SizedBox(height: 10),
+        ...months.map((m) {
+          final rows = byMonth[m]!;
+          final track = rows.where((e) => e.kind == _HistoryKind.track);
+          final manpower =
+              rows.where((e) => e.kind == _HistoryKind.manpower).length;
+          final shop =
+              rows.where((e) => e.kind == _HistoryKind.workshop).length;
+          final tally = [
+            if (track.isNotEmpty) '${track.length} session'
+                '${track.length == 1 ? '' : 's'}',
+            if (manpower > 0) '$manpower manpower',
+            if (shop > 0) '$shop workshop',
+          ].join('  ·  ');
+          return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(2, 12, 2, 6),
+                  child: Row(children: [
+                    Text(
+                        DateFormat('MMMM yyyy')
+                            .format(DateTime.parse('$m-01')),
+                        style: GoogleFonts.spaceGrotesk(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700)),
+                    const Spacer(),
+                    Flexible(
+                      child: Text(tally,
+                          textAlign: TextAlign.right,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.spaceGrotesk(
+                              color: const Color(0xFF6B7490), fontSize: 10)),
+                    ),
+                  ]),
+                ),
+                ...rows.map(_historyTile),
+              ]);
+        }),
+      ]),
+    );
+  }
+
+  /// Days carrying muster but no track session, newest first.
+  ///
+  /// Somebody was on site and the workshop accrued, yet no track time was
+  /// logged. Four different things could explain that — the vehicle was down,
+  /// the track was booked out, no testing was planned, or the entry was simply
+  /// missed — and only the last means billable time is still owed. Nothing
+  /// recorded which, so months later it cannot be told apart.
+  List<({DateTime date, String project, bool musterMissing})> get _gapDays {
+    final sessionDays = <String>{};
+    for (final s in _sessionMaps) {
+      final dt = DateTime.tryParse(s['startTime'] as String? ?? '');
+      if (dt != null) {
+        sessionDays.add(DateFormat('yyyy-MM-dd').format(dt));
+      }
+    }
+    final musterKeys = {for (final d in _musterDays) d.dateKey};
+
+    final seen = <String>{};
+    final out = <({DateTime date, String project, bool musterMissing})>[];
+
+    // Muster but no track session: people on site, no track time logged.
+    for (final d in _musterDays) {
+      if (sessionDays.contains(d.dateKey)) continue;
+      final project = (d.projectName ?? '').trim().isEmpty
+          ? 'Mahindra EV PoC'
+          : d.projectName!.trim();
+      if (!seen.add('${d.dateKey}|${project.toLowerCase()}')) continue;
+      out.add((date: d.date, project: project, musterMissing: false));
+    }
+
+    // The reverse: a session ran with nobody recorded on site. If testing
+    // happened somebody was there, and an unrecorded man-day is a day that
+    // never draws down the MOICARS PO and is therefore never invoiced — the
+    // same loss as an unlogged session, pointing the other way.
+    for (final s in _sessionMaps) {
+      final dt = DateTime.tryParse(s['startTime'] as String? ?? '');
+      if (dt == null) continue;
+      final key = DateFormat('yyyy-MM-dd').format(dt);
+      if (musterKeys.contains(key)) continue;
+      final project = _allProjects ? _activeProject : _activeProject;
+      if (!seen.add('$key|${project.toLowerCase()}|rev')) continue;
+      out.add((date: dt, project: project, musterMissing: true));
+    }
+
+    out.sort((a, b) => b.date.compareTo(a.date));
+    return out;
+  }
+
+  String _noteKey(DateTime date, String project) =>
+      '${DateFormat('yyyy-MM-dd').format(date)}|${project.toLowerCase().trim()}';
+
+  Widget _buildGapPrompt() {
+    final gaps = _gapDays;
+    if (gaps.isEmpty) return const SizedBox.shrink();
+    final unanswered =
+        gaps.where((g) => !_dayNotes.containsKey(_noteKey(g.date, g.project)));
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0A1025).withAlpha(200),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+              color: const Color(0xFFFFB547)
+                  .withAlpha(unanswered.isEmpty ? 50 : 130)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(
+                unanswered.isEmpty
+                    ? Icons.check_circle_outline
+                    : Icons.help_outline_rounded,
+                color: const Color(0xFFFFB547),
+                size: 15),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                  unanswered.isEmpty
+                      ? 'All ${gaps.length} days without track time are explained'
+                      : '${unanswered.length} day'
+                          '${unanswered.length == 1 ? '' : 's'} with no track '
+                          'session — add a reason',
+                  style: GoogleFonts.spaceGrotesk(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700)),
+            ),
+          ]),
+          const SizedBox(height: 4),
+          Text(
+              'Days where the register only half adds up — muster with no track '
+              'session, or a session with nobody recorded on site. Either way a '
+              'day may be going unbilled. Say why, so a quiet day can be told '
+              'apart from a missed entry.',
+              style: GoogleFonts.spaceGrotesk(
+                  color: const Color(0xFF6B7490), fontSize: 10, height: 1.4)),
+          const SizedBox(height: 10),
+          ...gaps.take(30).map((g) {
+            final note = _dayNotes[_noteKey(g.date, g.project)];
+            return InkWell(
+              onTap: () => _askReason(g.date, g.project, existing: note),
+              borderRadius: BorderRadius.circular(9),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E293B).withAlpha(110),
+                  borderRadius: BorderRadius.circular(9),
+                  border: Border.all(
+                      color: note == null
+                          ? const Color(0xFFFFB547).withAlpha(70)
+                          : Colors.transparent),
+                ),
+                child: Row(children: [
+                  Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(DateFormat('EEE, d MMM yyyy').format(g.date),
+                              style: GoogleFonts.spaceGrotesk(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600)),
+                          Text(
+                              note == null
+                                  ? '${g.project} · '
+                                      '${g.musterMissing ? 'no muster — man-day not claimed' : 'reason not recorded'}'
+                                  : '${note.reason.label}'
+                                      '${(note.comment ?? '').isEmpty ? '' : ' — ${note.comment}'}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.spaceGrotesk(
+                                  color: note == null
+                                      ? const Color(0xFFFFB547)
+                                      : const Color(0xFF6B7490),
+                                  fontSize: 10)),
+                        ]),
+                  ),
+                  Icon(note == null ? Icons.add_comment_outlined : Icons.edit,
+                      size: 14, color: const Color(0xFF6B7490)),
+                ]),
+              ),
+            );
+          }),
+          if (gaps.length > 30)
+            Text('and ${gaps.length - 30} more',
+                style: GoogleFonts.spaceGrotesk(
+                    color: const Color(0xFF6B7490), fontSize: 10)),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _askReason(DateTime date, String project,
+      {DayNote? existing}) async {
+    var reason = existing?.reason ?? DayNoteReason.noTestingPlanned;
+    final comment = TextEditingController(text: existing?.comment ?? '');
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => AlertDialog(
+          backgroundColor: const Color(0xFF0A1025),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text('No track session — ${DateFormat('d MMM yyyy').format(date)}',
+              style: GoogleFonts.spaceGrotesk(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800)),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(project,
+                    style: GoogleFonts.spaceGrotesk(
+                        color: const Color(0xFF6B7490), fontSize: 11)),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: DayNoteReason.values.map((r) {
+                  final on = r == reason;
+                  return GestureDetector(
+                    onTap: () => setSheet(() => reason = r),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: on
+                            ? AppTheme.primary.withAlpha(38)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                            color: on
+                                ? AppTheme.primary.withAlpha(140)
+                                : const Color(0xFF849495).withAlpha(70)),
+                      ),
+                      child: Text(r.label,
+                          style: GoogleFonts.spaceGrotesk(
+                              color: on
+                                  ? AppTheme.primary
+                                  : const Color(0xFF94A3B8),
+                              fontSize: 11,
+                              fontWeight:
+                                  on ? FontWeight.w700 : FontWeight.w500)),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: comment,
+                maxLines: 3,
+                style: GoogleFonts.spaceGrotesk(
+                    color: Colors.white, fontSize: 12),
+                decoration: InputDecoration(
+                  hintText: 'Comment (optional)',
+                  hintStyle: GoogleFonts.spaceGrotesk(
+                      color: const Color(0xFF6B7490), fontSize: 11),
+                  filled: true,
+                  fillColor: const Color(0xFF1E293B).withAlpha(120),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide.none),
+                ),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel',
+                  style: GoogleFonts.spaceGrotesk(
+                      color: const Color(0xFF6B7490))),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text('Save',
+                  style: GoogleFonts.spaceGrotesk(
+                      color: AppTheme.primary, fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (saved != true) {
+      comment.dispose();
+      return;
+    }
+    try {
+      await DayNoteService.instance.save(DayNote(
+        id: existing?.id,
+        date: date,
+        projectName: project,
+        reason: reason,
+        comment: comment.text,
+      ));
+      if (mounted) _loadSessions();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Could not save the reason: $e',
+              style: GoogleFonts.spaceGrotesk(color: Colors.white)),
+          backgroundColor: AppTheme.error,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    }
+    comment.dispose();
+  }
+
+  Widget _historyTile(_HistoryEntry e) {
+    final colour = switch (e.kind) {
+      _HistoryKind.track => AppTheme.primary,
+      _HistoryKind.manpower => const Color(0xFFB794F6),
+      _HistoryKind.workshop => const Color(0xFFFFB547),
+    };
+    final icon = switch (e.kind) {
+      _HistoryKind.track => Icons.speed_rounded,
+      _HistoryKind.manpower => Icons.groups_rounded,
+      _HistoryKind.workshop => Icons.home_repair_service_rounded,
+    };
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0A1025).withAlpha(170),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: colour.withAlpha(45)),
+      ),
+      child: Row(children: [
+        Container(
+          width: 30,
+          height: 30,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+              color: colour.withAlpha(28),
+              borderRadius: BorderRadius.circular(8)),
+          child: Icon(icon, color: colour, size: 15),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(e.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.spaceGrotesk(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600)),
+            Text('${DateFormat('EEE, d MMM').format(e.date)} · ${e.detail}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.spaceGrotesk(
+                    color: const Color(0xFF6B7490), fontSize: 10)),
+          ]),
+        ),
+        const SizedBox(width: 8),
+        Text(
+            e.amount == null
+                ? '—'
+                : NumberFormat.currency(
+                        locale: 'en_IN', symbol: '₹', decimalDigits: 0)
+                    .format(e.amount),
+            style: GoogleFonts.spaceGrotesk(
+                color: e.amount == null ? const Color(0xFF6B7490) : colour,
+                fontSize: 12,
+                fontWeight: FontWeight.w700)),
+      ]),
     );
   }
 
@@ -290,7 +810,9 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
             totalHours: _currentHours,
             sessionCount: _currentSessionCount,
             avgDurationMinutes: _currentAvgDuration,
-            activeProject: _activeProject,
+            // Null means every programme — the charges panel then totals the
+            // whole muster rather than one project's slice.
+            activeProject: _allProjects ? null : _activeProject,
           ),
         ),
       ],
@@ -335,21 +857,44 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
                         'NATRAX Proving Ground · ',
                         style: theme.textTheme.bodySmall,
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primary.withAlpha(30),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppTheme.primary.withAlpha(80)),
-                        ),
-                        child: Text(
-                          _activeProject,
-                          style: TextStyle(
-                            fontFamily: 'Space Grotesk',
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.primary,
+                      // Tap to widen the register to every programme and back.
+                      // The 'All Projects' link above this navigates away to
+                      // the selection screen, which is not the same thing —
+                      // there was no way to read the whole history at once,
+                      // and a gap in one programme could not be compared
+                      // against another without leaving the screen.
+                      GestureDetector(
+                        onTap: () {
+                          setState(() => _allProjects = !_allProjects);
+                          _loadSessions();
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primary.withAlpha(30),
+                            borderRadius: BorderRadius.circular(8),
+                            border:
+                                Border.all(color: AppTheme.primary.withAlpha(80)),
                           ),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Text(
+                              _allProjects ? 'All programmes' : _activeProject,
+                              style: TextStyle(
+                                fontFamily: 'Space Grotesk',
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.primary,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(
+                                _allProjects
+                                    ? Icons.unfold_less_rounded
+                                    : Icons.unfold_more_rounded,
+                                size: 11,
+                                color: AppTheme.primary),
+                          ]),
                         ),
                       ),
                     ]),
@@ -461,7 +1006,8 @@ class _RightPanel extends StatefulWidget {
   final double totalHours;
   final int sessionCount;
   final int avgDurationMinutes;
-  final String activeProject;
+  /// Null means every programme.
+  final String? activeProject;
 
   const _RightPanel({
     required this.totalCost,
@@ -537,12 +1083,17 @@ class _RightPanelState extends State<_RightPanel> {
   Future<void> _fetchUpdates() async {
     setState(() => _loadingUpdates = true);
     try {
-      final data = await SupabaseService.instance.client
+      // Showing every programme means the updates are not scoped either,
+      // rather than scoped to a project name that is deliberately absent.
+      final project = widget.activeProject;
+      var query = SupabaseService.instance.client
           .from('project_updates')
-          .select('id, title, body, type, author_name, created_at')
-          .eq('project_name', widget.activeProject)
-          .order('created_at', ascending: false)
-          .limit(10);
+          .select('id, title, body, type, author_name, created_at');
+      if (project != null && project.isNotEmpty) {
+        query = query.eq('project_name', project);
+      }
+      final data =
+          await query.order('created_at', ascending: false).limit(10);
       if (mounted) {
         setState(() {
           _updates = (data as List).cast<Map<String, dynamic>>();
@@ -684,7 +1235,7 @@ class _RightPanelState extends State<_RightPanel> {
                     color: AppTheme.primary, strokeWidth: 1.5)),
         ]),
         const SizedBox(height: 4),
-        Text(widget.activeProject,
+        Text(widget.activeProject ?? 'All programmes',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: GoogleFonts.spaceGrotesk(
@@ -697,11 +1248,17 @@ class _RightPanelState extends State<_RightPanel> {
             c == null
                 ? ''
                 : '${c.manDays} man-day${c.manDays == 1 ? '' : 's'}'),
-        _chargeRow('Workshop', workshop, total, const Color(0xFFFFB547),
+        // Labelled 'accrued' on purpose. Every operational day is booked here
+        // at the full daily rental as a worst case, but the workshop is used
+        // on a shared basis and NATRAX has omitted it from some months
+        // altogether — so this is a ceiling, not a prediction of the invoice.
+        // Presenting it unqualified invites it to be read as money owed.
+        _chargeRow('Workshop (accrued)', workshop, total,
+            const Color(0xFFFFB547),
             c == null
                 ? ''
                 : '${c.workshopDays} day${c.workshopDays == 1 ? '' : 's'}'
-                    ' @ ${_inr.format(kWorkshopRatePerDay)}'),
+                    ' @ ${_inr.format(kWorkshopRatePerDay)} · worst case'),
         const SizedBox(height: 8),
         Container(height: 1, color: const Color(0xFF3a494b)),
         const SizedBox(height: 8),

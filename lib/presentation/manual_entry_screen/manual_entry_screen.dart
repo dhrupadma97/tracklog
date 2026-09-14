@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:ui';
 
 import 'package:google_fonts/google_fonts.dart';
@@ -6,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/app_export.dart';
 import '../../services/engineer_auth_service.dart';
+import '../../services/excel_backup_downloader.dart';
 import '../../services/offline_queue_service.dart';
 import '../../services/project_catalog.dart';
 import '../../services/project_manager.dart';
@@ -260,7 +262,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
       final dayEnd   = dayStart.add(const Duration(days: 1));
       final rows = await SupabaseService.instance.client
           .from('engineer_sessions')
-          .select('duration_minutes, total_cost')
+          .select('duration_minutes, total_cost, project_name, venue')
           .eq('track_code', _trackCode)
           .gte('started_at', dayStart.toIso8601String())
           .lt('started_at', dayEnd.toIso8601String());
@@ -268,6 +270,18 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
       int totalMins  = 0;
       double totalCost = 0.0;
       for (final r in list) {
+        // The minimum is charged once per programme per track per day, not
+        // once per track. Each PoC is invoiced separately, so letting one
+        // programme's session satisfy another's minimum would make one
+        // invoice quietly subsidise the other and neither would reconcile.
+        if (!ProjectManager.sessionBelongsTo(
+            r['project_name'] as String?, _trackProject)) {
+          continue;
+        }
+        // track_code is unique per venue, not globally, so an unscoped match
+        // would let a CoASTT layout sharing a code count towards a NATRAX day.
+        final venue = (r['venue'] as String? ?? '').trim();
+        if (venue.isNotEmpty && venue != _venue.dbValue) continue;
         totalMins  += (r['duration_minutes'] as int?  ?? 0);
         totalCost  += (r['total_cost']       as num? ?? 0).toDouble();
       }
@@ -400,6 +414,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
       if (_isOnline) {
         await SupabaseService.instance.client.from('engineer_sessions').insert(payload);
         _snack('Track session saved to $_trackProject ✓');
+        _backUpAfterEntry();
         _loadRecentEntries();
         _resetTrackForm();
       } else {
@@ -470,6 +485,31 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
 
   List<_NatraxService> get _selectedServices =>
       _services.where((s) => _isServiceSelected(s)).toList();
+
+  /// Refresh the Excel backup as soon as an entry is saved.
+  ///
+  /// A manual entry is often the only record that the work happened, and the
+  /// backup previously only moved when somebody remembered to open Settings —
+  /// so the spreadsheet was routinely older than the entries it was supposed
+  /// to protect.
+  ///
+  /// Deliberately not awaited by the save, and its failure is reported
+  /// separately: the entry is already committed by the time this runs, and a
+  /// failed download must never make a saved entry look unsaved.
+  ///
+  /// Web only. The download path hands bytes to the browser, which has no
+  /// meaning on mobile; there the entry saves exactly as before.
+  Future<void> _backUpAfterEntry() async {
+    if (!kIsWeb) return;
+    try {
+      final name = await ExcelBackupDownloader.runAndSave();
+      if (mounted) _snack('Backed up to $name');
+    } catch (e) {
+      if (mounted) {
+        _snack('Entry saved. The backup did not download: $e', error: true);
+      }
+    }
+  }
 
   Future<void> _saveServices() async {
     if (_selectedServices.isEmpty) { _snack('Select at least one service', error: true); return; }
@@ -545,6 +585,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
           .from('session_additional_services')
           .insert(svcRows);
       _snack('${_selectedServices.length} services saved ✓ · ${_inr.format(_svcGrandTotal)}');
+      _backUpAfterEntry();
       setState(() {
         _svcQty.clear(); _svcInDate.clear(); _svcOutDate.clear();
         _svcKwh.clear(); _svcTons.clear(); _svcBags.clear();
@@ -1500,7 +1541,13 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                   .map((p) => DropdownMenuItem(value: p, child: Text(p)))
                   .toList(),
               onChanged: (v) {
-                if (v != null) setState(() => _trackProject = v);
+                // The day total is now scoped to the programme, so changing
+                // the programme changes which sessions count towards the
+                // minimum — the cost has to be recomputed, not just relabelled.
+                if (v != null) {
+                  setState(() => _trackProject = v);
+                  _fetchSameDayMinutes();
+                }
               },
             ),
           ),

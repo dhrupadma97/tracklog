@@ -16,12 +16,22 @@ class BackupData {
   final List<SheetRow> sessions;
   final List<SheetRow> services;
   final List<SheetRow> muster;
+
+  /// The billing register: what was actually invoiced, and the POs those
+  /// invoices draw on. Absent from the backup until now — which left the one
+  /// set of figures that has to be reconciled against paper as the one set
+  /// the backup did not protect.
+  final List<SheetRow> invoices;
+  final List<SheetRow> pos;
+
   final DateTime generatedAt;
 
   const BackupData({
     required this.sessions,
     required this.services,
     required this.muster,
+    this.invoices = const [],
+    this.pos = const [],
     required this.generatedAt,
   });
 
@@ -41,6 +51,16 @@ class BackupData {
 
   static const musterHeaders = <String>[
     'Date', 'Kind', 'Head Count', 'PO Number', 'Project', 'Notes',
+  ];
+
+  static const invoiceHeaders = <String>[
+    'Invoice Date', 'Invoice No', 'Period', 'Project', 'PO Number',
+    'Amount (excl GST)', 'GST', 'Total', 'File', 'Notes',
+  ];
+
+  static const poHeaders = <String>[
+    'PO Number', 'Category', 'Status', 'Valid From', 'PO Value',
+    'Manpower Days', 'Opening Days',
   ];
 
   /// Rounds to paise. Doubles accumulate error across a few thousand rows and
@@ -73,6 +93,8 @@ class BackupData {
     required List<Map<String, dynamic>> sessionRows,
     required List<Map<String, dynamic>> serviceRows,
     required List<Map<String, dynamic>> musterRows,
+    List<Map<String, dynamic>> invoiceRows = const [],
+    List<Map<String, dynamic>> poRows = const [],
     required DateTime generatedAt,
   }) {
     final sessions = <SheetRow>[];
@@ -121,10 +143,41 @@ class BackupData {
       ]);
     }
 
+    final invoices = <SheetRow>[];
+    for (final r in invoiceRows) {
+      invoices.add([
+        _date(r['invoice_date']),
+        (r['invoice_number'] ?? '').toString(),
+        (r['period_month'] ?? '').toString(),
+        (r['project_name'] ?? '').toString(),
+        (r['po_number'] ?? '').toString(),
+        money(r['amount_excl_gst'] as num?),
+        money(r['gst_amount'] as num?),
+        money(r['total_amount'] as num?),
+        (r['file_name'] ?? '').toString(),
+        (r['notes'] ?? '').toString(),
+      ]);
+    }
+
+    final pos = <SheetRow>[];
+    for (final r in poRows) {
+      pos.add([
+        (r['po_number'] ?? '').toString(),
+        (r['category'] ?? '').toString(),
+        (r['po_status'] ?? '').toString(),
+        _date(r['valid_from']),
+        money(r['total_po_value'] as num?),
+        (r['manpower_days'] as num?)?.toDouble() ?? 0,
+        (r['manpower_days_opening'] as num?)?.toDouble() ?? 0,
+      ]);
+    }
+
     return BackupData(
       sessions: sessions,
       services: services,
       muster: muster,
+      invoices: invoices,
+      pos: pos,
       generatedAt: generatedAt,
     );
   }
@@ -141,6 +194,8 @@ class ExcelBackupService {
   static const sheetSessions = 'Sessions';
   static const sheetServices = 'Other Services';
   static const sheetMuster = 'Muster';
+  static const sheetInvoices = 'Invoices';
+  static const sheetPos = 'POs';
   static const sheetSummary = 'Summary';
 
   /// Suggested filename, sortable and unambiguous.
@@ -153,6 +208,8 @@ class ExcelBackupService {
     _writeSheet(book, sheetSessions, BackupData.sessionHeaders, data.sessions);
     _writeSheet(book, sheetServices, BackupData.serviceHeaders, data.services);
     _writeSheet(book, sheetMuster, BackupData.musterHeaders, data.muster);
+    _writeSheet(book, sheetInvoices, BackupData.invoiceHeaders, data.invoices);
+    _writeSheet(book, sheetPos, BackupData.poHeaders, data.pos);
     _writeSummary(book, data);
 
     // Excel.createExcel() seeds a default 'Sheet1'. Removing it after the real
@@ -208,6 +265,21 @@ class ExcelBackupService {
       TextCellValue(sheetMuster),
       IntCellValue(data.muster.length),
       TextCellValue('n/a'),
+    ]);
+    // Column 5 is Amount (excl GST) — the figure that reconciles against the
+    // sessions total above it, which is the whole point of carrying invoices
+    // in the same workbook.
+    sheet.appendRow([
+      TextCellValue(sheetInvoices),
+      IntCellValue(data.invoices.length),
+      DoubleCellValue(sum(data.invoices, 5)),
+    ]);
+    // Column 4 is PO Value: what has been committed, not what has been spent,
+    // so it is labelled rather than added to the ex-GST column above.
+    sheet.appendRow([
+      TextCellValue(sheetPos),
+      IntCellValue(data.pos.length),
+      DoubleCellValue(sum(data.pos, 4)),
     ]);
   }
 

@@ -136,11 +136,30 @@ class _MusterScreenState extends State<MusterScreen> {
   String _defaultPoFor(MusterKind kind) {
     final list = _posFor(kind);
     if (list.isEmpty) return '';
+    if (kind == MusterKind.manpower) {
+      // Roll onto the next PO once the one in use is out of days, rather than
+      // defaulting to whichever active PO happens to come first. Booking past
+      // a PO's contracted days is an overrun with no budget behind it.
+      final next = MusterService.instance.nextManpowerPo(_positions);
+      if (next != null && next.isNotEmpty) {
+        final stillOffered = list.any(
+            (p) => (p['po_number'] as String? ?? '').trim() == next);
+        if (stillOffered) return next;
+      }
+    }
     final active = list.firstWhere(
       (p) => (p['po_status'] as String? ?? '') == 'active',
       orElse: () => list.first,
     );
     return (active['po_number'] as String? ?? '').trim();
+  }
+
+  /// The position for a PO number, when it is a manpower one.
+  ManpowerPosition? _positionFor(String po) {
+    for (final p in _positions) {
+      if (p.poNumber == po) return p;
+    }
+    return null;
   }
 
   // ─── Build ─────────────────────────────────────────────────────────────────
@@ -1021,6 +1040,7 @@ class _MusterScreenState extends State<MusterScreen> {
               ),
             ),
             _destinationHint(kind, po),
+            _poCapacityBar(kind, po),
             const SizedBox(height: 12),
 
             // Project the day is booked to
@@ -1531,6 +1551,91 @@ class _MusterScreenState extends State<MusterScreen> {
   ///
   /// Unlike [_runBanner] this shows even when nothing is recorded yet - a PO
   /// with no days is exactly the case that needs telling where to look.
+  /// How full the destination PO is, live, as the day is being booked.
+  ///
+  /// Manpower POs are contracted in days, so they can genuinely run out — and
+  /// 8242356330 did, at exactly its 38 days, while the sheet was still
+  /// defaulting to it. Nothing said so: days kept being accepted against a PO
+  /// with no budget left, and the overrun would only have surfaced when
+  /// somebody tried to invoice it.
+  ///
+  /// Workshop draws a lumpsum track PO billed on actuals, which has no
+  /// contracted day count to exhaust, so it gets no bar rather than an
+  /// invented one.
+  Widget _poCapacityBar(MusterKind kind, String po) {
+    if (kind != MusterKind.manpower || po.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final p = _positionFor(po);
+    if (p == null || p.daysContracted <= 0) return const SizedBox.shrink();
+
+    final left = p.daysLeft;
+    final over = p.isOverrun;
+    final colour = over || p.isExhausted
+        ? _red
+        : (p.isNearlyExhausted ? _amber : _green);
+    final next = MusterService.instance.nextManpowerPo(_positions);
+    final rollover = (p.isExhausted || over) && next != null && next != po;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(
+              over || p.isExhausted
+                  ? Icons.error_outline
+                  : (p.isNearlyExhausted
+                      ? Icons.warning_amber_rounded
+                      : Icons.check_circle_outline),
+              size: 13,
+              color: colour),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+                over
+                    ? 'PO $po is over by ${(-left).toStringAsFixed(0)} day'
+                        '${-left == 1 ? '' : 's'}'
+                    : p.isExhausted
+                        ? 'PO $po has no days left'
+                        : '${left.toStringAsFixed(0)} of '
+                            '${p.daysContracted.toStringAsFixed(0)} days left '
+                            'on PO $po',
+                style: GoogleFonts.spaceGrotesk(
+                    color: colour,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700)),
+          ),
+        ]),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: LinearProgressIndicator(
+            value: p.fractionUsed,
+            minHeight: 5,
+            backgroundColor: const Color(0xFF1E293B),
+            valueColor: AlwaysStoppedAnimation(colour),
+          ),
+        ),
+        if (rollover) ...[
+          const SizedBox(height: 6),
+          Text(
+              'New days should go to PO $next — it is the next one in force '
+              'with days remaining.',
+              style: GoogleFonts.spaceGrotesk(
+                  color: _amber, fontSize: 10, height: 1.4)),
+        ],
+        if (p.isNearlyExhausted && !rollover) ...[
+          const SizedBox(height: 6),
+          Text(
+              'Booking a stretch longer than ${left.toStringAsFixed(0)} day'
+              '${left == 1 ? '' : 's'} will overrun this PO.',
+              style: GoogleFonts.spaceGrotesk(
+                  color: _amber, fontSize: 10, height: 1.4)),
+        ],
+      ]),
+    );
+  }
+
   Widget _destinationHint(MusterKind kind, String po) {
     if (po.isEmpty) return const SizedBox.shrink();
     final isWorkshop = kind == MusterKind.workshop;

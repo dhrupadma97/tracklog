@@ -66,11 +66,30 @@ class ExcelBackupDownloader {
       orderBy: 'muster_date',
     );
 
+    // The billing register. Read through the same RLS as everything else, so
+    // a backup contains exactly what the person taking it can see.
+    final invoices = await _fetchAll(
+      'natrax_invoices',
+      columns: 'invoice_date, invoice_number, period_month, project_name, '
+          'po_number, amount_excl_gst, gst_amount, total_amount, file_name, '
+          'notes',
+      orderBy: 'invoice_date',
+    );
+
+    final pos = await _fetchAll(
+      'po_trackers',
+      columns: 'po_number, category, po_status, valid_from, total_po_value, '
+          'manpower_days, manpower_days_opening',
+      orderBy: 'po_number',
+    );
+
     final at = DateTime.now();
     final data = BackupData.fromRows(
       sessionRows: sessions,
       serviceRows: services,
       musterRows: muster,
+      invoiceRows: invoices,
+      poRows: pos,
       generatedAt: at,
     );
 
@@ -96,5 +115,22 @@ class ExcelBackupDownloader {
     } finally {
       html.Url.revokeObjectUrl(url);
     }
+  }
+
+  /// Build the workbook, hand it to the browser, and record the time — the
+  /// whole backup behind one call.
+  ///
+  /// Exists so callers that just want "back it up now" cannot get the three
+  /// steps out of order or forget to record the time, which is what the
+  /// staleness banner reads. Returns the filename so the caller can say which
+  /// file was written.
+  ///
+  /// Throws on failure, deliberately: a backup that quietly produces nothing
+  /// is worse than one that says it failed.
+  static Future<String> runAndSave() async {
+    final result = await generate();
+    save(result.bytes, result.name);
+    await BackupRecency.record(DateTime.now());
+    return result.name;
   }
 }

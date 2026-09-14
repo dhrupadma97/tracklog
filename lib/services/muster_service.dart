@@ -141,6 +141,10 @@ class ManpowerPosition {
   final double daysContracted;
   final double ratePerDay;
 
+  /// When the PO starts. Orders the rollover: when one PO is used up, the next
+  /// day books against the next one to come into force, not an arbitrary one.
+  final DateTime? validFrom;
+
   /// Days consumed before the muster existed, carried on the PO because the
   /// dates behind them were never recorded.
   final double manDaysOpening;
@@ -154,7 +158,27 @@ class ManpowerPosition {
     required this.manDaysOpening,
     required this.manDaysMustered,
     required this.manDaysInvoiced,
+    this.validFrom,
   });
+
+  /// No contracted days left. A further day booked here has no budget behind
+  /// it, so the next day belongs on the next PO.
+  ///
+  /// A PO with no day count recorded yet (daysContracted 0) is not exhausted —
+  /// it is unknown, and treating unknown as full would push every day onto a
+  /// PO that may not be the right one.
+  bool get isExhausted => daysContracted > 0 && daysLeft <= 0;
+
+  /// Close enough that the next booking is worth a warning rather than a
+  /// surprise. One day left on a register filled a fortnight at a time is
+  /// already too late to notice at the point of entry.
+  bool get isNearlyExhausted =>
+      daysContracted > 0 && !isExhausted && daysLeft <= 5;
+
+  /// How much of the contracted days are gone, 0..1, for a progress bar.
+  double get fractionUsed => daysContracted > 0
+      ? (manDaysUsed / daysContracted).clamp(0.0, 1.0)
+      : 0.0;
 
   /// Everything consumed, however it was recorded.
   double get manDaysUsed => manDaysOpening + manDaysMustered;
@@ -386,9 +410,14 @@ class MusterService extends ChangeNotifier {
   /// the Analyser grouped the muster itself and matched project_name exactly
   /// in SQL, so it and the History panel could disagree about one project's
   /// manpower. Same rows, same rules, one place.
-  Future<ProjectCharges> chargesForProject(String projectName) async {
-    final key = projectName.toLowerCase().trim();
+  /// Passing null (or an empty name) totals every project instead of one —
+  /// what a view showing all programmes at once needs, without it having to
+  /// call this once per programme and add the results up itself.
+  Future<ProjectCharges> chargesForProject(String? projectName) async {
+    final key = (projectName ?? '').toLowerCase().trim();
+    final everyProject = key.isEmpty;
     bool belongs(String? raw) {
+      if (everyProject) return true;
       final r = (raw ?? '').trim();
       if (r.isEmpty || r.toLowerCase() == 'general') {
         return key == 'mahindra ev poc';
@@ -498,16 +527,36 @@ class MusterService extends ChangeNotifier {
   /// is described in the source document as "Track & Workshop Booking". Those
   /// POs are lumpsum billed on actuals rather than contracted in days, so a
   /// workshop day accrues rupees against them instead of drawing a day down.
+  /// The PO every August-2026-onwards resource books against.
+  ///
+  /// NATRAX quote the PO on the invoice and use the latest one unless something
+  /// else is explicitly agreed, so a day booked to a superseded PO cannot be
+  /// invoiced against the PO the invoice will actually name. 8242348442 is the
+  /// previous Track & Workshop Booking PO; six September workshop days were
+  /// booked to it by mistake and had to be moved.
+  static const String kCurrentTrackBookingPo = '8242390552';
+
+  /// The date from which [kCurrentTrackBookingPo] is the only valid
+  /// destination. Days before it stay wherever they were booked.
+  static final DateTime kCurrentTrackPoFrom = DateTime(2026, 8, 1);
+
   Future<List<Map<String, dynamic>>> workshopPos() async {
     final rows = await _client
         .from('po_trackers')
         .select('po_number, po_status, total_po_value, valid_from')
         .eq('category', 'track_booking')
         .order('po_status');
-    return (rows as List)
+    final open = (rows as List)
         .cast<Map<String, dynamic>>()
         .where((r) => (r['po_status'] as String? ?? '') != 'closed')
         .toList();
+    // Superseded track POs are dropped from the picker outright rather than
+    // merely deprioritised. Leaving them selectable is how six days ended up
+    // on 8242348442, and a mis-booked day is invisible until somebody
+    // reconciles an invoice months later.
+    open.removeWhere((r) =>
+        (r['po_number'] as String? ?? '').trim() != kCurrentTrackBookingPo);
+    return open;
   }
 
   /// Every track PO that workshop can be or has been booked against.
@@ -562,7 +611,7 @@ class MusterService extends ChangeNotifier {
     final pos = await _client
         .from('po_trackers')
         .select('po_number, total_po_value, manpower_days, '
-            'manpower_days_opening, category')
+            'manpower_days_opening, category, valid_from')
         .eq('category', 'manpower');
 
     final mustered = await manDaysByPo();
@@ -581,6 +630,7 @@ class MusterService extends ChangeNotifier {
             (p['manpower_days_opening'] as num?)?.toDouble() ?? 0,
         manDaysMustered: mustered[number] ?? 0,
         manDaysInvoiced: rate > 0 ? invoiced / rate : 0,
+        validFrom: DateTime.tryParse((p['valid_from'] ?? '').toString()),
       );
     }).toList()
       ..sort((a, b) => a.poNumber.compareTo(b.poNumber));
@@ -597,5 +647,35 @@ class MusterService extends ChangeNotifier {
         .cast<Map<String, dynamic>>()
         .where((r) => (r['po_status'] as String? ?? '') != 'closed')
         .toList();
+  }
+
+  /// The manpower PO a new day should book against.
+  ///
+  /// The PO in force with days still on it, earliest first — so a register
+  /// stays on one PO until it is used up and then rolls onto the next, rather
+  /// than piling days onto a PO with no budget behind them. 8242356330 reached
+  /// exactly its 38 contracted days (28 opening + 10 mustered) on the 14 Sep
+  /// 2026 data while the muster was still defaulting to it; every further day
+  /// would have been an overrun nothing warned about.
+  ///
+  /// Returns null when every PO is exhausted or none carries a day count —
+  /// the caller must say so rather than silently pick one.
+  String? nextManpowerPo(List<ManpowerPosition> positions) {
+    final usable = positions.where((p) => !p.isExhausted).toList()
+      ..sort((a, b) {
+        // A PO with a start date comes before one without, and earlier before
+        // later. Ties fall back to the number so the choice is deterministic.
+        final av = a.validFrom, bv = b.validFrom;
+        if (av != null && bv != null && av != bv) return av.compareTo(bv);
+        if (av != null && bv == null) return -1;
+        if (av == null && bv != null) return 1;
+        return a.poNumber.compareTo(b.poNumber);
+      });
+    // Prefer one that actually has a contracted day count; a PO whose days are
+    // still unknown cannot be shown as having room.
+    for (final p in usable) {
+      if (p.daysContracted > 0) return p.poNumber;
+    }
+    return usable.isEmpty ? null : usable.first.poNumber;
   }
 }

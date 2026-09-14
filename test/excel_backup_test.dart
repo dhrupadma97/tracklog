@@ -56,7 +56,7 @@ void main() {
   }
 
   group('workbook structure', () {
-    test('opens, and carries exactly the four expected sheets', () {
+    test('opens, and carries exactly the six expected sheets', () {
       final book = reopen(buildData());
       expect(
         book.sheets.keys.toSet(),
@@ -64,6 +64,11 @@ void main() {
           ExcelBackupService.sheetSessions,
           ExcelBackupService.sheetServices,
           ExcelBackupService.sheetMuster,
+          // Invoices and POs are written even when empty. A backup that drops
+          // the billing sheets whenever they happen to have no rows is one
+          // that cannot be told apart from a backup taken before they existed.
+          ExcelBackupService.sheetInvoices,
+          ExcelBackupService.sheetPos,
           ExcelBackupService.sheetSummary,
         },
       );
