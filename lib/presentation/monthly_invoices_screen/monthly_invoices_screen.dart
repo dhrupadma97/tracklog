@@ -117,6 +117,10 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
   /// a filtered slice of.
   List<_ProjectTally> _tallies = [];
 
+  /// Man-days worked against a PO that carries no day rate yet, so they price
+  /// at nothing. Real days; shown rather than left to read as free.
+  int _unpricedManDays = 0;
+
   // Formatters
   final _inr = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
   final _usd = NumberFormat.currency(locale: 'en_US', symbol: '\$', decimalDigits: 0);
@@ -371,48 +375,20 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
       }
 
       // ── Muster data: manpower + workshop charges ─────────────────────────
-      // Fetch all muster rows for this project.
-      final musterRaw = await client
-          .from('manpower_muster')
-          .select('muster_date, head_count, kind, po_number, project_name')
-          .eq('project_name', _activeProject);
-
-      // Fetch PO rates: rate = total_po_value / manpower_days.
-      final posRaw = await client
-          .from('po_trackers')
-          .select('po_number, total_po_value, manpower_days')
-          .eq('category', 'manpower');
-
-      final Map<String, double> poRateByNumber = {};
-      for (final p in (posRaw as List)) {
-        final poNum = (p['po_number'] as String? ?? '').trim();
-        final value = (p['total_po_value'] as num?)?.toDouble() ?? 0.0;
-        final days  = (p['manpower_days'] as num?)?.toDouble() ?? 0.0;
-        poRateByNumber[poNum] = days > 0 ? value / days : 0.0;
-      }
-
-      // Group muster costs by month.
-      final Map<String, double> manpowerByMonth    = {};
-      final Map<String, double> workshopMusterByMonth = {};
-      for (final row in (musterRaw as List)) {
-        final kind    = (row['kind'] as String? ?? 'manpower').trim();
-        final dateStr = row['muster_date'] as String? ?? '';
-        if (dateStr.length < 7) continue;
-        final monthKey = dateStr.substring(0, 7); // 'YYYY-MM'
-
-        if (kind == 'workshop') {
-          // One workshop day = ₹5,000 flat.
-          workshopMusterByMonth[monthKey] =
-              (workshopMusterByMonth[monthKey] ?? 0) + kWorkshopRatePerDay;
-        } else {
-          // Manpower: head_count man-days × PO rate.
-          final poNum   = (row['po_number'] as String? ?? '').trim();
-          final heads   = (row['head_count'] as int? ?? 0);
-          final rate    = poRateByNumber[poNum] ?? 0.0;
-          manpowerByMonth[monthKey] =
-              (manpowerByMonth[monthKey] ?? 0) + (heads * rate);
-        }
-      }
+      // One shared call rather than a second copy of the rules here. This
+      // used to fetch the muster itself and match project_name exactly in
+      // SQL, which dropped every row with an empty or 'General' project — the
+      // rows the session path above folds into Mahindra EV PoC by convention —
+      // so those days were invisible to every project, and the History panel,
+      // which normalises them, reported different manpower for the same
+      // programme.
+      final charges =
+          await MusterService.instance.chargesForProject(_activeProject);
+      final Map<String, double> manpowerByMonth = charges.manpowerByMonth;
+      final Map<String, double> workshopMusterByMonth = charges.workshopByMonth;
+      // Days sitting on a PO with no rate yet are counted but not priced —
+      // surfaced so they do not silently read as free.
+      _unpricedManDays = charges.manpowerUnpricedDays;
 
       final Map<String, List<_Session>> byMonth = {};
       for (final s in allSessions) {
@@ -1651,6 +1627,20 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
               ]),
           ],
         ),
+        // Days worked against a PO that has no day rate recorded yet. They
+        // price at nothing, so without saying so the composition above reads
+        // as though that manpower cost nothing rather than as though nobody
+        // has set a rate for it.
+        if (_unpricedManDays > 0) ...[
+          const SizedBox(height: 10),
+          Text(
+            '$_unpricedManDays man-day${_unpricedManDays == 1 ? '' : 's'} '
+            'not priced — their PO has no day rate recorded yet, so they are '
+            'absent from the figures above.',
+            style: GoogleFonts.spaceGrotesk(
+                fontSize: 10, height: 1.4, color: const Color(0xFFFFB547)),
+          ),
+        ],
       ],
     );
   }

@@ -176,6 +176,49 @@ class ManpowerPosition {
   bool get isComplete => daysContracted > 0 && ratePerDay > 0;
 }
 
+/// What one project's muster has accrued.
+///
+/// A class rather than an inline record because every caller has to name the
+/// shape, and a record forces each of them to restate all seven fields — add
+/// one and they stop compiling one by one. The figures here are quoted on more
+/// than one screen, so the type they travel in should not be the fragile part.
+class ProjectCharges {
+  /// Man-days priced at their own PO's day rate.
+  final double manpowerCost;
+
+  /// Workshop days at the flat daily rental.
+  final double workshopCost;
+
+  /// Man-days recorded, priced or not.
+  final int manDays;
+  final int workshopDays;
+
+  /// Man-days on a PO with no day rate recorded yet. Counted in [manDays] but
+  /// contributing nothing to [manpowerCost], because there is no rate to
+  /// multiply by — not because the work was free.
+  final int manpowerUnpricedDays;
+
+  /// The same money split by 'YYYY-MM', for callers reporting per month.
+  final Map<String, double> manpowerByMonth;
+  final Map<String, double> workshopByMonth;
+
+  const ProjectCharges({
+    this.manpowerCost = 0,
+    this.workshopCost = 0,
+    this.manDays = 0,
+    this.workshopDays = 0,
+    this.manpowerUnpricedDays = 0,
+    this.manpowerByMonth = const {},
+    this.workshopByMonth = const {},
+  });
+
+  /// What a project with nothing logged costs. Used where a failed read must
+  /// not be mistaken for a project that has spent money.
+  static const ProjectCharges none = ProjectCharges();
+
+  double get total => manpowerCost + workshopCost;
+}
+
 /// The muster register, and the notifier for it.
 ///
 /// A [ChangeNotifier] because a day recorded here changes figures on screens
@@ -337,14 +380,13 @@ class MusterService extends ChangeNotifier {
   /// and the days would otherwise contribute nothing with nothing said. They
   /// are real days worked; the caller can show them as unpriced rather than
   /// letting them read as free.
-  Future<
-      ({
-        double manpowerCost,
-        double workshopCost,
-        int manDays,
-        int workshopDays,
-        int manpowerUnpricedDays,
-      })> chargesForProject(String projectName) async {
+  /// [manpowerByMonth] and [workshopByMonth] carry the same figures split by
+  /// 'YYYY-MM', for callers that report per month rather than in total. They
+  /// are returned from this one call rather than computed again by the caller:
+  /// the Analyser grouped the muster itself and matched project_name exactly
+  /// in SQL, so it and the History panel could disagree about one project's
+  /// manpower. Same rows, same rules, one place.
+  Future<ProjectCharges> chargesForProject(String projectName) async {
     final key = projectName.toLowerCase().trim();
     bool belongs(String? raw) {
       final r = (raw ?? '').trim();
@@ -373,11 +415,21 @@ class MusterService extends ChangeNotifier {
 
     double manpowerCost = 0, workshopCost = 0;
     int manDays = 0, workshopDays = 0, unpriced = 0;
+    final manByMonth = <String, double>{};
+    final shopByMonth = <String, double>{};
     for (final r in (rows as List).cast<Map<String, dynamic>>()) {
       if (!belongs(r['project_name'] as String?)) continue;
+      // 'YYYY-MM-DD' -> 'YYYY-MM'. A row whose date is too short to carry a
+      // month is skipped rather than bucketed under a truncated key.
+      final dateStr = (r['muster_date'] as String? ?? '');
+      final monthKey = dateStr.length >= 7 ? dateStr.substring(0, 7) : null;
       if (MusterKindX.parse(r['kind'] as String?) == MusterKind.workshop) {
         workshopDays++;
         workshopCost += kWorkshopRatePerDay;
+        if (monthKey != null) {
+          shopByMonth[monthKey] =
+              (shopByMonth[monthKey] ?? 0) + kWorkshopRatePerDay;
+        }
       } else {
         final heads = (r['head_count'] as num?)?.toInt() ?? 0;
         final po = (r['po_number'] as String? ?? '').trim();
@@ -387,15 +439,21 @@ class MusterService extends ChangeNotifier {
           unpriced += heads;
         } else {
           manpowerCost += heads * perDay;
+          if (monthKey != null) {
+            manByMonth[monthKey] =
+                (manByMonth[monthKey] ?? 0) + (heads * perDay);
+          }
         }
       }
     }
-    return (
+    return ProjectCharges(
       manpowerCost: manpowerCost,
       workshopCost: workshopCost,
       manDays: manDays,
       workshopDays: workshopDays,
       manpowerUnpricedDays: unpriced,
+      manpowerByMonth: manByMonth,
+      workshopByMonth: shopByMonth,
     );
   }
 

@@ -481,13 +481,7 @@ class _RightPanelState extends State<_RightPanel> {
 
   // Project-wise charges: track time from the sessions this screen already
   // loaded, manpower and workshop from the muster.
-  ({
-    double manpowerCost,
-    double workshopCost,
-    int manDays,
-    int workshopDays,
-    int manpowerUnpricedDays,
-  })? _charges;
+  ProjectCharges? _charges;
   bool _loadingCharges = true;
 
   final _compact = NumberFormat.compactCurrency(

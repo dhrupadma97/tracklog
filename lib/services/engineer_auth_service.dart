@@ -277,21 +277,34 @@ class EngineerAuthService {
         .eq('id', sessionId);
   }
 
-  Future<List<EngineerSession>> getMySessionHistory({int limit = 200}) async {
+  /// Every session in the register, newest first.
+  ///
+  /// Fetches the whole organisation's sessions, not just the signed-in
+  /// engineer's, so historically seeded data stays visible whoever is logged
+  /// in — the name predates that and is kept only because callers use it.
+  ///
+  /// Paged rather than capped. `limit: 200` silently dropped everything past
+  /// the newest 200 sessions: no error, no marker, the older months simply
+  /// stopped existing for the screen. Ordering carries `id` as a tiebreaker
+  /// because two sessions can share a `started_at`, and a tie straddling a
+  /// page boundary would otherwise repeat one row and lose another.
+  Future<List<EngineerSession>> getMySessionHistory({int pageSize = 1000}) async {
     final user = currentUser;
     if (user == null) return [];
     try {
-      // Fetch all sessions for the organisation (not just current user)
-      // so that historically seeded data is always visible regardless of
-      // which engineer account is logged in.
-      final data = await _client
-          .from('engineer_sessions')
-          .select()
-          .order('started_at', ascending: false)
-          .limit(limit);
-      return (data as List)
-          .map((e) => EngineerSession.fromJson(e as Map<String, dynamic>))
-          .toList();
+      final out = <EngineerSession>[];
+      for (var from = 0;; from += pageSize) {
+        final data = await _client
+            .from('engineer_sessions')
+            .select()
+            .order('started_at', ascending: false)
+            .order('id', ascending: false)
+            .range(from, from + pageSize - 1);
+        final batch = (data as List).cast<Map<String, dynamic>>();
+        out.addAll(batch.map(EngineerSession.fromJson));
+        if (batch.length < pageSize) break;
+      }
+      return out;
     } catch (_) {
       return [];
     }
