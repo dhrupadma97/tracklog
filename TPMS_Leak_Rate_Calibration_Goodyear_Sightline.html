@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>TPMS Leak Rate Interval Calibration Procedure – Goodyear Sightline</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&family=Roboto+Mono:wght@400;600&display=swap');
+
+  :root {
+    --gold:   #F5C400;
+    --black:  #1A1A1A;
+    --dgray:  #2E2E2E;
+    --mgray:  #555555;
+    --lgray:  #F5F5F5;
+    --border: #DDDDDD;
+    --blue:   #003DA5;
+    --red:    #C0392B;
+    --green:  #1A7A3A;
+    --white:  #FFFFFF;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Roboto', Arial, sans-serif;
+    font-size: 10.5pt;
+    color: var(--black);
+    background: #E8E8E8;
+    line-height: 1.6;
+  }
+
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    background: var(--white);
+    margin: 12mm auto;
+    padding: 0;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.18);
+    page-break-after: always;
+    position: relative;
+  }
+
+  /* ── COVER PAGE ── */
+  .cover {
+    display: flex;
+    flex-direction: column;
+    height: 297mm;
+    background: var(--black);
+    color: var(--white);
+    overflow: hidden;
+  }
+
+  .cover-top-bar {
+    background: var(--gold);
+    height: 10mm;
+    width: 100%;
+  }
+
+  .cover-logo-row {
+    display: flex;
+    align-items: center;
+    padding: 14mm 18mm 8mm 18mm;
+    gap: 16px;
+  }
+
+  .cover-logo-circle {
+    width: 54px; height: 54px;
+    border-radius: 50%;
+    background: var(--gold);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; font-weight: 900; color: var(--black);
+    letter-spacing: -1px;
+    flex-shrink: 0;
+  }
+
+  .cover-brand {
+    line-height: 1.2;
+  }
+  .cover-brand-main {
+    font-size: 20pt; font-weight: 900; color: var(--white); letter-spacing: 1px;
+  }
+  .cover-brand-sub {
+    font-size: 10pt; color: var(--gold); letter-spacing: 3px; text-transform: uppercase; font-weight: 500;
+  }
+
+  .cover-divider {
+    width: calc(100% - 36mm);
+    margin: 0 18mm;
+    height: 1px;
+    background: rgba(255,255,255,0.15);
+  }
+
+  .cover-hero {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0 18mm;
+  }
+
+  .cover-tag {
+    display: inline-block;
+    background: var(--gold);
+    color: var(--black);
+    font-size: 7.5pt;
+    font-weight: 700;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    padding: 4px 12px;
+    border-radius: 2px;
+    margin-bottom: 18px;
+    width: fit-content;
+  }
+
+  .cover-title {
+    font-size: 26pt;
+    font-weight: 900;
+    line-height: 1.15;
+    color: var(--white);
+    margin-bottom: 10px;
+  }
+
+  .cover-title span { color: var(--gold); }
+
+  .cover-subtitle {
+    font-size: 13pt;
+    font-weight: 300;
+    color: rgba(255,255,255,0.75);
+    margin-bottom: 32px;
+    line-height: 1.5;
+  }
+
+  .cover-meta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  .cover-meta-item {
+    background: rgba(255,255,255,0.07);
+    border-left: 3px solid var(--gold);
+    padding: 8px 14px;
+    border-radius: 0 4px 4px 0;
+  }
+  .cover-meta-label {
+    font-size: 7pt; letter-spacing: 2px; text-transform: uppercase; color: var(--gold); font-weight: 600;
+  }
+  .cover-meta-value {
+    font-size: 9.5pt; color: var(--white); font-weight: 500; margin-top: 2px;
+  }
+
+  .cover-bottom {
+    background: rgba(255,255,255,0.05);
+    border-top: 1px solid rgba(255,255,255,0.1);
+    padding: 10mm 18mm;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .cover-bottom-left { font-size: 8pt; color: rgba(255,255,255,0.45); }
+  .cover-bottom-right {
+    background: var(--gold);
+    color: var(--black);
+    font-size: 8pt;
+    font-weight: 700;
+    padding: 5px 14px;
+    border-radius: 2px;
+    letter-spacing: 1px;
+  }
+
+  /* ── CONTENT PAGES ── */
+  .page-header {
+    background: var(--black);
+    color: var(--white);
+    padding: 7mm 18mm 6mm 18mm;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .page-header-left { font-size: 8pt; color: var(--gold); font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; }
+  .page-header-right { font-size: 8pt; color: rgba(255,255,255,0.55); }
+
+  .header-bar { height: 3px; background: var(--gold); }
+
+  .content {
+    padding: 10mm 18mm 8mm 18mm;
+  }
+
+  .page-footer {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    border-top: 1px solid var(--border);
+    padding: 5mm 18mm;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 7.5pt;
+    color: var(--mgray);
+  }
+  .page-footer-center { font-weight: 600; color: var(--black); }
+
+  /* ── TYPOGRAPHY ── */
+  h1.section-title {
+    font-size: 16pt;
+    font-weight: 900;
+    color: var(--black);
+    margin-bottom: 4px;
+    border-bottom: 3px solid var(--gold);
+    padding-bottom: 6px;
+    margin-bottom: 14px;
+  }
+
+  h2.section-sub {
+    font-size: 11pt;
+    font-weight: 700;
+    color: var(--black);
+    margin: 16px 0 8px 0;
+    padding-left: 10px;
+    border-left: 4px solid var(--gold);
+  }
+
+  h3.mini-head {
+    font-size: 9.5pt;
+    font-weight: 700;
+    color: var(--dgray);
+    margin: 12px 0 5px 0;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+
+  p { margin-bottom: 8px; font-size: 10pt; }
+  ul, ol { padding-left: 20px; margin-bottom: 8px; }
+  li { margin-bottom: 4px; font-size: 10pt; }
+
+  /* ── CALLOUT BOXES ── */
+  .callout {
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin: 10px 0;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .callout-icon { font-size: 14pt; flex-shrink: 0; margin-top: 1px; }
+  .callout-body { flex: 1; font-size: 9.5pt; line-height: 1.55; }
+  .callout-body strong { display: block; margin-bottom: 2px; font-size: 9pt; letter-spacing: 0.5px; text-transform: uppercase; }
+
+  .callout.note    { background: #EEF4FF; border-left: 4px solid var(--blue); }
+  .callout.note .callout-body strong { color: var(--blue); }
+  .callout.warning { background: #FFF8E1; border-left: 4px solid #E6A800; }
+  .callout.warning .callout-body strong { color: #996E00; }
+  .callout.caution { background: #FDECEA; border-left: 4px solid var(--red); }
+  .callout.caution .callout-body strong { color: var(--red); }
+  .callout.tip     { background: #EAFAF1; border-left: 4px solid var(--green); }
+  .callout.tip .callout-body strong { color: var(--green); }
+
+  /* ── TABLES ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0 14px 0;
+    font-size: 9.5pt;
+  }
+  thead tr { background: var(--black); color: var(--white); }
+  thead th {
+    padding: 8px 10px;
+    text-align: left;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    font-size: 9pt;
+  }
+  tbody tr:nth-child(even) { background: var(--lgray); }
+  tbody tr:nth-child(odd)  { background: var(--white); }
+  tbody td {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  tbody tr:hover { background: #FFF8DC; }
+
+  td.center, th.center { text-align: center; }
+  td.bold { font-weight: 700; }
+  td.gold  { background: var(--gold) !important; font-weight: 700; color: var(--black); }
+  td.green { color: var(--green); font-weight: 700; }
+  td.blue  { color: var(--blue);  font-weight: 700; }
+
+  /* ── STEP BOXES ── */
+  .steps { counter-reset: step-counter; margin: 10px 0; }
+  .step {
+    display: flex;
+    gap: 14px;
+    margin-bottom: 12px;
+    align-items: flex-start;
+  }
+  .step-num {
+    width: 30px; height: 30px;
+    min-width: 30px;
+    background: var(--gold);
+    color: var(--black);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 900;
+    font-size: 11pt;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .step-body { flex: 1; }
+  .step-body strong { font-size: 10.5pt; display: block; margin-bottom: 3px; color: var(--black); }
+  .step-body p, .step-body ul { font-size: 9.5pt; color: var(--dgray); }
+
+  /* ── FORMULA BOX ── */
+  .formula-box {
+    background: var(--black);
+    color: var(--gold);
+    border-radius: 6px;
+    padding: 14px 18px;
+    margin: 12px 0;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 11pt;
+    font-weight: 600;
+    text-align: center;
+    letter-spacing: 0.5px;
+    line-height: 1.8;
+  }
+  .formula-box .sub { font-size: 8.5pt; color: rgba(255,255,255,0.55); font-family: 'Roboto', sans-serif; margin-top: 4px; font-weight: 400; }
+
+  /* ── FLOW DIAGRAM ── */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    margin: 14px 0;
+  }
+  .flow-box {
+    background: var(--lgray);
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    padding: 9px 20px;
+    text-align: center;
+    font-size: 9.5pt;
+    font-weight: 500;
+    width: 85%;
+    color: var(--black);
+  }
+  .flow-box.action {
+    background: var(--black);
+    color: var(--gold);
+    border-color: var(--black);
+    font-weight: 700;
+  }
+  .flow-box.result {
+    background: #EAFAF1;
+    border-color: var(--green);
+    color: var(--green);
+    font-weight: 700;
+  }
+  .flow-arrow {
+    font-size: 16pt;
+    color: var(--gold);
+    line-height: 1;
+    margin: 2px 0;
+  }
+  .flow-label {
+    font-size: 8pt;
+    color: var(--mgray);
+    font-style: italic;
+    margin: -2px 0 0 0;
+  }
+
+  /* ── EXAMPLE SECTION ── */
+  .example-header {
+    background: var(--gold);
+    color: var(--black);
+    padding: 8px 14px;
+    font-weight: 900;
+    font-size: 10.5pt;
+    border-radius: 4px 4px 0 0;
+    letter-spacing: 0.5px;
+  }
+  .example-body {
+    border: 2px solid var(--gold);
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    padding: 14px;
+    background: #FFFDF0;
+  }
+
+  /* ── BADGE ── */
+  .badge {
+    display: inline-block;
+    background: var(--gold);
+    color: var(--black);
+    font-size: 7pt;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    vertical-align: middle;
+  }
+  .badge.blue { background: var(--blue); color: var(--white); }
+  .badge.green { background: var(--green); color: var(--white); }
+
+  /* ── 2-COL LAYOUT ── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 10px 0; }
+  .col-card {
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .col-card-head {
+    background: var(--dgray);
+    color: var(--white);
+    padding: 7px 12px;
+    font-size: 9pt;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+  .col-card-body { padding: 10px 12px; font-size: 9pt; line-height: 1.6; }
+
+  /* ── CHECKLIST ── */
+  .checklist { list-style: none; padding-left: 0; }
+  .checklist li {
+    padding: 5px 0 5px 26px;
+    position: relative;
+    border-bottom: 1px solid var(--border);
+    font-size: 9.5pt;
+  }
+  .checklist li:last-child { border-bottom: none; }
+  .checklist li::before {
+    content: '☐';
+    position: absolute;
+    left: 0;
+    font-size: 12pt;
+    color: var(--mgray);
+    top: 4px;
+  }
+
+  /* ── PRINT ── */
+  @media print {
+    body { background: white; }
+    .page { margin: 0; box-shadow: none; width: 100%; }
+    @page { size: A4; margin: 0; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════
+     COVER PAGE
+════════════════════════════════════════════════ -->
+<div class="page cover">
+  <div class="cover-top-bar"></div>
+
+  <div class="cover-logo-row">
+    <div class="cover-logo-circle">GY</div>
+    <div class="cover-brand">
+      <div class="cover-brand-main">GOODYEAR</div>
+      <div class="cover-brand-sub">Sightline · Vehicle Validation</div>
+    </div>
+  </div>
+  <div class="cover-divider"></div>
+
+  <div class="cover-hero">
+    <div class="cover-tag">Technical Procedure · TPMS Calibration</div>
+    <div class="cover-title">
+      Leak Rate Interval<br><span>Calibration Procedure</span>
+    </div>
+    <div class="cover-subtitle">
+      Tire-Size-Independent Method for TPMS Detection<br>
+      Timing Adjustment Using Empirical Pressure Measurement
+    </div>
+
+    <div class="cover-meta-grid">
+      <div class="cover-meta-item">
+        <div class="cover-meta-label">Document Number</div>
+        <div class="cover-meta-value">GY-SL-TPMS-CAL-001</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="cover-meta-label">Revision</div>
+        <div class="cover-meta-value">Rev A — Initial Release</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="cover-meta-label">Department</div>
+        <div class="cover-meta-value">Sightline Vehicle Validation Team</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="cover-meta-label">Date</div>
+        <div class="cover-meta-value">September 2026</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="cover-meta-label">Classification</div>
+        <div class="cover-meta-value">Internal Use Only</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="cover-meta-label">Status</div>
+        <div class="cover-meta-value">Approved for Use</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cover-bottom">
+    <div class="cover-bottom-left">
+      © 2026 The Goodyear Tire &amp; Rubber Company · All Rights Reserved<br>
+      This document contains proprietary information intended solely for authorised personnel.
+    </div>
+    <div class="cover-bottom-right">CONFIDENTIAL</div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════
+     PAGE 2 — PURPOSE, SCOPE & BACKGROUND
+════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <div class="page-header-left">GY-SL-TPMS-CAL-001 · Leak Rate Interval Calibration</div>
+    <div class="page-header-right">Goodyear Sightline Vehicle Validation</div>
+  </div>
+  <div class="header-bar"></div>
+
+  <div class="content">
+
+    <h1 class="section-title">1. Purpose &amp; Scope</h1>
+    <p>
+      This document defines the standard procedure used by the <strong>Goodyear Sightline Vehicle Validation Team</strong>
+      to calibrate TPMS (Tyre Pressure Monitoring System) leak rate detection intervals whenever a vehicle's
+      tyre size or recommended inflation pressure changes. The method is <strong>tire-size-independent</strong>
+      — it uses a direct 60-second pressure measurement on the actual mounted tyre to derive the correct
+      ECU interval values without relying on geometric approximations.
+    </p>
+
+    <div class="callout note">
+      <div class="callout-icon">ℹ️</div>
+      <div class="callout-body">
+        <strong>Scope</strong>
+        Applicable to all passenger vehicle programmes validated under the Sightline platform where
+        TPMS detection intervals are stored as calibratable ECU parameters (leak rate → interval lookup tables).
+      </div>
+    </div>
+
+    <h2 class="section-sub">1.1 Applicability</h2>
+    <ul>
+      <li>Any tyre size change on an existing validated platform</li>
+      <li>Cross-vehicle carry-over of TPMS calibration data</li>
+      <li>New tyre fitments (OEM or OE-equivalent) on a validated vehicle</li>
+      <li>Inflation pressure changes due to load rating or regional requirements</li>
+    </ul>
+
+    <h2 class="section-sub">1.2 Reference Vehicles (Worked Example in this Document)</h2>
+    <table>
+      <thead>
+        <tr><th>Role</th><th>Vehicle</th><th>Tyre Size</th><th>Recommended Pressure</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><span class="badge blue">REFERENCE</span></td><td>Mahindra XEV 9s</td><td>245/55 R19</td><td class="center">36 PSI (248 kPa)</td></tr>
+        <tr><td><span class="badge">TARGET</span></td><td>Mahindra XUV 7X0</td><td>235/60 R18</td><td class="center">33 PSI (228 kPa)</td></tr>
+      </tbody>
+    </table>
+
+    <h1 class="section-title" style="margin-top:18px;">2. Background — Why Intervals Change With Tyre Size</h1>
+
+    <h2 class="section-sub">2.1 How the TPMS Leak Detection Works</h2>
+    <p>
+      The TPMS ECU continuously monitors pressure. For each <em>Leak Rate</em> category, an
+      <em>Interval</em> defines the time window over which a minimum pressure drop must be observed.
+      If the measured drop exceeds the threshold within that window, a leak alert is triggered.
+    </p>
+
+    <div class="formula-box">
+      ΔP<sub>threshold</sub> = Leak Rate × Interval
+      <div class="sub">A fixed pressure-drop threshold is expected to be detected within the interval for each leak rate category</div>
+    </div>
+
+    <h2 class="section-sub">2.2 Why Tyre Volume &amp; Pressure Affect the Interval</h2>
+    <p>
+      For an identical physical leak (same orifice/nail size), the <em>rate of pressure drop</em> depends
+      on the air volume inside the tyre and the inflation pressure:
+    </p>
+    <div class="formula-box">
+      dP/dt ∝ P / V
+      <div class="sub">Larger tyre volume (V) → slower pressure drop · Higher inflation pressure (P) → faster pressure drop</div>
+    </div>
+
+    <p>Therefore the detection interval scales as:</p>
+    <div class="formula-box">
+      Interval<sub>new</sub> = Interval<sub>old</sub> × (V<sub>new</sub> / V<sub>old</sub>) × (P<sub>old</sub> / P<sub>new</sub>)
+      <div class="sub">Where P is absolute pressure (gauge + 101.3 kPa atmospheric)</div>
+    </div>
+
+    <div class="two-col" style="margin-top:12px;">
+      <div class="col-card">
+        <div class="col-card-head">Volume Effect</div>
+        <div class="col-card-body">
+          Smaller tyre volume → same leak removes proportionally more air per second → pressure drops <strong>faster</strong> → shorter interval needed.
+        </div>
+      </div>
+      <div class="col-card">
+        <div class="col-card-head">Pressure Effect</div>
+        <div class="col-card-body">
+          Lower inflation pressure → less driving force pushing air out → mass flow is slower → pressure drops <strong>slower</strong> → longer interval needed.
+        </div>
+      </div>
+    </div>
+
+    <div class="callout warning" style="margin-top:12px;">
+      <div class="callout-icon">⚠️</div>
+      <div class="callout-body">
+        <strong>Important</strong>
+        In practice, these two effects can partially cancel. Always use the empirical method
+        (Section 4) on the actual mounted tyre rather than relying solely on theoretical calculations —
+        real-world tyre volumes deviate from idealised torus geometry by ±5%.
+      </div>
+    </div>
+
+  </div>
+
+  <div class="page-footer">
+    <span>GY-SL-TPMS-CAL-001 Rev A</span>
+    <span class="page-footer-center">GOODYEAR SIGHTLINE · VEHICLE VALIDATION</span>
+    <span>Page 2 of 5</span>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════
+     PAGE 3 — CALIBRATION PROCEDURE
+════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <div class="page-header-left">GY-SL-TPMS-CAL-001 · Leak Rate Interval Calibration</div>
+    <div class="page-header-right">Goodyear Sightline Vehicle Validation</div>
+  </div>
+  <div class="header-bar"></div>
+
+  <div class="content">
+
+    <h1 class="section-title">3. Equipment &amp; Pre-Conditions</h1>
+
+    <div class="two-col">
+      <div>
+        <h3 class="mini-head">Required Equipment</h3>
+        <ul>
+          <li>Calibrated digital tyre pressure gauge (±0.1 PSI / ±0.5 kPa accuracy)</li>
+          <li>ECU diagnostic tool with live pressure data logging (≥ 10 Hz sample rate)</li>
+          <li>Controlled orifice reference plug — <strong>1.5 mm diameter</strong> (standard Sightline reference leak)</li>
+          <li>Timer / stopwatch (±0.5 s accuracy)</li>
+          <li>Reference calibration sheet (this document)</li>
+        </ul>
+      </div>
+      <div>
+        <h3 class="mini-head">Pre-Conditions</h3>
+        <ul>
+          <li>Vehicle at rest ≥ 2 hours (cold tyre condition)</li>
+          <li>Ambient temperature: 15 °C – 35 °C</li>
+          <li>Tyre inflated to <strong>manufacturer recommended pressure</strong> (door placard)</li>
+          <li>ECU loaded with <strong>reference (old) calibration</strong> — do not pre-load new values</li>
+          <li>Stable indoor or wind-sheltered environment</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout caution">
+      <div class="callout-icon">🚫</div>
+      <div class="callout-body">
+        <strong>Do Not Run On Public Roads</strong>
+        All leak calibration tests must be conducted in a controlled workshop or test bay with the vehicle stationary.
+        Never create an intentional tyre leak on a moving vehicle.
+      </div>
+    </div>
+
+    <!-- ─────────────────────────────── -->
+    <h1 class="section-title" style="margin-top:16px;">4. Calibration Procedure</h1>
+
+    <div class="flow">
+      <div class="flow-box action">INFLATE target tyre to recommended pressure (cold)</div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-box">Load REFERENCE ECU calibration (original tyre intervals)</div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-box action">Insert 1.5 mm reference orifice → Run for exactly 60 SECONDS</div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-box">Record pressure loss (kPa) → Calculate Leak Rate = P_loss × 1440</div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-box action">Compute Multiplier = Discovered Leak Rate ÷ Desired Leak Rate</div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-box">New Interval = Old Interval × Multiplier — for ALL 8 setpoints</div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-box result">✔ Flash new calibration to ECU · Validate at each setpoint</div>
+    </div>
+
+    <!-- ─────────────────────────────── -->
+    <h2 class="section-sub">4.1 Step-by-Step Instructions</h2>
+
+    <div class="steps">
+
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <strong>Prepare the Tyre</strong>
+          <p>Inflate the target tyre to the vehicle manufacturer's recommended cold inflation pressure (from door placard).
+          Record the pressure as <em>P₀</em>. Allow 15 minutes for pressure to stabilise.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <strong>Load Reference Calibration</strong>
+          <p>Using the diagnostic tool, confirm the ECU contains the <em>original / reference</em> leak rate interval map.
+          Do not modify any values at this stage.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <strong>Insert Reference Orifice &amp; Start Timer</strong>
+          <p>Insert the 1.5 mm standard orifice plug into the tyre valve stem (or a dedicated test port).
+          Start the 60-second timer <em>simultaneously</em>.</p>
+          <ul>
+            <li>Maintain consistent ambient temperature throughout the test</li>
+            <li>Do not disturb the tyre during the 60-second window</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <strong>Record Pressure Drop</strong>
+          <p>At exactly 60 seconds, remove the orifice and immediately read the tyre pressure (<em>P₁</em>).</p>
+          <div class="formula-box" style="font-size:10pt; padding:10px;">
+            P_loss (kPa) = P₀ − P₁
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <strong>Calculate Discovered Leak Rate</strong>
+          <p>Convert the measured pressure loss to the system's leak rate unit using the standard Sightline formula:</p>
+          <div class="formula-box" style="font-size:10pt; padding:10px;">
+            Leak Rate<sub>discovered</sub> = P_loss (kPa) × 1440
+            <div class="sub">1440 = minutes per day (24 h × 60 min) — normalises to system daily-rate units</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">6</div>
+        <div class="step-body">
+          <strong>Compute the Scale Multiplier</strong>
+          <p>For each target leak rate setpoint (e.g. 30,000), calculate the multiplier:</p>
+          <div class="formula-box" style="font-size:10pt; padding:10px;">
+            Multiplier = Leak Rate<sub>discovered</sub> ÷ Leak Rate<sub>desired</sub>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">7</div>
+        <div class="step-body">
+          <strong>Calculate New Intervals</strong>
+          <p>Apply the multiplier to every setpoint in the reference interval table:</p>
+          <div class="formula-box" style="font-size:10pt; padding:10px;">
+            Interval<sub>new</sub> = Interval<sub>old</sub> × Multiplier
+            <div class="sub">Round to nearest 5 ms per ECU timer resolution</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">8</div>
+        <div class="step-body">
+          <strong>Flash &amp; Validate</strong>
+          <p>Flash the new interval values to the ECU. Re-run the 60-second test at 3 different setpoints
+          (recommended: 30,000 · 10,000 · 1,000) and confirm detection within the expected window (±10%).</p>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <div class="page-footer">
+    <span>GY-SL-TPMS-CAL-001 Rev A</span>
+    <span class="page-footer-center">GOODYEAR SIGHTLINE · VEHICLE VALIDATION</span>
+    <span>Page 3 of 5</span>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════
+     PAGE 4 — WORKED EXAMPLE
+════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <div class="page-header-left">GY-SL-TPMS-CAL-001 · Leak Rate Interval Calibration</div>
+    <div class="page-header-right">Goodyear Sightline Vehicle Validation</div>
+  </div>
+  <div class="header-bar"></div>
+
+  <div class="content">
+
+    <h1 class="section-title">5. Worked Example</h1>
+    <p>
+      The following example demonstrates a complete calibration exercise performed when migrating
+      TPMS intervals from the <strong>Mahindra XEV 9s (245/55 R19 @ 36 PSI)</strong> to the
+      <strong>Mahindra XUV 7X0 (235/60 R18 @ 33 PSI)</strong>.
+    </p>
+
+    <!-- Setup -->
+    <div class="example-header">📋 &nbsp; STEP 1–2 · Vehicle Setup</div>
+    <div class="example-body">
+      <table>
+        <thead><tr><th>Parameter</th><th>Reference Vehicle (XEV 9s)</th><th>Target Vehicle (XUV 7X0)</th></tr></thead>
+        <tbody>
+          <tr><td>Tyre Size</td><td>245/55 R19</td><td>235/60 R18</td></tr>
+          <tr><td>Recommended Pressure (P₀)</td><td>36 PSI = 248.2 kPa</td><td class="bold">33 PSI = 227.5 kPa</td></tr>
+          <tr><td>Absolute Pressure (+ 101.3 kPa)</td><td>349.5 kPa abs</td><td class="bold">328.8 kPa abs</td></tr>
+          <tr><td>Approx. Air Volume</td><td>41.6 L</td><td class="bold">40.5 L</td></tr>
+          <tr><td>ECU Calibration Loaded</td><td colspan="2" class="center">Reference (XEV 9s) values — unchanged at this stage</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Measurement -->
+    <div class="example-header" style="margin-top:12px;">🔬 &nbsp; STEP 3–4 · 60-Second Pressure Drop Measurement</div>
+    <div class="example-body">
+      <p>XUV 7X0 inflated to <strong>33 PSI</strong>. Reference 1.5 mm orifice inserted. Timer started.</p>
+      <table>
+        <thead><tr><th>Measurement</th><th>Value</th><th>Unit</th></tr></thead>
+        <tbody>
+          <tr><td>Initial Pressure P₀</td><td class="center">227.5</td><td>kPa</td></tr>
+          <tr><td>Pressure After 60 sec P₁</td><td class="center">225.7</td><td>kPa</td></tr>
+          <tr><td class="bold">Pressure Loss (P_loss = P₀ − P₁)</td><td class="center bold">1.80</td><td>kPa</td></tr>
+        </tbody>
+      </table>
+      <div class="callout tip" style="margin-top:6px;">
+        <div class="callout-icon">💡</div>
+        <div class="callout-body">
+          <strong>Tip</strong>
+          Use the ECU diagnostic tool to log pressure at 10 Hz and read P₁ from the logged data rather than
+          a hand-held gauge — this eliminates reading delay error.
+        </div>
+      </div>
+    </div>
+
+    <!-- Calculation -->
+    <div class="example-header" style="margin-top:12px;">🧮 &nbsp; STEP 5–6 · Leak Rate Discovery &amp; Multiplier</div>
+    <div class="example-body">
+      <table>
+        <thead><tr><th>Calculation</th><th>Formula</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td>Discovered Leak Rate</td><td>1.80 kPa × 1440</td><td class="bold center">2,592</td></tr>
+          <tr><td>Desired Leak Rate (top setpoint)</td><td>—</td><td class="center">30,000</td></tr>
+          <tr><td class="bold">Scale Multiplier</td><td>2,592 ÷ 30,000</td><td class="gold center">× 1.035</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:8px; font-size:9pt; color:#555;">
+        A multiplier of <strong>1.035</strong> means XUV 7X0 intervals are <strong>~3.5% longer</strong> than XEV 9s.
+        This is because the lower inflation pressure (33 vs 36 PSI) causes air to escape more slowly for
+        the same physical leak, requiring a slightly wider detection window.
+      </p>
+    </div>
+
+    <!-- Final Table -->
+    <div class="example-header" style="margin-top:12px;">📊 &nbsp; STEP 7 · Final Calibrated Interval Table</div>
+    <div class="example-body">
+      <table>
+        <thead>
+          <tr>
+            <th>Leak Rate</th>
+            <th class="center">XEV 9s Interval (ms)<br><small>Reference</small></th>
+            <th class="center">Multiplier</th>
+            <th class="center">XUV 7X0 Interval (ms)<br><small>Calibrated</small></th>
+            <th class="center">Change</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>30,000</td><td class="center">375</td><td class="center">× 1.035</td><td class="center bold green">388</td><td class="center">+13 ms</td></tr>
+          <tr><td>25,000</td><td class="center">450</td><td class="center">× 1.035</td><td class="center bold green">466</td><td class="center">+16 ms</td></tr>
+          <tr><td>20,000</td><td class="center">563</td><td class="center">× 1.035</td><td class="center bold green">583</td><td class="center">+20 ms</td></tr>
+          <tr><td>15,000</td><td class="center">850</td><td class="center">× 1.035</td><td class="center bold green">880</td><td class="center">+30 ms</td></tr>
+          <tr><td>10,000</td><td class="center">1,325</td><td class="center">× 1.035</td><td class="center bold green">1,371</td><td class="center">+46 ms</td></tr>
+          <tr><td>5,000</td><td class="center">2,650</td><td class="center">× 1.035</td><td class="center bold green">2,743</td><td class="center">+93 ms</td></tr>
+          <tr><td>3,500</td><td class="center">3,785</td><td class="center">× 1.035</td><td class="center bold green">3,917</td><td class="center">+132 ms</td></tr>
+          <tr><td>1,000</td><td class="center">13,250</td><td class="center">× 1.035</td><td class="center bold green">13,714</td><td class="center">+464 ms</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:8.5pt; color:#555; margin-top:4px;">* All new values rounded to nearest 1 ms. Flash to ECU rounded to nearest 5 ms per timer resolution.</p>
+    </div>
+
+  </div>
+
+  <div class="page-footer">
+    <span>GY-SL-TPMS-CAL-001 Rev A</span>
+    <span class="page-footer-center">GOODYEAR SIGHTLINE · VEHICLE VALIDATION</span>
+    <span>Page 4 of 5</span>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════
+     PAGE 5 — VALIDATION, QUICK REFERENCE & SIGN-OFF
+════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <div class="page-header-left">GY-SL-TPMS-CAL-001 · Leak Rate Interval Calibration</div>
+    <div class="page-header-right">Goodyear Sightline Vehicle Validation</div>
+  </div>
+  <div class="header-bar"></div>
+
+  <div class="content">
+
+    <h1 class="section-title">6. Post-Flash Validation Checklist</h1>
+    <p>After flashing the new calibration, complete the following checks before sign-off:</p>
+    <ul class="checklist">
+      <li>Tyre inflated to target vehicle recommended pressure — verified with calibrated gauge</li>
+      <li>ECU flashed with new interval values — confirmed via readback on diagnostic tool</li>
+      <li>60-second leak test at <strong>30,000 leak rate setpoint</strong> — alert triggered within expected window (±10%)</li>
+      <li>60-second leak test at <strong>10,000 leak rate setpoint</strong> — alert triggered within expected window (±10%)</li>
+      <li>60-second leak test at <strong>1,000 leak rate setpoint</strong> — alert triggered within expected window (±10%)</li>
+      <li>No spurious alerts observed at rest (no orifice) over 5-minute observation period</li>
+      <li>Calibration data archived to Sightline project database with vehicle VIN and tyre batch number</li>
+    </ul>
+
+    <div class="callout caution" style="margin-top:4px;">
+      <div class="callout-icon">🚫</div>
+      <div class="callout-body">
+        <strong>Fail Criteria</strong>
+        If any setpoint detection deviates by more than ±15% from expected, repeat the 60-second measurement
+        (Steps 3–5) and recalculate. If deviation persists, escalate to the TPMS System Engineer.
+      </div>
+    </div>
+
+    <!-- ─────────────────────────────── -->
+    <h1 class="section-title" style="margin-top:16px;">7. Quick Reference Formula Card</h1>
+
+    <table>
+      <thead><tr><th>Step</th><th>Formula</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>Pressure Loss</td><td><code>P_loss = P₀ − P₁ (kPa)</code></td><td>Measured over 60 seconds</td></tr>
+        <tr><td>Discovered Leak Rate</td><td><code>LR = P_loss × 1440</code></td><td>1440 = min/day normalisation</td></tr>
+        <tr><td>Scale Multiplier</td><td><code>M = LR ÷ LR_desired</code></td><td>e.g. LR_desired = 30,000 for top setpoint</td></tr>
+        <tr><td>New Interval</td><td><code>I_new = I_old × M</code></td><td>Apply to all 8 setpoints</td></tr>
+        <tr><td>Theoretical Check</td><td><code>I_new = I_old × (V_new/V_old) × (P_old/P_new)</code></td><td>Use absolute pressure (gauge + 101.3 kPa)</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout tip">
+      <div class="callout-icon">💡</div>
+      <div class="callout-body">
+        <strong>Best Practice</strong>
+        Always run the empirical 60-second test (Steps 3–6) as the primary method. Use the theoretical
+        formula only as a sanity check. If the two methods differ by more than 8%, inspect for temperature
+        variation, gauge calibration error, or orifice blockage.
+      </div>
+    </div>
+
+    <!-- ─────────────────────────────── -->
+    <h1 class="section-title" style="margin-top:16px;">8. Document Control &amp; Sign-Off</h1>
+
+    <table>
+      <thead><tr><th>Role</th><th>Name</th><th>Signature</th><th>Date</th></tr></thead>
+      <tbody>
+        <tr><td>Prepared by</td><td style="min-width:80px;">&nbsp;</td><td style="min-width:100px;">&nbsp;</td><td style="min-width:80px;">&nbsp;</td></tr>
+        <tr><td>Reviewed by</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+        <tr><td>Approved by</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+      </tbody>
+    </table>
+
+    <table style="margin-top:10px;">
+      <thead><tr><th>Rev</th><th>Date</th><th>Description of Change</th><th>Author</th></tr></thead>
+      <tbody>
+        <tr><td>A</td><td>Sep 2026</td><td>Initial Release — XEV 9s → XUV 7X0 example</td><td>&nbsp;</td></tr>
+        <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+        <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+      </tbody>
+    </table>
+
+    <div style="margin-top:16px; text-align:center; font-size:8pt; color:#aaa; border-top:1px solid #eee; padding-top:10px;">
+      © 2026 The Goodyear Tire &amp; Rubber Company · GY-SL-TPMS-CAL-001 Rev A · Internal Use Only<br>
+      Goodyear Sightline Vehicle Validation Team
+    </div>
+
+  </div>
+
+  <div class="page-footer">
+    <span>GY-SL-TPMS-CAL-001 Rev A</span>
+    <span class="page-footer-center">GOODYEAR SIGHTLINE · VEHICLE VALIDATION</span>
+    <span>Page 5 of 5</span>
+  </div>
+</div>
+
+</body>
+</html>

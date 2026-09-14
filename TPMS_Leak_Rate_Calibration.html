@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>TPMS Leak Rate Interval Calibration — Technical Reference & Calculator</title>
+<style>
+  :root {
+    --gold:   #F5C400;
+    --black:  #111111;
+    --dgray:  #2E2E2E;
+    --mgray:  #666666;
+    --lgray:  #F4F4F4;
+    --border: #DDDDDD;
+    --green:  #1A7A3A;
+    --red:    #C0392B;
+    --blue:   #003DA5;
+    --white:  #FFFFFF;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 10.5pt;
+    color: var(--black);
+    background: #DADADA;
+    line-height: 1.65;
+  }
+
+  /* ─── PAGE WRAPPER ─── */
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    background: var(--white);
+    margin: 10mm auto;
+    padding: 14mm 18mm 18mm;
+    box-shadow: 0 3px 18px rgba(0,0,0,0.15);
+    page-break-after: always;
+    position: relative;
+  }
+
+  /* ─── HEADER ─── */
+  .doc-header {
+    border-bottom: 3px solid var(--black);
+    padding-bottom: 8px;
+    margin-bottom: 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+  }
+  .doc-header-left h1 { font-size: 15pt; font-weight: 900; letter-spacing: -0.5px; }
+  .doc-header-left p  { font-size: 8.5pt; color: var(--mgray); margin-top: 2px; }
+  .doc-header-right   { font-size: 8pt; color: var(--mgray); text-align: right; line-height: 1.7; }
+  .gold-bar { height: 3px; background: var(--gold); margin-top: 3px; }
+
+  /* ─── SECTION HEADINGS ─── */
+  h2.sec {
+    font-size: 11pt; font-weight: 800; color: var(--black);
+    border-left: 4px solid var(--gold);
+    padding-left: 9px;
+    margin: 20px 0 9px;
+  }
+  h3.subsec {
+    font-size: 10pt; font-weight: 700; color: var(--dgray);
+    margin: 14px 0 6px;
+    text-transform: uppercase; letter-spacing: 0.6px; font-size: 8.5pt;
+  }
+
+  p { margin-bottom: 7px; font-size: 10pt; }
+
+  /* ─── FORMULA BLOCK ─── */
+  .fblock {
+    background: var(--black);
+    color: var(--gold);
+    border-radius: 5px;
+    padding: 11px 16px;
+    margin: 10px 0;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 11pt;
+    font-weight: 700;
+    text-align: center;
+    line-height: 2;
+  }
+  .fblock small {
+    display: block;
+    font-size: 8pt;
+    color: rgba(255,255,255,0.5);
+    font-family: 'Segoe UI', sans-serif;
+    font-weight: 400;
+    margin-top: 2px;
+    line-height: 1.4;
+  }
+
+  /* ─── INLINE CODE ─── */
+  code {
+    font-family: 'Consolas', monospace;
+    background: var(--lgray);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 9pt;
+    border: 1px solid var(--border);
+  }
+
+  /* ─── TABLES ─── */
+  table {
+    width: 100%; border-collapse: collapse;
+    margin: 8px 0 12px; font-size: 9.5pt;
+  }
+  thead tr { background: var(--black); color: var(--white); }
+  thead th { padding: 7px 10px; text-align: left; font-weight: 600; font-size: 9pt; }
+  tbody tr:nth-child(even) { background: var(--lgray); }
+  tbody td { padding: 6px 10px; border-bottom: 1px solid var(--border); }
+  td.c { text-align: center; }
+  td.b { font-weight: 700; }
+  td.mono { font-family: 'Consolas', monospace; font-size: 9pt; }
+
+  /* ─── NOTE BOX ─── */
+  .note {
+    background: #FFFBEA;
+    border-left: 4px solid var(--gold);
+    padding: 9px 13px;
+    margin: 10px 0;
+    font-size: 9.5pt;
+    border-radius: 0 4px 4px 0;
+  }
+  .note strong { color: #7A5E00; display: block; margin-bottom: 2px; font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  .warn {
+    background: #FEF0EF;
+    border-left: 4px solid var(--red);
+    padding: 9px 13px;
+    margin: 10px 0;
+    font-size: 9.5pt;
+    border-radius: 0 4px 4px 0;
+  }
+  .warn strong { color: var(--red); display: block; margin-bottom: 2px; font-size: 8.5pt; text-transform: uppercase; }
+
+  /* ─── FOOTER ─── */
+  .doc-footer {
+    position: absolute; bottom: 10mm; left: 18mm; right: 18mm;
+    border-top: 1px solid var(--border);
+    padding-top: 5px;
+    display: flex; justify-content: space-between;
+    font-size: 7.5pt; color: var(--mgray);
+  }
+
+  /* ══════════════════════════════════════════
+     CALCULATOR PAGE STYLES
+  ══════════════════════════════════════════ */
+  .calc-page {
+    width: 210mm;
+    background: var(--white);
+    margin: 10mm auto;
+    padding: 14mm 18mm 18mm;
+    box-shadow: 0 3px 18px rgba(0,0,0,0.15);
+  }
+
+  .calc-header {
+    border-bottom: 3px solid var(--black);
+    padding-bottom: 8px;
+    margin-bottom: 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+  }
+  .calc-header h1 { font-size: 15pt; font-weight: 900; }
+  .calc-header p  { font-size: 8.5pt; color: var(--mgray); margin-top: 2px; }
+  .calc-header-right { font-size: 8pt; color: var(--mgray); text-align: right; }
+
+  /* Input grid */
+  .input-section {
+    background: var(--lgray);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px 18px;
+    margin-bottom: 18px;
+  }
+  .input-section h3 {
+    font-size: 10pt; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 0.8px; margin-bottom: 14px; color: var(--dgray);
+    border-bottom: 2px solid var(--gold); padding-bottom: 5px;
+  }
+
+  .input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; }
+
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 8.5pt; font-weight: 700; color: var(--dgray); text-transform: uppercase; letter-spacing: 0.5px; }
+  .field input, .field select {
+    padding: 8px 10px;
+    border: 1.5px solid var(--border);
+    border-radius: 4px;
+    font-size: 10.5pt;
+    font-family: 'Consolas', monospace;
+    background: var(--white);
+    color: var(--black);
+    transition: border-color 0.2s;
+  }
+  .field input:focus, .field select:focus {
+    outline: none;
+    border-color: var(--gold);
+    box-shadow: 0 0 0 2px rgba(245,196,0,0.2);
+  }
+  .field .hint { font-size: 7.5pt; color: var(--mgray); }
+
+  /* Setpoints table inputs */
+  .setpoints-section {
+    margin-bottom: 18px;
+  }
+  .setpoints-section h3 {
+    font-size: 10pt; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 0.8px; margin-bottom: 10px; color: var(--dgray);
+    border-left: 4px solid var(--gold); padding-left: 9px;
+  }
+  .sp-table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+  .sp-table thead tr { background: var(--black); color: var(--white); }
+  .sp-table thead th { padding: 7px 10px; text-align: left; font-size: 9pt; font-weight: 600; }
+  .sp-table tbody tr:nth-child(even) { background: #FAFAFA; }
+  .sp-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .sp-table input[type=number] {
+    width: 100%; padding: 5px 8px;
+    border: 1.5px solid var(--border); border-radius: 3px;
+    font-family: 'Consolas', monospace; font-size: 10pt;
+    background: var(--white);
+  }
+  .sp-table input[type=number]:focus {
+    outline: none; border-color: var(--gold);
+    box-shadow: 0 0 0 2px rgba(245,196,0,0.2);
+  }
+
+  /* Buttons */
+  .btn-row { display: flex; gap: 12px; margin-bottom: 20px; }
+  .btn {
+    padding: 11px 24px; border: none; border-radius: 4px;
+    font-size: 10.5pt; font-weight: 700; cursor: pointer;
+    letter-spacing: 0.5px; transition: all 0.15s;
+  }
+  .btn-calc { background: var(--gold); color: var(--black); }
+  .btn-calc:hover { background: #D4A900; }
+  .btn-reset { background: var(--lgray); color: var(--dgray); border: 1.5px solid var(--border); }
+  .btn-reset:hover { background: var(--border); }
+  .btn-print { background: var(--black); color: var(--white); }
+  .btn-print:hover { background: var(--dgray); }
+
+  /* Results */
+  .results-section { display: none; }
+  .results-section.visible { display: block; }
+
+  .results-header {
+    background: var(--black); color: var(--gold);
+    padding: 10px 14px; border-radius: 5px 5px 0 0;
+    font-weight: 800; font-size: 10.5pt; letter-spacing: 0.5px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .results-body {
+    border: 2px solid var(--black); border-top: none;
+    border-radius: 0 0 5px 5px; overflow: hidden;
+  }
+
+  .res-table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+  .res-table thead tr { background: #2E2E2E; color: var(--white); }
+  .res-table thead th { padding: 8px 12px; text-align: left; font-size: 9pt; font-weight: 600; }
+  .res-table tbody tr:nth-child(even) { background: #F9F9F9; }
+  .res-table tbody tr:nth-child(odd)  { background: var(--white); }
+  .res-table td { padding: 7px 12px; border-bottom: 1px solid #EEE; }
+  .res-table .val { font-family: 'Consolas', monospace; font-weight: 700; color: var(--green); font-size: 11pt; }
+  .res-table .multi { font-family: 'Consolas', monospace; color: var(--mgray); font-size: 9pt; }
+
+  .summary-strip {
+    background: var(--lgray);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 12px 16px;
+    margin-top: 16px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .sum-item { text-align: center; }
+  .sum-label { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 1px; color: var(--mgray); font-weight: 600; }
+  .sum-value { font-size: 14pt; font-weight: 900; color: var(--black); font-family: 'Consolas', monospace; }
+  .sum-unit  { font-size: 8pt; color: var(--mgray); }
+
+  @media print {
+    body { background: white; }
+    .page, .calc-page { margin: 0; box-shadow: none; width: 100%; }
+    .btn-row { display: none; }
+    @page { size: A4; margin: 0; }
+    .calc-page { page-break-before: always; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════
+     PAGE 1 — TECHNICAL REFERENCE
+═══════════════════════════════════════════════════ -->
+<div class="page">
+
+  <div class="doc-header">
+    <div class="doc-header-left">
+      <h1>TPMS Leak Rate Interval Calibration</h1>
+      <div class="gold-bar" style="width:320px;"></div>
+      <p>Technical Reference — Goodyear Sightline Vehicle Validation &nbsp;|&nbsp; GY-SL-TPMS-CAL-001 Rev A</p>
+    </div>
+    <div class="doc-header-right">
+      September 2026<br>
+      Internal Use Only
+    </div>
+  </div>
+
+  <!-- ── 1. SYSTEM DEFINITION ── -->
+  <h2 class="sec">1. System Definition</h2>
+  <p>
+    The TPMS ECU stores a <strong>Leak Rate → Interval lookup table</strong>. For each Leak Rate
+    category the ECU monitors pressure over the corresponding Interval window. If the observed
+    pressure drop within that window exceeds an internal threshold, a leak alert is triggered.
+  </p>
+
+  <div class="fblock">
+    ΔP<sub>threshold</sub>  =  Leak Rate  ×  Interval
+    <small>The product of Leak Rate × Interval defines the pressure-drop detection threshold for each setpoint</small>
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>ECU Leak Rate (system units)</th><th class="c">Nature of Leak</th><th class="c">Interval direction</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>30,000 — 20,000</td><td class="c">Fast (large orifice)</td><td class="c">Short window</td></tr>
+      <tr><td>15,000 — 5,000</td><td class="c">Medium</td><td class="c">Moderate window</td></tr>
+      <tr><td>3,500 — 1,000</td><td class="c">Slow (small orifice / diffusion)</td><td class="c">Long window</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ── 2. GOVERNING PHYSICS ── -->
+  <h2 class="sec">2. Governing Physics</h2>
+  <p>
+    For a leak through a small orifice (choked or near-choked subsonic flow), the mass outflow
+    rate is proportional to the upstream (tyre) absolute pressure. Applying ideal-gas conservation
+    inside a fixed-volume tyre:
+  </p>
+
+  <div class="fblock">
+    dP/dt  ∝  P<sub>abs</sub> / V<sub>air</sub>
+    <small>
+      P<sub>abs</sub> = absolute tyre pressure (gauge + 101.3 kPa) &nbsp;|&nbsp;
+      V<sub>air</sub> = internal air volume of tyre
+    </small>
+  </div>
+
+  <p>
+    The time required to observe a fixed pressure drop ΔP therefore scales inversely — a tyre with
+    a <em>larger volume</em> or <em>lower inflation pressure</em> exhibits a slower dP/dt and needs
+    a longer detection window. Because both volume and pressure are captured simultaneously during a
+    physical measurement, the calibration method below does <strong>not</strong> require either to
+    be known or calculated separately.
+  </p>
+
+  <!-- ── 3. CALIBRATION METHOD ── -->
+  <h2 class="sec">3. Calibration Method — Empirical 60-Second Test</h2>
+  <p>
+    A <strong>1.5 mm standard reference orifice</strong> is used as the calibration stimulus.
+    By measuring the actual pressure drop over 60 seconds on the mounted tyre, the system's
+    Leak Rate unit is derived directly from hardware — no tyre geometry or volume estimation needed.
+  </p>
+
+  <h3 class="subsec">3.1 Measurement</h3>
+  <p>
+    Inflate tyre to manufacturer's recommended cold pressure. Insert 1.5 mm orifice.
+    After exactly <strong>60 seconds</strong>, record:
+  </p>
+  <div class="fblock">
+    P<sub>loss</sub>  =  P₀ − P₁ &nbsp;&nbsp; (kPa)
+    <small>P₀ = initial pressure &nbsp;|&nbsp; P₁ = pressure at 60 s</small>
+  </div>
+
+  <h3 class="subsec">3.2 Discovered Leak Rate</h3>
+  <p>
+    Normalise the 1-minute measurement to the ECU's internal daily-rate scale
+    (1440 = minutes per day):
+  </p>
+  <div class="fblock">
+    LR<sub>discovered</sub>  =  P<sub>loss</sub>  ×  1440
+    <small>Units: kPa · min⁻¹ × min·day⁻¹  →  ECU daily-rate scale</small>
+  </div>
+
+  <h3 class="subsec">3.3 Scale Multiplier (per setpoint)</h3>
+  <p>
+    For each desired Leak Rate setpoint in the ECU table, compute an individual multiplier:
+  </p>
+  <div class="fblock">
+    M  =  LR<sub>discovered</sub>  ÷  LR<sub>desired</sub>
+    <small>Calculate M separately for each of the 8 setpoints</small>
+  </div>
+
+  <h3 class="subsec">3.4 Calibrated Interval</h3>
+  <div class="fblock">
+    I<sub>calibrated</sub>  =  I<sub>base</sub>  ×  M
+    <small>
+      I<sub>base</sub> = platform base interval from system specification &nbsp;|&nbsp;
+      Round to nearest 5 ms per ECU timer resolution
+    </small>
+  </div>
+
+  <div class="note">
+    <strong>Why this works for any tyre</strong>
+    Because P_loss is measured on the <em>actual mounted tyre</em> at its <em>actual inflation pressure</em>,
+    the effects of tyre volume, construction, temperature, and pressure are all captured implicitly.
+    No tyre size, volume, or pressure input is required in the formulas above.
+  </div>
+
+  <!-- ── 4. VALIDITY & LIMITS ── -->
+  <h2 class="sec">4. Validity Conditions &amp; Limits</h2>
+  <table>
+    <thead><tr><th>Parameter</th><th>Required Condition</th><th>Effect if Violated</th></tr></thead>
+    <tbody>
+      <tr><td>Ambient temperature</td><td>15 °C – 35 °C, stable ±2 °C during test</td><td>±2% error per 5 °C deviation</td></tr>
+      <tr><td>Tyre temperature</td><td>Cold (≥ 2 h rest before test)</td><td>Hot tyre inflates P₀ reading → underestimates LR</td></tr>
+      <tr><td>Orifice</td><td>Exactly 1.5 mm Sightline standard plug</td><td>Different orifice = different P_loss scale, invalid LR</td></tr>
+      <tr><td>Timing</td><td>60.0 s ± 0.5 s</td><td>Error &lt;1% — acceptable</td></tr>
+      <tr><td>Pressure gauge</td><td>Calibrated, ±0.5 kPa accuracy</td><td>P_loss error propagates linearly to all intervals</td></tr>
+      <tr><td>Inflation pressure</td><td>Manufacturer recommended (door placard), cold</td><td>Wrong pressure shifts LR_discovered proportionally</td></tr>
+    </tbody>
+  </table>
+
+  <div class="warn">
+    <strong>Acceptance Criterion</strong>
+    After flashing, re-run the 60-second test at three setpoints (30,000 · 10,000 · 1,000).
+    Alert must fire within <strong>±10%</strong> of the calibrated interval window.
+    Deviation &gt;15% → repeat Steps 3.1–3.3 before accepting.
+  </div>
+
+  <div class="doc-footer">
+    <span>GY-SL-TPMS-CAL-001 Rev A — September 2026 — Internal Use Only</span>
+    <span>Page 1 of 2</span>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     PAGE 2 — INTERACTIVE CALCULATOR
+═══════════════════════════════════════════════════ -->
+<div class="calc-page">
+
+  <div class="calc-header">
+    <div>
+      <h1>Leak Rate Interval Calculator</h1>
+      <div style="height:3px; background:var(--gold); width:300px; margin-top:4px;"></div>
+      <p style="font-size:8.5pt; color:var(--mgray); margin-top:3px;">GY-SL-TPMS-CAL-001 Rev A &nbsp;|&nbsp; Goodyear Sightline Vehicle Validation</p>
+    </div>
+    <div class="calc-header-right">
+      <span style="background:var(--gold); color:var(--black); font-weight:700; padding:4px 12px; border-radius:3px; font-size:8.5pt;">
+        LIVE CALCULATOR
+      </span>
+    </div>
+  </div>
+
+  <!-- INPUT SECTION -->
+  <div class="input-section">
+    <h3>📋 Test Inputs</h3>
+    <div class="input-grid">
+
+      <div class="field">
+        <label>Vehicle / Programme</label>
+        <input type="text" id="vehicle" placeholder="e.g. Mahindra XUV 7X0"/>
+      </div>
+
+      <div class="field">
+        <label>Tyre Size</label>
+        <input type="text" id="tyreSize" placeholder="e.g. 235/60 R18"/>
+      </div>
+
+      <div class="field">
+        <label>Inflation Pressure P₀ (kPa)</label>
+        <input type="number" id="p0" step="0.1" placeholder="e.g. 227.5"/>
+        <span class="hint">Cold pressure from door placard</span>
+      </div>
+
+      <div class="field">
+        <label>Pressure After 60 s — P₁ (kPa)</label>
+        <input type="number" id="p1" step="0.1" placeholder="e.g. 225.7"/>
+        <span class="hint">Measured with 1.5 mm orifice at exactly 60 s</span>
+      </div>
+
+      <div class="field">
+        <label>Ambient Temperature (°C)</label>
+        <input type="number" id="temp" placeholder="e.g. 28"/>
+        <span class="hint">Recorded for traceability — validity range: 15–35 °C</span>
+      </div>
+
+      <div class="field">
+        <label>Technician Name</label>
+        <input type="text" id="tech" placeholder="Name / ID"/>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- BASE INTERVALS SECTION -->
+  <div class="setpoints-section">
+    <h3>⚙️ Base Intervals — Platform Specification</h3>
+    <p style="font-size:9pt; color:var(--mgray); margin-bottom:8px;">
+      Enter the platform base interval for each Leak Rate setpoint (from system spec).
+      Default values shown — edit as required.
+    </p>
+    <table class="sp-table">
+      <thead>
+        <tr>
+          <th style="width:28%">Leak Rate (ECU units)</th>
+          <th style="width:36%">Base Interval I<sub>base</sub> (ms)</th>
+          <th style="width:36%">Calibrated Interval (ms) — Auto-filled</th>
+        </tr>
+      </thead>
+      <tbody id="setpointRows">
+        <!-- JS will populate -->
+      </tbody>
+    </table>
+  </div>
+
+  <!-- BUTTONS -->
+  <div class="btn-row">
+    <button class="btn btn-calc" onclick="calculate()">▶ &nbsp;Calculate Intervals</button>
+    <button class="btn btn-reset" onclick="resetAll()">↺ &nbsp;Reset</button>
+    <button class="btn btn-print" onclick="window.print()">🖨 &nbsp;Print / Save PDF</button>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="results-section" id="resultsSection">
+
+    <div class="summary-strip" id="summaryStrip">
+      <div class="sum-item">
+        <div class="sum-label">P Loss (kPa)</div>
+        <div class="sum-value" id="sumPloss">—</div>
+      </div>
+      <div class="sum-item">
+        <div class="sum-label">Discovered Leak Rate</div>
+        <div class="sum-value" id="sumLR">—</div>
+        <div class="sum-unit">LR = P_loss × 1440</div>
+      </div>
+      <div class="sum-item">
+        <div class="sum-label">Test Conditions</div>
+        <div class="sum-value" id="sumTemp" style="font-size:11pt;">—</div>
+        <div class="sum-unit" id="sumVehicle">—</div>
+      </div>
+    </div>
+
+    <div style="margin-top:14px;">
+      <div class="results-header">
+        <span>📊 Calibrated Interval Table</span>
+        <span id="resultsMeta" style="font-size:8.5pt; font-weight:400; color:rgba(255,255,255,0.7);"></span>
+      </div>
+      <div class="results-body">
+        <table class="res-table">
+          <thead>
+            <tr>
+              <th style="width:20%">Leak Rate</th>
+              <th style="width:25%">Multiplier (M)</th>
+              <th style="width:20%">I<sub>base</sub> (ms)</th>
+              <th style="width:20%">I<sub>calibrated</sub> (ms)</th>
+              <th style="width:15%">Rounded (ms)</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div style="margin-top:10px; font-size:8pt; color:var(--mgray); line-height:1.6;">
+      <strong>Formulas applied:</strong> &nbsp;
+      LR<sub>discovered</sub> = P<sub>loss</sub> × 1440 &nbsp;|&nbsp;
+      M = LR<sub>discovered</sub> ÷ LR<sub>desired</sub> &nbsp;|&nbsp;
+      I<sub>cal</sub> = I<sub>base</sub> × M &nbsp;|&nbsp;
+      Rounded to nearest 5 ms
+    </div>
+
+    <!-- Signature block for printout -->
+    <table style="margin-top:20px; font-size:9pt;">
+      <thead>
+        <tr style="background:var(--black); color:var(--white);">
+          <th style="padding:7px 10px;">Calibrated by</th>
+          <th style="padding:7px 10px;">Date</th>
+          <th style="padding:7px 10px;">Verified by</th>
+          <th style="padding:7px 10px;">Signature</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td id="sigTech" style="padding:8px 10px; min-width:120px; border-bottom:1px solid var(--border);">&nbsp;</td>
+          <td id="sigDate" style="padding:8px 10px; min-width:100px; border-bottom:1px solid var(--border);">&nbsp;</td>
+          <td style="padding:8px 10px; min-width:120px; border-bottom:1px solid var(--border);">&nbsp;</td>
+          <td style="padding:8px 10px; min-width:120px; border-bottom:1px solid var(--border);">&nbsp;</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="margin-top:18px; font-size:7.5pt; color:#BBB; text-align:center; border-top:1px solid var(--border); padding-top:8px;">
+    GY-SL-TPMS-CAL-001 Rev A &nbsp;·&nbsp; Goodyear Sightline Vehicle Validation &nbsp;·&nbsp; Internal Use Only &nbsp;·&nbsp; Page 2 of 2
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     JAVASCRIPT
+═══════════════════════════════════════════════════ -->
+<script>
+  const SETPOINTS = [30000, 25000, 20000, 15000, 10000, 5000, 3500, 1000];
+  const BASE_DEFAULTS = [375, 450, 563, 850, 1325, 2650, 3785, 13250];
+
+  // Build setpoint rows on load
+  function buildTable() {
+    const tbody = document.getElementById('setpointRows');
+    tbody.innerHTML = '';
+    SETPOINTS.forEach((lr, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td style="font-family:'Consolas',monospace; font-weight:700;">${lr.toLocaleString()}</td>
+        <td><input type="number" id="base_${i}" value="${BASE_DEFAULTS[i]}" step="1" min="1"/></td>
+        <td><input type="number" id="cal_${i}" readonly placeholder="—"
+            style="background:#F9F9F9; color:var(--green); font-weight:700; cursor:default;"/></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function roundTo5(val) {
+    return Math.round(val / 5) * 5;
+  }
+
+  function calculate() {
+    const p0   = parseFloat(document.getElementById('p0').value);
+    const p1   = parseFloat(document.getElementById('p1').value);
+    const temp = document.getElementById('temp').value || '—';
+    const tech = document.getElementById('tech').value || '—';
+    const vehicle  = document.getElementById('vehicle').value  || '—';
+    const tyreSize = document.getElementById('tyreSize').value || '—';
+
+    if (isNaN(p0) || isNaN(p1)) {
+      alert('Please enter both P₀ and P₁ pressure values.');
+      return;
+    }
+    if (p1 >= p0) {
+      alert('P₁ must be less than P₀ (pressure must have dropped during the test).');
+      return;
+    }
+    if (temp !== '—' && (parseFloat(temp) < 15 || parseFloat(temp) > 35)) {
+      if (!confirm(`Warning: Temperature ${temp} °C is outside the valid range (15–35 °C).\nResults may be inaccurate. Continue?`)) return;
+    }
+
+    const pLoss   = p0 - p1;
+    const lrDisc  = pLoss * 1440;
+
+    // Fill result rows
+    const tbody = document.getElementById('resultsBody');
+    tbody.innerHTML = '';
+
+    SETPOINTS.forEach((lr, i) => {
+      const iBase = parseFloat(document.getElementById(`base_${i}`).value) || BASE_DEFAULTS[i];
+      const M     = lrDisc / lr;
+      const iCal  = iBase * M;
+      const iRnd  = roundTo5(iCal);
+
+      // Fill live input
+      document.getElementById(`cal_${i}`).value = iRnd;
+
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td style="font-family:'Consolas',monospace; font-weight:700;">${lr.toLocaleString()}</td>
+        <td class="multi">${lrDisc.toFixed(1)} ÷ ${lr.toLocaleString()} = ${M.toFixed(4)}</td>
+        <td style="text-align:center; font-family:'Consolas',monospace;">${iBase}</td>
+        <td style="text-align:center; font-family:'Consolas',monospace; color:var(--mgray);">${iCal.toFixed(1)}</td>
+        <td class="val" style="text-align:center;">${iRnd}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    // Summary strip
+    document.getElementById('sumPloss').textContent   = pLoss.toFixed(2);
+    document.getElementById('sumLR').textContent      = Math.round(lrDisc).toLocaleString();
+    document.getElementById('sumTemp').textContent    = temp !== '—' ? temp + ' °C' : '—';
+    document.getElementById('sumVehicle').textContent = `${vehicle} · ${tyreSize}`;
+
+    // Result meta
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+    document.getElementById('resultsMeta').textContent =
+      `${vehicle} · ${tyreSize} · ${dateStr}`;
+
+    // Signature block
+    document.getElementById('sigTech').textContent = tech;
+    document.getElementById('sigDate').textContent = dateStr;
+
+    // Show results
+    const section = document.getElementById('resultsSection');
+    section.classList.add('visible');
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function resetAll() {
+    ['p0','p1','temp','tech','vehicle','tyreSize'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    SETPOINTS.forEach((_, i) => {
+      document.getElementById(`base_${i}`).value = BASE_DEFAULTS[i];
+      document.getElementById(`cal_${i}`).value  = '';
+    });
+    document.getElementById('resultsSection').classList.remove('visible');
+    document.getElementById('resultsBody').innerHTML = '';
+  }
+
+  // Init
+  buildTable();
+</script>
+</body>
+</html>
