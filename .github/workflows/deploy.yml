@@ -32,6 +32,73 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # Fail before building, not after deploying.
+      #
+      # SUPABASE_URL was once set to a Supabase publishable key
+      # (sb_publishable_...) instead of the project URL. Nothing caught it: the
+      # build succeeded, the deploy succeeded, and the app shipped with a
+      # relative auth path, so every sign-in POSTed to
+      # sightlinevalidation.web.app/sb_publishable_.../auth/v1/token, got
+      # index.html back with a 200, and died parsing HTML as JSON. It looked
+      # like a browser cache problem for hours.
+      #
+      # These checks cost a second and make that specific failure impossible.
+      - name: Check Supabase configuration
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -uo pipefail
+
+          if [ -z "${SUPABASE_URL}" ]; then
+            echo "::error::SUPABASE_URL secret is empty. The build would ship with no"
+            echo "::error::Supabase host, and every request would resolve against the"
+            echo "::error::app's own origin."
+            exit 1
+          fi
+
+          case "${SUPABASE_URL}" in
+            https://*.supabase.co|https://*.supabase.co/) ;;
+            sb_publishable_*|sb_secret_*|eyJ*)
+              echo "::error::SUPABASE_URL looks like an API key, not a URL."
+              echo "::error::Expected https://<project-ref>.supabase.co"
+              echo "::error::A key here becomes a relative path, and every auth request"
+              echo "::error::returns the app's own index.html with a 200."
+              exit 1 ;;
+            *)
+              echo "::error::SUPABASE_URL must be https://<project-ref>.supabase.co"
+              exit 1 ;;
+          esac
+
+          if [ -z "${SUPABASE_ANON_KEY}" ]; then
+            echo "::error::SUPABASE_ANON_KEY secret is empty."
+            exit 1
+          fi
+
+          # A legacy JWT anon key and a newer publishable key are both fine
+          # here. Only a URL in the key slot is not.
+          case "${SUPABASE_ANON_KEY}" in
+            https://*)
+              echo "::error::SUPABASE_ANON_KEY looks like a URL. The two secrets are"
+              echo "::error::probably the wrong way round."
+              exit 1 ;;
+          esac
+
+          echo "host: $(printf '%s' "${SUPABASE_URL}" | sed -E 's#https://([^/]+).*#\1#')"
+          echo "key : ${#SUPABASE_ANON_KEY} chars"
+
+          # Prove the host answers as Supabase, rather than merely looking like
+          # a URL. Catches a paused project or a wrong project ref too.
+          code=$(curl -s -o /tmp/health.json -w '%{http_code}' --max-time 20 \
+                   "${SUPABASE_URL%/}/auth/v1/health" \
+                   -H "apikey: ${SUPABASE_ANON_KEY}" || echo 000)
+          echo "GoTrue health: HTTP ${code} $(head -c 120 /tmp/health.json 2>/dev/null)"
+          if [ "${code}" != "200" ]; then
+            echo "::error::${SUPABASE_URL%/}/auth/v1/health did not return 200."
+            echo "::error::The project may be paused, or the URL may be wrong."
+            exit 1
+          fi
+
       - name: Configure Flutter for Web
         run: flutter create . --platforms web
 
@@ -44,6 +111,24 @@ jobs:
             --dart-define=GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }} \
             --dart-define=RESEND_API_KEY=${{ secrets.RESEND_API_KEY }} \
             --base-href "/${{ github.event.repository.name }}/"
+
+      # The belt to the braces above: assert the host is actually compiled
+      # into the bundle. dart2js keeps string literals intact, so its absence
+      # is real rather than minification hiding it. This is the check that
+      # would have caught the broken deploy by itself.
+      - name: Verify the Supabase host is in the bundle
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          set -uo pipefail
+          host=$(printf '%s' "${SUPABASE_URL}" | sed -E 's#https://([^/]+).*#\1#')
+          if ! grep -qF "${host}" build/web/main.dart.js; then
+            echo "::error::${host} does not appear in build/web/main.dart.js."
+            echo "::error::The app would issue same-origin relative requests and"
+            echo "::error::parse index.html as JSON. Refusing to deploy."
+            exit 1
+          fi
+          echo "${host} found in the bundle."
 
       - name: Inject Google Maps API key into index.html (Pages)
         run: |
@@ -65,6 +150,23 @@ jobs:
             --dart-define=GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }} \
             --dart-define=RESEND_API_KEY=${{ secrets.RESEND_API_KEY }} \
             --base-href "/"
+
+      # Firebase deploys from this rebuild, not from the Pages build above, so
+      # the bundle has to be checked again here. This is the artifact that
+      # reaches sightlinevalidation.web.app.
+      - name: Verify the Supabase host is in the Firebase bundle
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          set -uo pipefail
+          host=$(printf '%s' "${SUPABASE_URL}" | sed -E 's#https://([^/]+).*#\1#')
+          if ! grep -qF "${host}" build/web/main.dart.js; then
+            echo "::error::${host} does not appear in the Firebase bundle."
+            echo "::error::Every auth request would resolve against the app's own"
+            echo "::error::origin and return index.html. Refusing to deploy."
+            exit 1
+          fi
+          echo "${host} found in the Firebase bundle."
 
       - name: Inject Google Maps API key into index.html (Firebase)
         run: |
