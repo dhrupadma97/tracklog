@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import './supabase_service.dart';
+import 'session_status.dart';
 
 class EmailReportSubscription {
   final String id;
@@ -227,7 +228,7 @@ class EmailReportService {
     final sessionsRaw = await client
         .from('engineer_sessions')
         .select('id, track_code, track_name, started_at, duration_minutes, total_cost')
-        .eq('session_status', 'completed')
+        .inFilter('session_status', kBillableSessionStatuses)
         .order('started_at');
 
     final Map<String, double> svcMap = {};
@@ -328,7 +329,7 @@ class EmailReportService {
       final sessionsRaw = await client
           .from('engineer_sessions')
           .select('track_code, track_name, started_at, duration_minutes, total_cost')
-          .eq('session_status', 'completed')
+          .inFilter('session_status', kBillableSessionStatuses)
           .order('started_at');
 
       // --- Fetch additional services ---

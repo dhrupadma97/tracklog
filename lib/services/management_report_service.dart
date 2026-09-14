@@ -4,6 +4,7 @@ import 'muster_service.dart';
 import 'project_catalog.dart';
 import 'resource_service.dart';
 import 'supabase_service.dart';
+import 'session_status.dart';
 
 /// One programme's contribution to the overall NATRAX position.
 typedef ProgrammeSpend = ({
@@ -128,7 +129,7 @@ class ManagementReportService {
         .from('engineer_sessions')
         .select('id, total_cost, track_code, track_name, duration_minutes, '
             'project_name, started_at')
-        .eq('session_status', 'completed');
+        .inFilter('session_status', kBillableSessionStatuses);
 
     final servicesRows = await client
         .from('session_additional_services')

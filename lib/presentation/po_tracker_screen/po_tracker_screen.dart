@@ -18,6 +18,7 @@ import '../../services/po_document_service.dart';
 import '../../services/po_parser.dart';
 import '../../services/engineer_auth_service.dart';
 import '../../widgets/invoice_upload_flow.dart';
+import '../../services/session_status.dart';
 
 class PoTrackerScreen extends StatefulWidget {
   const PoTrackerScreen({super.key});
@@ -109,7 +110,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
       final sessionsData = await client
           .from('engineer_sessions')
           .select('id, total_cost, session_status, project_name, started_at')
-          .eq('session_status', 'completed');
+          .inFilter('session_status', kBillableSessionStatuses);
 
       // Load additional services spend
       final servicesData = await client

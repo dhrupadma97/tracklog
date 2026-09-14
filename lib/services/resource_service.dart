@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'supabase_service.dart';
+import 'session_status.dart';
 
 /// A person or asset available for testing.
 class TestResource {
@@ -302,7 +303,7 @@ class ResourceService {
     final rows = await _client
         .from('engineer_sessions')
         .select('engineer_id, duration_minutes, started_at, project_name')
-        .eq('session_status', 'completed')
+        .inFilter('session_status', kBillableSessionStatuses)
         .gte('started_at', from.toIso8601String())
         .lte('started_at', to.toIso8601String());
 

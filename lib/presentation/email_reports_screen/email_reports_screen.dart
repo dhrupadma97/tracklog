@@ -9,6 +9,7 @@ import '../../services/email_report_service.dart';
 import '../../services/management_report_service.dart';
 import '../../services/supabase_service.dart';
 import '../../services/project_manager.dart';
+import '../../services/session_status.dart';
 
 class EmailReportsScreen extends StatefulWidget {
   const EmailReportsScreen({super.key});
@@ -94,7 +95,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
         .select(
           'id, track_name, duration_minutes, total_cost, session_status, started_at, project_name',
         )
-        .eq('session_status', 'completed')
+        .inFilter('session_status', kBillableSessionStatuses)
         .order('started_at', ascending: false);
 
     // Additional services

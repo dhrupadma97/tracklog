@@ -9,6 +9,7 @@ import 'dart:math' as math;
 
 import '../../services/project_manager.dart';
 import '../../services/session_keepalive.dart';
+import '../../services/session_status.dart';
 
 // ─── Project metadata registry ────────────────────────────────────────────────
 class _CarDetail {
@@ -298,7 +299,7 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
       final sessionsRaw = await client
           .from('engineer_sessions')
           .select('id, started_at, total_cost, project_name, session_status')
-          .eq('session_status', 'completed')
+          .inFilter('session_status', kBillableSessionStatuses)
           .order('started_at', ascending: false);
 
       final sessionIds = (sessionsRaw as List).map((s) => s['id'] as String).toList();

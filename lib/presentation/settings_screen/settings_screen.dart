@@ -17,6 +17,7 @@ import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../routes/app_routes.dart';
 import '../../core/app_version.dart';
+import '../../services/session_status.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -135,7 +136,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final sessionRows = await client
           .from('engineer_sessions')
           .select('started_at, project_name')
-          .eq('session_status', 'completed');
+          .inFilter('session_status', kBillableSessionStatuses);
 
       final pm = ProjectManager.instance;
       final months = <String>{};

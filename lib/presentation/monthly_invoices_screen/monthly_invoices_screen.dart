@@ -10,6 +10,7 @@ import '../../services/muster_service.dart';
 import '../../services/project_catalog.dart';
 import '../../services/project_manager.dart';
 import '../../theme/app_theme.dart';
+import '../../services/session_status.dart';
 
 // ─── Data models ──────────────────────────────────────────────────────────────
 class _Session {
@@ -298,7 +299,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
           .from('engineer_sessions')
           .select(
               'id, track_name, track_code, started_at, duration_minutes, total_cost, session_status, project_name, notes')
-          .eq('session_status', 'completed')
+          .inFilter('session_status', kBillableSessionStatuses)
           .order('started_at', ascending: false);
 
       final sessionIds = (sessionsRaw as List).map((s) => s['id'] as String).toList();

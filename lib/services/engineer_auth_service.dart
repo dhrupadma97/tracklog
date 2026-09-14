@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import './supabase_service.dart';
 import './venue_manager.dart';
+import 'session_status.dart';
 
 class EngineerProfile {
   final String id;
@@ -304,7 +305,7 @@ class EngineerAuthService {
           .from('engineer_sessions')
           .select('duration_minutes, total_cost, session_status')
           .eq('engineer_id', user.id)
-          .eq('session_status', 'completed');
+          .inFilter('session_status', kBillableSessionStatuses);
 
       final sessions = data as List;
       int totalMinutes = 0;
