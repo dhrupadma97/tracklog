@@ -73,6 +73,31 @@ class _MonthGroup {
   });
 }
 
+/// Where sessions are actually filed, as opposed to where they are being
+/// looked for.
+///
+/// A session carries whichever `project_name` was globally selected when it was
+/// entered — manual entry seeds its dropdown from [ProjectManager] — so work
+/// done on one programme while another was selected is filed under the wrong
+/// one. Nothing in the app said so: the Analyser simply showed fewer sessions
+/// than expected, or none, and the reason was invisible without database
+/// access the app's own users do not have.
+///
+/// Counted across every completed session BEFORE the project filter, so it
+/// describes the table rather than the current view.
+class _ProjectTally {
+  final String label;
+  int count = 0;
+  double cost = 0;
+  /// Rows with an empty or 'General' project_name, folded into Mahindra EV PoC
+  /// by convention. Worth stating separately — they are filed by default, not
+  /// by anybody's choice.
+  int untagged = 0;
+  DateTime? first;
+  DateTime? last;
+  _ProjectTally({required this.label});
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 class MonthlyInvoicesScreen extends StatefulWidget {
   const MonthlyInvoicesScreen({super.key});
@@ -85,6 +110,11 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
   List<_MonthGroup> _months = [];
   int _selectedMonthIdx = 0;
   String _activeProject = '';
+
+  /// Every programme present in the session table, with what is filed to it.
+  /// Independent of [_activeProject] — this is the ground truth the view is
+  /// a filtered slice of.
+  List<_ProjectTally> _tallies = [];
 
   // Formatters
   final _inr = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
@@ -137,10 +167,24 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
     // project — default to the active one, then ask which vehicle to analyse as
     // soon as the screen opens.
     _activeProject = ProjectManager.instance.activeProject;
+    // Workshop rental and manpower cost on this screen are priced off the
+    // muster, so a day marked there changes figures here. Without this the
+    // Analyser kept whatever it read when it opened.
+    MusterService.instance.addListener(_onMusterChanged);
     _loadData();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _pickVehicle();
     });
+  }
+
+  @override
+  void dispose() {
+    MusterService.instance.removeListener(_onMusterChanged);
+    super.dispose();
+  }
+
+  void _onMusterChanged() {
+    if (mounted) _loadData();
   }
 
   // Vehicles the Analyser can scope to. Read from the catalogue so a new
@@ -273,6 +317,28 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
         svcMap[sid] = (svcMap[sid] ?? 0) + c;
       }
 
+      // Tally every session by the programme it is filed under, BEFORE the
+      // scope filter below drops the ones this view is not showing. Costs
+      // nothing extra — these are the rows already fetched.
+      final tallyMap = <String, _ProjectTally>{};
+      for (final s in sessionsRaw) {
+        final raw = (s['project_name'] as String?)?.trim() ?? '';
+        final defaulted = raw.isEmpty || raw.toLowerCase() == 'general';
+        final label =
+            defaulted ? 'Mahindra EV PoC' : ProjectCatalog.displayName(raw);
+        final t = tallyMap.putIfAbsent(label, () => _ProjectTally(label: label));
+        t.count++;
+        t.cost += (s['total_cost'] as num?)?.toDouble() ?? 0.0;
+        if (defaulted) t.untagged++;
+        final d = DateTime.tryParse(s['started_at'] as String? ?? '');
+        if (d != null) {
+          if (t.first == null || d.isBefore(t.first!)) t.first = d;
+          if (t.last == null || d.isAfter(t.last!)) t.last = d;
+        }
+      }
+      final tallies = tallyMap.values.toList()
+        ..sort((a, b) => b.count.compareTo(a.count));
+
       final allSessions = <_Session>[];
       for (final s in sessionsRaw) {
         final rawProj = (s['project_name'] as String?)?.trim() ?? '';
@@ -280,8 +346,14 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
             ? 'Mahindra EV PoC'
             : rawProj;
 
-        final pm = ProjectManager.instance;
-        if (!pm.sessionBelongsToProject(rawProj)) continue;
+        // Scoped to the vehicle the Analyser is showing, NOT to the globally
+        // selected project. They are two independent selections by design —
+        // _pickVehicle deliberately never calls ProjectManager.setProject —
+        // and consulting the global one here put another programme's sessions
+        // under this heading, while the muster below was correctly scoped to
+        // _activeProject. The screen reported one project's track time over
+        // another's manpower.
+        if (!ProjectManager.sessionBelongsTo(rawProj, _activeProject)) continue;
 
         final date = DateTime.tryParse(s['started_at'] as String? ?? '') ?? DateTime.now();
         allSessions.add(_Session(
@@ -400,6 +472,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
       if (mounted) {
         setState(() {
           _months = monthGroups;
+          _tallies = tallies;
           _selectedMonthIdx = 0;
           _isLoading = false;
         });
@@ -530,6 +603,8 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
             child: Column(
               children: [
+                _buildAttributionCard(),
+                if (_tallies.isNotEmpty) const SizedBox(height: 16),
                 if (sortedTracks.isNotEmpty)
                   _buildLargeDoughnutCard(sortedTracks, totalHrs, isWide: false),
                 const SizedBox(height: 16),
@@ -578,6 +653,8 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
                     physics: const BouncingScrollPhysics(),
                     child: Column(
                       children: [
+                        _buildAttributionCard(),
+                        if (_tallies.isNotEmpty) const SizedBox(height: 16),
                         if (sortedTracks.isNotEmpty)
                           _buildLargeDoughnutCard(sortedTracks, totalHrs, isWide: true),
                         const SizedBox(height: 16),
@@ -608,6 +685,141 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  /// Where every completed session is filed, regardless of what is being
+  /// viewed.
+  ///
+  /// Shown whenever more than one programme carries sessions, and always when
+  /// the programme on screen carries none — that second case is the one that
+  /// used to look like a broken screen. A session is filed under whatever
+  /// project was globally selected at entry time, so work logged while another
+  /// programme was selected lands there and the Analyser, correctly scoped,
+  /// shows nothing. Stating the distribution turns that from a mystery into a
+  /// fact you can act on. Tapping a row switches the view to that programme.
+  Widget _buildAttributionCard() {
+    if (_tallies.isEmpty) return const SizedBox.shrink();
+    final activeKey = _activeProject.toLowerCase().trim();
+    final here = _tallies.where((t) => t.label.toLowerCase().trim() == activeKey);
+    final hereCount = here.isEmpty ? 0 : here.first.count;
+    // One programme holding everything, and it is the one being viewed, is
+    // simply a correct screen. Nothing to explain.
+    if (_tallies.length == 1 && hereCount > 0) return const SizedBox.shrink();
+
+    final df = DateFormat('d MMM yyyy');
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A).withValues(alpha: .85),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+            color: hereCount == 0
+                ? const Color(0xFFFFB547).withValues(alpha: .55)
+                : primaryColor.withValues(alpha: .30)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(hereCount == 0 ? Icons.info_outline : Icons.folder_open,
+              size: 14,
+              color: hereCount == 0 ? const Color(0xFFFFB547) : primaryColor),
+          const SizedBox(width: 8),
+          Text('WHERE SESSIONS ARE FILED',
+              style: GoogleFonts.spaceGrotesk(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.2,
+                  color: hereCount == 0
+                      ? const Color(0xFFFFB547)
+                      : primaryColor)),
+        ]),
+        const SizedBox(height: 6),
+        Text(
+            hereCount == 0
+                ? 'No session is filed under $_activeProject. A session is '
+                    'recorded against whichever project was selected when it '
+                    'was entered, so the work is likely sitting under one of '
+                    'these instead. Tap a row to view it there.'
+                : 'Every completed session, by the programme recorded on it. '
+                    'Tap a row to view that programme.',
+            style: GoogleFonts.spaceGrotesk(
+                fontSize: 11, height: 1.45, color: const Color(0xFF94A3B8))),
+        const SizedBox(height: 12),
+        ..._tallies.map((t) {
+          final isHere = t.label.toLowerCase().trim() == activeKey;
+          return InkWell(
+            onTap: t.label == _activeProject
+                ? null
+                : () {
+                    setState(() {
+                      _activeProject = t.label;
+                      _selectedMonthIdx = 0;
+                    });
+                    _loadData();
+                  },
+            borderRadius: BorderRadius.circular(9),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+              decoration: BoxDecoration(
+                color: isHere
+                    ? primaryColor.withValues(alpha: .13)
+                    : const Color(0xFF1E293B).withValues(alpha: .55),
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(
+                    color: isHere
+                        ? primaryColor.withValues(alpha: .55)
+                        : Colors.transparent),
+              ),
+              child: Row(children: [
+                Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(t.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.spaceGrotesk(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: isHere
+                                    ? primaryColor
+                                    : const Color(0xFFdfe2f0))),
+                        const SizedBox(height: 2),
+                        Text(
+                            [
+                              if (t.first != null && t.last != null)
+                                '${df.format(t.first!)} — ${df.format(t.last!)}',
+                              if (t.untagged > 0)
+                                '${t.untagged} with no project set',
+                            ].join('  ·  '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.spaceGrotesk(
+                                fontSize: 10,
+                                color: const Color(0xFF64748B))),
+                      ]),
+                ),
+                const SizedBox(width: 10),
+                Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                  Text('${t.count}',
+                      style: GoogleFonts.spaceGrotesk(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: isHere
+                              ? primaryColor
+                              : const Color(0xFFdfe2f0))),
+                  Text(t.count == 1 ? 'session' : 'sessions',
+                      style: GoogleFonts.spaceGrotesk(
+                          fontSize: 9, color: const Color(0xFF64748B))),
+                ]),
+              ]),
+            ),
+          );
+        }),
+      ]),
     );
   }
 

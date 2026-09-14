@@ -104,12 +104,11 @@ class _WideScaffoldState extends State<_WideScaffold> {
       branch: 4,
     ));
 
-    // 1b. Daily Log - per-session history for the active project. Reads the
-    // same data as the Analyser, one row per session rather than aggregated.
+    // 1b. History - history for the active project (tracks, manpower, workshop).
     items.add(const _NavItem(
-      icon: Icons.receipt_long_outlined,
-      activeIcon: Icons.receipt_long_rounded,
-      label: 'Daily Log',
+      icon: Icons.history_outlined,
+      activeIcon: Icons.history_rounded,
+      label: 'History',
       branch: 14,
     ));
 

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'supabase_service.dart';
@@ -175,23 +176,61 @@ class ManpowerPosition {
   bool get isComplete => daysContracted > 0 && ratePerDay > 0;
 }
 
-class MusterService {
+/// The muster register, and the notifier for it.
+///
+/// A [ChangeNotifier] because a day recorded here changes figures on screens
+/// that are nowhere near the muster — the monthly invoice view prices workshop
+/// days off it, and the manager report counts man-days from it. Those used to
+/// read the table once when they were opened, so a day marked after that read
+/// silently did not exist for them until the screen was rebuilt. Every write
+/// below announces itself instead; listeners reload and stay in step.
+///
+/// Mirrors [ProjectManager]'s shape deliberately: one singleton, listeners
+/// attached in initState and dropped in dispose.
+class MusterService extends ChangeNotifier {
   MusterService._();
   static MusterService? _instance;
   static MusterService get instance => _instance ??= MusterService._();
 
   SupabaseClient get _client => SupabaseService.instance.client;
 
-  Future<List<MusterDay>> list({String? poNumber, int limit = 400}) async {
-    var q = _client.from('manpower_muster').select();
-    if (poNumber != null && poNumber.isNotEmpty) {
-      q = q.eq('po_number', poNumber);
+  /// How many rows one PostgREST round trip asks for. The server caps a
+  /// response well below what this register will eventually hold, so the
+  /// history is paged rather than requested in one go.
+  static const int _pageSize = 1000;
+
+  /// Every day in the register, newest first.
+  ///
+  /// Pages until the server stops returning a full page, so the count of rows
+  /// is bounded by the table and not by a number chosen here. The previous
+  /// `limit: 400` silently truncated the history: at roughly a row a day per
+  /// PO, plus a workshop row alongside, it was a cut-off the register would
+  /// have reached without ever saying so — the oldest months would simply have
+  /// stopped appearing.
+  Future<List<MusterDay>> list({String? poNumber}) async {
+    final out = <MusterDay>[];
+    for (var from = 0;; from += _pageSize) {
+      var q = _client.from('manpower_muster').select();
+      if (poNumber != null && poNumber.isNotEmpty) {
+        q = q.eq('po_number', poNumber);
+      }
+      // `id` is the tiebreaker, and it is not optional. muster_date alone is
+      // not unique — a workshop day and a manpower day share a date by
+      // design, as do two POs on one date — and Postgres may order tied rows
+      // differently between the two queries that fetch consecutive pages.
+      // A tie straddling a page boundary would then repeat one row and drop
+      // another. Ordering on a unique column makes the sequence total.
+      final rows = await q
+          .order('muster_date', ascending: false)
+          .order('id', ascending: false)
+          .range(from, from + _pageSize - 1);
+      final batch = (rows as List).cast<Map<String, dynamic>>();
+      out.addAll(batch.map(MusterDay.fromJson));
+      // A short page is the last page. Equally, an exactly-full final page
+      // costs one more empty round trip and then stops — correct, not fast.
+      if (batch.length < _pageSize) break;
     }
-    final rows = await q.order('muster_date', ascending: false).limit(limit);
-    return (rows as List)
-        .cast<Map<String, dynamic>>()
-        .map(MusterDay.fromJson)
-        .toList();
+    return out;
   }
 
   /// Upsert on (muster_date, po_number, kind), so recording the same day
@@ -202,6 +241,7 @@ class MusterService {
           day.toJson(),
           onConflict: 'muster_date,po_number,kind',
         );
+    notifyListeners();
   }
 
 
@@ -270,11 +310,93 @@ class MusterService {
           rows,
           onConflict: 'muster_date,po_number,kind',
         );
+    notifyListeners();
     return rows.length;
   }
 
   Future<void> delete(String id) async {
     await _client.from('manpower_muster').delete().eq('id', id);
+    notifyListeners();
+  }
+
+  /// What a project's muster has accrued: manpower priced off each day's own
+  /// PO rate, and workshop at the flat daily rental.
+  ///
+  /// One implementation, called by every screen that shows these figures, so
+  /// the Analyser and the History panel cannot quote different numbers for the
+  /// same project.
+  ///
+  /// Rows with an empty or 'General' project_name belong to Mahindra EV PoC —
+  /// the convention the session path has always applied. Matching project_name
+  /// exactly in SQL instead, as the Analyser used to, made those rows match no
+  /// project at all and vanish from every total, so the filtering is done here
+  /// in Dart where the convention can be honoured.
+  ///
+  /// [manpowerUnpricedDays] counts man-days sitting on a PO with no day rate
+  /// yet — its value or day count is still zero, so the rate divides to zero
+  /// and the days would otherwise contribute nothing with nothing said. They
+  /// are real days worked; the caller can show them as unpriced rather than
+  /// letting them read as free.
+  Future<
+      ({
+        double manpowerCost,
+        double workshopCost,
+        int manDays,
+        int workshopDays,
+        int manpowerUnpricedDays,
+      })> chargesForProject(String projectName) async {
+    final key = projectName.toLowerCase().trim();
+    bool belongs(String? raw) {
+      final r = (raw ?? '').trim();
+      if (r.isEmpty || r.toLowerCase() == 'general') {
+        return key == 'mahindra ev poc';
+      }
+      return r.toLowerCase() == key;
+    }
+
+    final rows = await _client
+        .from('manpower_muster')
+        .select('muster_date, head_count, kind, po_number, project_name');
+
+    final pos = await _client
+        .from('po_trackers')
+        .select('po_number, total_po_value, manpower_days')
+        .eq('category', 'manpower');
+
+    final rate = <String, double>{};
+    for (final p in (pos as List)) {
+      final n = (p['po_number'] as String? ?? '').trim();
+      final v = (p['total_po_value'] as num?)?.toDouble() ?? 0;
+      final d = (p['manpower_days'] as num?)?.toDouble() ?? 0;
+      rate[n] = d > 0 ? v / d : 0.0;
+    }
+
+    double manpowerCost = 0, workshopCost = 0;
+    int manDays = 0, workshopDays = 0, unpriced = 0;
+    for (final r in (rows as List).cast<Map<String, dynamic>>()) {
+      if (!belongs(r['project_name'] as String?)) continue;
+      if (MusterKindX.parse(r['kind'] as String?) == MusterKind.workshop) {
+        workshopDays++;
+        workshopCost += kWorkshopRatePerDay;
+      } else {
+        final heads = (r['head_count'] as num?)?.toInt() ?? 0;
+        final po = (r['po_number'] as String? ?? '').trim();
+        final perDay = rate[po] ?? 0.0;
+        manDays += heads;
+        if (perDay <= 0) {
+          unpriced += heads;
+        } else {
+          manpowerCost += heads * perDay;
+        }
+      }
+    }
+    return (
+      manpowerCost: manpowerCost,
+      workshopCost: workshopCost,
+      manDays: manDays,
+      workshopDays: workshopDays,
+      manpowerUnpricedDays: unpriced,
+    );
   }
 
   /// Man-days mustered per PO — manpower rows only.

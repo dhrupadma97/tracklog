@@ -33,6 +33,11 @@ class _MusterScreenState extends State<MusterScreen> {
   List<Map<String, dynamic>> _workshopPos = [];
   List<WorkshopPosition> _workshopPositions = [];
 
+  /// Which kinds the register is showing. Null means both, which is the point
+  /// of the view — manpower and workshop in one chronology. The filter narrows
+  /// it for a question about one of them, it does not define the default.
+  MusterKind? _kindFilter;
+
   static const _teal = AppTheme.primary;
   static const _amber = Color(0xFFFFB547);
   static const _red = Color(0xFFFF6B6B);
@@ -45,7 +50,21 @@ class _MusterScreenState extends State<MusterScreen> {
   @override
   void initState() {
     super.initState();
+    // A day recorded anywhere — this screen, or any future caller of the
+    // service — reloads the register and the PO positions that hang off it,
+    // so what is on screen is never behind what is in the table.
+    MusterService.instance.addListener(_onMusterChanged);
     _load();
+  }
+
+  @override
+  void dispose() {
+    MusterService.instance.removeListener(_onMusterChanged);
+    super.dispose();
+  }
+
+  void _onMusterChanged() {
+    if (mounted) _load();
   }
 
   Future<void> _load() async {
@@ -497,21 +516,50 @@ class _MusterScreenState extends State<MusterScreen> {
       );
     }
 
+    final shown = _kindFilter == null
+        ? _days
+        : _days.where((d) => d.kind == _kindFilter).toList();
+
     // Grouped by month, newest first — the register is read by month.
     final byMonth = <String, List<MusterDay>>{};
-    for (final d in _days) {
+    for (final d in shown) {
       byMonth.putIfAbsent(d.monthKey, () => []).add(d);
     }
     final months = byMonth.keys.toList()..sort((a, b) => b.compareTo(a));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: months.map((m) {
-        final rows = byMonth[m]!;
-        final manDays = rows
-            .where((d) => d.kind == MusterKind.manpower)
-            .fold<int>(0, (s, d) => s + d.headCount);
-        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      children: [
+        _registerSummary(),
+        if (shown.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 28),
+            child: Center(
+              child: Text(
+                  'No ${_kindFilter == MusterKind.workshop ? 'workshop' : 'manpower'} '
+                  'days in the register yet.',
+                  style:
+                      GoogleFonts.spaceGrotesk(color: _muted, fontSize: 12)),
+            ),
+          ),
+        ...months.map((m) {
+          final rows = byMonth[m]!;
+          // Counted apart because they ARE apart: man-days are a sum of heads
+          // and draw down a MOICARS PO contracted in days; workshop days are a
+          // count of rows accruing rupees on the NATRAX track PO. The header
+          // used to read '$manDays man-days · ${rows.length} days', where the
+          // second figure silently mixed workshop rows into what reads as a
+          // manpower total.
+          final manDays = rows
+              .where((d) => d.kind == MusterKind.manpower)
+              .fold<int>(0, (s, d) => s + d.headCount);
+          final manRows =
+              rows.where((d) => d.kind == MusterKind.manpower).length;
+          final shopDays =
+              rows.where((d) => d.kind == MusterKind.workshop).length;
+          return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 14, 4, 8),
             child: Row(children: [
@@ -521,14 +569,118 @@ class _MusterScreenState extends State<MusterScreen> {
                       fontSize: 13,
                       fontWeight: FontWeight.w700)),
               const Spacer(),
-              Text('$manDays man-days · ${rows.length} days',
+              Text(_monthTally(manDays, manRows, shopDays),
                   style:
                       GoogleFonts.spaceGrotesk(color: _muted, fontSize: 11)),
             ]),
           ),
           ...rows.map(_dayTile),
         ]);
-      }).toList(),
+        }),
+      ],
+    );
+  }
+
+  /// Month header tally. Only states a figure that exists — a month of pure
+  /// manpower should not read '0 workshop days', which invites the reader to
+  /// wonder what happened to the workshop that month.
+  String _monthTally(int manDays, int manRows, int shopDays) {
+    final parts = <String>[];
+    if (manRows > 0) {
+      parts.add('$manDays man-day${manDays == 1 ? '' : 's'}'
+          ' over $manRows day${manRows == 1 ? '' : 's'}');
+    }
+    if (shopDays > 0) {
+      parts.add('$shopDays workshop day${shopDays == 1 ? '' : 's'}');
+    }
+    return parts.join('  ·  ');
+  }
+
+  /// The whole register at a glance: both kinds, every month, and the span
+  /// they cover — so the totals can be read without scrolling the history,
+  /// and the filter that narrows the history sits with them.
+  Widget _registerSummary() {
+    final manDays = _days
+        .where((d) => d.kind == MusterKind.manpower)
+        .fold<int>(0, (s, d) => s + d.headCount);
+    final manRows = _days.where((d) => d.kind == MusterKind.manpower).length;
+    final shopDays = _days.where((d) => d.kind == MusterKind.workshop).length;
+
+    // _days is ordered newest first by the query.
+    final newest = _days.first.date;
+    final oldest = _days.last.date;
+    final fmt = DateFormat('d MMM yyyy');
+
+    return Container(
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0A1025).withAlpha(200),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF849495).withAlpha(60)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.history, color: _muted, size: 16),
+          const SizedBox(width: 8),
+          Text('Full register',
+              style: GoogleFonts.spaceGrotesk(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700)),
+          const Spacer(),
+          Flexible(
+            child: Text('${fmt.format(oldest)} — ${fmt.format(newest)}',
+                textAlign: TextAlign.right,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style:
+                    GoogleFonts.spaceGrotesk(color: _muted, fontSize: 11)),
+          ),
+        ]),
+        const SizedBox(height: 14),
+        // _stat already returns an Expanded, so these are not wrapped again —
+        // an Expanded inside an Expanded is not a Flex child and throws.
+        Row(children: [
+          _stat('MAN-DAYS', '$manDays',
+              'in $manRows day${manRows == 1 ? '' : 's'}', _teal),
+          _stat('WORKSHOP', '$shopDays', shopDays == 1 ? 'day' : 'days',
+              _amber),
+          _stat('ENTRIES', '${_days.length}', 'rows', _muted),
+        ]),
+        const SizedBox(height: 14),
+        Row(children: [
+          _kindChip('All', null, _days.length),
+          const SizedBox(width: 8),
+          _kindChip('Manpower', MusterKind.manpower, manRows),
+          const SizedBox(width: 8),
+          _kindChip('Workshop', MusterKind.workshop, shopDays),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _kindChip(String label, MusterKind? kind, int count) {
+    final on = _kindFilter == kind;
+    final accent = kind == MusterKind.workshop ? _amber : _teal;
+    return GestureDetector(
+      onTap: () => setState(() => _kindFilter = kind),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: on ? accent.withAlpha(38) : Colors.transparent,
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(
+              color: on
+                  ? accent.withAlpha(130)
+                  : const Color(0xFF849495).withAlpha(70)),
+        ),
+        child: Text('$label  $count',
+            style: GoogleFonts.spaceGrotesk(
+                color: on ? accent : _muted,
+                fontSize: 11,
+                fontWeight: on ? FontWeight.w700 : FontWeight.w600)),
+      ),
     );
   }
 
@@ -1489,7 +1641,9 @@ class _MusterScreenState extends State<MusterScreen> {
         return;
       }
       _snack('$n ${n == 1 ? 'day' : 'days'} recorded');
-      await _load();
+      // No _load() here, or anywhere below: the service notified on write and
+      // _onMusterChanged is already reloading. Calling it again just fetches
+      // the same rows twice.
     } catch (e) {
       _snack('Could not save: $e', error: true);
     }
@@ -1499,7 +1653,6 @@ class _MusterScreenState extends State<MusterScreen> {
     try {
       await MusterService.instance.save(day);
       _snack('Day recorded');
-      await _load();
     } catch (e) {
       _snack('Could not save: $e', error: true);
     }
@@ -1510,7 +1663,6 @@ class _MusterScreenState extends State<MusterScreen> {
     try {
       await MusterService.instance.delete(day.id!);
       _snack('Day removed');
-      await _load();
     } catch (e) {
       _snack('Could not remove: $e', error: true);
     }

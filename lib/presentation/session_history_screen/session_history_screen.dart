@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/app_export.dart';
 import '../../services/engineer_auth_service.dart';
+import '../../services/muster_service.dart';
 import '../../services/project_manager.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
@@ -478,19 +479,65 @@ class _RightPanelState extends State<_RightPanel> {
   List<Map<String, dynamic>> _updates = [];
   bool _loadingUpdates = true;
 
+  // Project-wise charges: track time from the sessions this screen already
+  // loaded, manpower and workshop from the muster.
+  ({
+    double manpowerCost,
+    double workshopCost,
+    int manDays,
+    int workshopDays,
+    int manpowerUnpricedDays,
+  })? _charges;
+  bool _loadingCharges = true;
+
   final _compact = NumberFormat.compactCurrency(
       locale: 'en_IN', symbol: '₹', decimalDigits: 1);
+  final _inr =
+      NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
 
   @override
   void initState() {
     super.initState();
+    // Marking a muster day changes manpower and workshop here, so this panel
+    // follows the register rather than holding whatever it read on open.
+    MusterService.instance.addListener(_onMusterChanged);
     _fetchUpdates();
+    _fetchCharges();
+  }
+
+  @override
+  void dispose() {
+    MusterService.instance.removeListener(_onMusterChanged);
+    super.dispose();
+  }
+
+  void _onMusterChanged() {
+    if (mounted) _fetchCharges();
+  }
+
+  Future<void> _fetchCharges() async {
+    setState(() => _loadingCharges = true);
+    try {
+      final c =
+          await MusterService.instance.chargesForProject(widget.activeProject);
+      if (!mounted) return;
+      setState(() {
+        _charges = c;
+        _loadingCharges = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingCharges = false);
+    }
   }
 
   @override
   void didUpdateWidget(_RightPanel old) {
     super.didUpdateWidget(old);
-    if (old.activeProject != widget.activeProject) _fetchUpdates();
+    if (old.activeProject != widget.activeProject) {
+      _fetchUpdates();
+      _fetchCharges();
+    }
   }
 
   Future<void> _fetchUpdates() async {
@@ -564,6 +611,10 @@ class _RightPanelState extends State<_RightPanel> {
         const SizedBox(height: 16),
         Container(height: 1, color: const Color(0xFF3a494b)),
 
+        _chargesCard(),
+
+        Container(height: 1, color: const Color(0xFF3a494b)),
+
         // ── Updates header ─────────────────────────────────────────────
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
@@ -602,6 +653,141 @@ class _RightPanelState extends State<_RightPanel> {
                     ),
         ),
       ],
+    );
+  }
+
+  /// Project-wise charges: the three things NATRAX bills for, side by side.
+  ///
+  /// Track comes from the sessions this screen has already totalled; manpower
+  /// and workshop come from the muster via [MusterService.chargesForProject],
+  /// the same call the Analyser makes, so the two screens cannot quote
+  /// different figures for one project.
+  Widget _chargesCard() {
+    final c = _charges;
+    final track = widget.totalCost;
+    final manpower = c?.manpowerCost ?? 0;
+    final workshop = c?.workshopCost ?? 0;
+    final total = track + manpower + workshop;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.receipt_long_rounded,
+              color: AppTheme.primary, size: 16),
+          const SizedBox(width: 8),
+          Text('Project Charges',
+              style: GoogleFonts.spaceGrotesk(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800)),
+          const Spacer(),
+          if (_loadingCharges)
+            const SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(
+                    color: AppTheme.primary, strokeWidth: 1.5)),
+        ]),
+        const SizedBox(height: 4),
+        Text(widget.activeProject,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.spaceGrotesk(
+                color: const Color(0xFF6B7490), fontSize: 10)),
+        const SizedBox(height: 12),
+        _chargeRow('Track + Accessories', track, total, AppTheme.primary,
+            '${widget.sessionCount} session'
+            '${widget.sessionCount == 1 ? '' : 's'}'),
+        _chargeRow('Manpower', manpower, total, const Color(0xFFB794F6),
+            c == null
+                ? ''
+                : '${c.manDays} man-day${c.manDays == 1 ? '' : 's'}'),
+        _chargeRow('Workshop', workshop, total, const Color(0xFFFFB547),
+            c == null
+                ? ''
+                : '${c.workshopDays} day${c.workshopDays == 1 ? '' : 's'}'
+                    ' @ ${_inr.format(kWorkshopRatePerDay)}'),
+        const SizedBox(height: 8),
+        Container(height: 1, color: const Color(0xFF3a494b)),
+        const SizedBox(height: 8),
+        Row(children: [
+          Text('Total (excl. GST)',
+              style: GoogleFonts.spaceGrotesk(
+                  color: Colors.white70,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600)),
+          const Spacer(),
+          Text(_inr.format(total),
+              style: GoogleFonts.spaceGrotesk(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800)),
+        ]),
+        // Days worked on a PO that carries no rate yet. They are real and
+        // billable; showing them as ₹0 without comment is how unbilled work
+        // stays invisible.
+        if (c != null && c.manpowerUnpricedDays > 0) ...[
+          const SizedBox(height: 8),
+          Text(
+              '${c.manpowerUnpricedDays} man-day'
+              '${c.manpowerUnpricedDays == 1 ? '' : 's'} not priced — '
+              'their PO has no day rate recorded yet.',
+              style: GoogleFonts.spaceGrotesk(
+                  color: const Color(0xFFFFB547), fontSize: 10, height: 1.4)),
+        ],
+      ]),
+    );
+  }
+
+  Widget _chargeRow(
+      String label, double value, double total, Color colour, String sub) {
+    // Share of the project, so the three read as a composition rather than
+    // three unrelated numbers. Guarded because a project with nothing logged
+    // has a zero total and no shares to speak of.
+    final share = total > 0 ? value / total : 0.0;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+              width: 7,
+              height: 7,
+              decoration:
+                  BoxDecoration(color: colour, shape: BoxShape.circle)),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.spaceGrotesk(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600)),
+          ),
+          Text(_inr.format(value),
+              style: GoogleFonts.spaceGrotesk(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700)),
+        ]),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: LinearProgressIndicator(
+            value: share,
+            minHeight: 4,
+            backgroundColor: const Color(0xFF1E293B),
+            valueColor: AlwaysStoppedAnimation(colour),
+          ),
+        ),
+        if (sub.isNotEmpty) ...[
+          const SizedBox(height: 3),
+          Text('$sub  ·  ${(share * 100).toStringAsFixed(0)}%',
+              style: GoogleFonts.spaceGrotesk(
+                  color: const Color(0xFF6B7490), fontSize: 9)),
+        ],
+      ]),
     );
   }
 
