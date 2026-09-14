@@ -312,10 +312,10 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
 
       final Map<String, double> poRateByNumber = {};
       for (final p in (posRaw as List)) {
-        final num = (p['po_number'] as String? ?? '').trim();
+        final poNum = (p['po_number'] as String? ?? '').trim();
         final value = (p['total_po_value'] as num?)?.toDouble() ?? 0.0;
         final days  = (p['manpower_days'] as num?)?.toDouble() ?? 0.0;
-        poRateByNumber[num] = days > 0 ? value / days : 0.0;
+        poRateByNumber[poNum] = days > 0 ? value / days : 0.0;
       }
 
       // Group muster costs by month.
