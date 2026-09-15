@@ -8,6 +8,7 @@ import '../../core/app_export.dart';
 import '../../services/day_note_service.dart';
 import '../../services/engineer_auth_service.dart';
 import '../../services/muster_service.dart';
+import '../../services/project_catalog.dart';
 import '../../services/project_manager.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
@@ -86,11 +87,75 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
     super.dispose();
   }
 
+  /// True once the scope has been chosen here, after which the global project
+  /// no longer steers this screen. Otherwise switching programmes elsewhere
+  /// would silently drag the register off whatever is being read.
+  bool _scopeChosenHere = false;
+
   void _onProjectChanged() {
+    if (_scopeChosenHere) return;
     if (mounted && _activeProject != ProjectManager.instance.activeProject) {
       setState(() => _activeProject = ProjectManager.instance.activeProject);
       _loadSessions();
     }
+  }
+
+  /// Choose which programme the register shows.
+  ///
+  /// This was a two-way toggle between "all programmes" and whichever project
+  /// was globally selected, so a programme that was not the global one could
+  /// not be looked at from here at all — reaching Mahindra ICE PoC meant going
+  /// to the Projects screen and switching the whole app over. The register is
+  /// read per programme far more often than the global selection changes, so
+  /// it picks its own scope.
+  ///
+  /// Deliberately does NOT call ProjectManager.setProject: looking at one
+  /// programme's history should not re-point every other screen.
+  Future<void> _pickScope() async {
+    final options = <String?>[null, ...ProjectCatalog.displayNames];
+    final chosen = await showDialog<Object>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        backgroundColor: const Color(0xFF0A1025),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Show history for',
+            style: GoogleFonts.spaceGrotesk(
+                color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800)),
+        children: options.map((p) {
+          final selected = p == null ? _allProjects : (!_allProjects && p == _activeProject);
+          return SimpleDialogOption(
+            // Null is a legitimate choice here, so it cannot be the return
+            // value for 'dismissed' as well — 'all' stands in for it.
+            onPressed: () => Navigator.pop(ctx, p ?? 'all'),
+            child: Row(children: [
+              Icon(selected ? Icons.radio_button_checked : Icons.radio_button_off,
+                  size: 16,
+                  color: selected ? AppTheme.primary : const Color(0xFF6B7490)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(p ?? 'All programmes',
+                    style: GoogleFonts.spaceGrotesk(
+                        color: selected ? AppTheme.primary : Colors.white,
+                        fontSize: 13,
+                        fontWeight:
+                            selected ? FontWeight.w700 : FontWeight.w500)),
+              ),
+            ]),
+          );
+        }).toList(),
+      ),
+    );
+    if (chosen == null || !mounted) return;
+    setState(() {
+      _scopeChosenHere = true;
+      if (chosen == 'all') {
+        _allProjects = true;
+      } else {
+        _allProjects = false;
+        _activeProject = chosen as String;
+      }
+    });
+    _loadSessions();
   }
 
   Future<void> _loadSessions() async {
@@ -98,10 +163,16 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
     try {
       final client = SupabaseService.instance.client;
       final sessions = await EngineerAuthService.instance.getMySessionHistory();
-      final pm = ProjectManager.instance;
+      // Scoped to the programme THIS screen is showing, not to the globally
+      // selected one. Filtering through ProjectManager while the header named
+      // _activeProject is why picking Mahindra ICE PoC still listed Mahindra
+      // EV PoC's sessions — the same mistake the Analyser carried.
       final filtered = _allProjects
           ? sessions
-          : sessions.where((s) => pm.sessionBelongsToProject(s.projectName)).toList();
+          : sessions
+              .where((s) => ProjectManager.sessionBelongsTo(
+                  s.projectName, _activeProject))
+              .toList();
 
       final sessionIds = filtered.map((s) => s.id).toList();
       List<dynamic> svcsRaw = [];
@@ -877,7 +948,7 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
                       // against another without leaving the screen.
                       GestureDetector(
                         onTap: () {
-                          setState(() => _allProjects = !_allProjects);
+                          _pickScope();
                           _loadSessions();
                         },
                         child: Container(
