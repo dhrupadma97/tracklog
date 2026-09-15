@@ -29,9 +29,10 @@ not workshop. A WORKSHOP service line in Manual Entry is rupees on an invoice;
 `kind='workshop'` muster rows are which days. Both exist on purpose. Only the
 muster moves the Workshop figure on any screen.
 
-## The 2-hour minimum
+## The 2-hour minimum, and whole hours
 
-Tracks have a minimum billable duration (`minHrs`, e.g. T3W = 2 h at ₹21,000).
+NATRAX bills **whole hours, rounded up, per track per day**. Tracks also have a
+minimum billable duration (`minHrs`, e.g. T3W = 2 h at ₹21,000).
 
 **The minimum applies once per programme, per track, per day** — confirmed with
 Dhrupad, 14 Sep 2026. Each PoC is invoiced separately, so one programme's session
@@ -40,22 +41,55 @@ must not satisfy another's minimum or one invoice silently subsidises the other.
 Each entry charges only its **marginal** cost:
 
 ```
-dayTotal   = minutesAlreadyLoggedForThisTrackDayProgramme + entryMinutes
-billable   = max(dayTotal, minMins)
-thisCost   = billable / 60 * rate - costAlreadyBilledThatDay
+dayTotalMins  = minutesAlreadyLoggedForThisTrackDayProgramme + entryMinutes
+billableHours = max(ceil(dayTotalMins / 60), minHrs)
+thisCost      = billableHours * rate - costAlreadyBilledThatDay
 ```
 
-Worked example (T3W, ₹21,000/h, 2 h min):
-- 100 min first → `max(1.67, 2) × 21000` = **₹42,000**
-- 125 min second → `(max(3.75, 2) - 2) × 21000` = **₹36,750**
-- Day total **₹78,750**, not ₹42,000 + ₹43,750 = ₹85,750
+Worked example (T3W, ₹21,000/h, 2 h min) — 8 Sep 2026, which reconciles exactly:
+- 125 min first → `max(ceil(2.08), 2)` = 3 hrs → **₹63,000**
+- 45 min second → day 170 min → `max(ceil(2.83), 2)` = 3 hrs → **₹0**
+- 100 min third → day 270 min → `max(ceil(4.5), 2)` = 5 hrs → **₹42,000**
+- Day total **₹1,05,000**
 
-Charging the minimum per entry is the bug that over-billed 8 Sep 2026 by ₹7,000.
-Fixed in `169bc94` (9 Sep 2026); data entered before that date may still carry it.
+The ₹0 is correct, not a bug: the day had already rounded up before that session
+started. The DAY total is what NATRAX invoices; the split across sessions is
+internal.
 
-The same-day lookup must filter by **track_code, date, project and venue**.
-`track_code` is unique per venue, not globally, so an unscoped match lets a
-CoASTT layout sharing a code count towards a NATRAX day.
+Billing the raw fraction under-charged every part-hour day and was fixed in
+`20260914270000_recalc_september_whole_hours.sql`. Charging the minimum per
+entry rather than per day is a separate bug that over-billed 8 Sep 2026 by
+₹7,000, fixed in `169bc94` (9 Sep 2026); data entered before that may carry it.
+
+### T3 Wet and T3 Dry share one minimum
+
+They are two surfaces of the **same braking track**, and NATRAX applies the
+two-hour minimum to the track once a day, not to each surface. Each surface
+still rounds up on its own; only the shortfall the pair has not covered between
+them is added.
+
+Invoice INV/26-27/205 settles it. April 2026 has exactly three dry days — 7, 8
+and 9 April, running 49, 36 and 50 minutes — and wet ran on all three:
+
+```
+Braking Track Testing - WET   34 Hrs at 21,000 = 7,14,000
+Braking Track Testing - DRY    3 Hrs at 19,000 =   57,000
+```
+
+Three dry days billed as 3 Hrs is one hour each — the ceiling of each day's own
+time, with no minimum of its own, because wet had already met the day's two
+hours. Two separate minimums give 6 Hrs and ₹1,14,000, double what was invoiced.
+
+Dry running **alone** still bills two hours. `_minGroups` in
+`manual_entry_screen.dart` holds the pairing; a track with no sibling reduces to
+`max(ceil(day), minHrs)` exactly as before.
+
+Ordering caveat: the shortfall lands on whichever surface is entered first, so on
+a wet+dry day enter whichever ran first, first.
+
+The same-day lookup must filter by **track_code (or its minimum group), date,
+project and venue**. `track_code` is unique per venue, not globally, so an
+unscoped match lets a CoASTT layout sharing a code count towards a NATRAX day.
 
 ## Which project a session belongs to
 

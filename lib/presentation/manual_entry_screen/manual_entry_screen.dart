@@ -70,6 +70,12 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
   /// Used to compute the incremental cost of a new entry.
   double _sameDayCost = 0.0;
 
+  /// Whole billable hours already taken on the OTHER surface of the same
+  /// track on this date - see [_minGroups]. Each surface rounds up on its
+  /// own; this is the part of the day's minimum they have already covered
+  /// between them, so it is counted in hours, not minutes.
+  double _siblingCeilHours = 0.0;
+
   /// True while fetching the same-day total from Supabase.
   bool _loadingDayTotal = false;
 
@@ -130,40 +136,59 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
   ///
   ///   T2  Dynamic Platform   25,000 -> 20,000   (April and May invoices)
   ///   T7  4W Handling        18,000 -> 15,000   (April invoice)
-  ///   T10 Wet Skid Pad       18,000 -> 15,000   (May invoice)
-  ///   T11 Comfort            15,000 -> 10,500   (May invoice)
   ///   T16 General Road       absent -> 9,000    (May invoice; was not listed)
+  ///   T8  Comfort Track      15,000 -> 10,500   (May invoice, 23 May)
+  ///   T11 Wet Skid Pad Track 10,500 -> 15,000   (May invoice, 19 and 20 May)
+  ///
+  /// T8 and T11 carried each other's rate AND each other's name. An earlier
+  /// pass read the right rupee values off the May invoice - a 10,500 Comfort
+  /// line and a 15,000 Wet Skid Pad line - but attached them to the wrong
+  /// codes, because every imported March-May session was labelled at 25,000
+  /// and could not be tied back to an invoice line. The workbook's Daily
+  /// Track Billing sheet settles it, and `track_rates` in Supabase has said
+  /// the same since the table was seeded:
+  ///
+  ///   23 May  T8   35 min  -> 1 Hr at 10,500   Comfort Track
+  ///   19 May  T11  60 min  -> 1 Hr at 15,000   Wet Skid Pad Track
+  ///   20 May  T11  30 min  -> 1 Hr at 15,000   Wet Skid Pad Track
+  ///
+  /// Those three lines are part of May's 1,73,500 of track charges, which
+  /// ties to INV/26-27/388 exactly. T10 is renamed to match `track_rates`
+  /// only so it stops colliding with T11 in the picker; its rate has never
+  /// appeared on an invoice and is left alone.
   ///
   /// T3W 21,000, T3D 19,000 and T1 25,000 were already right. T3W billed
-  /// 19,000 in March, so the wet braking rate rose from April — a March
-  /// figure will not reconcile against this card.
+  /// 19,000 in March because March fell in FY 2025-26; the card below runs
+  /// 1 April 2026 to 31 March 2027, so a March figure will not reconcile
+  /// against it.
   ///
-  /// T8, T9, T12 and T13 have not appeared on any invoice yet, so their rates
+  /// T9, T12 and T13 have not appeared on any invoice yet, so their rates
   /// are still unverified and are left as they were.
   ///
   /// A day's usage on a track is summed, rounded UP to the whole hour, and
-  /// then floored at `minHrs`. T1, T2 and T3W carry a two-hour minimum; every
-  /// other track bills from one hour.
+  /// then floored at `minHrs`. T1, T2, T3W and T3D carry a two-hour minimum;
+  /// every other track bills from one hour.
   ///
   /// The split is read off the invoices, not assumed:
   ///
-  ///   T3W  two-hour  — May bills 41 min and 60 min on separate days as 4 Hrs
-  ///   T2   two-hour  — April bills 35 min on 9 Apr within a 5 Hrs total
-  ///   T3D  two-hour  — per the programme owner; both braking tracks are
+  ///   T3W  two-hour  - May bills 41 min and 60 min on separate days as 4 Hrs
+  ///   T2   two-hour  - April bills 35 min on 9 Apr within a 5 Hrs total
+  ///   T3D  two-hour  - per the programme owner; both braking tracks are
   ///                    two-hour bookings
-  ///   T7   one-hour  — April bills a 30 min day as 1 Hr
+  ///   T7   one-hour  - April bills a 30 min day as 1 Hr
+  ///   T8   one-hour  - May bills a 35 min day as 1 Hr
+  ///   T11  one-hour  - May bills a 30 min day as 1 Hr
   ///
-  /// Reading April alone would put T3D at one hour: three days of 36, 49 and
-  /// 50 minutes invoiced as 3 Hrs, where a two-hour minimum gives 6. That
-  /// inference is not trusted, because the imported March-May rows carry wrong
-  /// track labels and rates — May's 'T11' rows sit at 25,000 against an invoice
-  /// line of 10,500 for Comfort Track — so those session codes cannot be tied
-  /// to invoice lines with confidence. The booking terms win over arithmetic
-  /// on data known to be mislabelled.
+  /// April's T3D days argue for one hour: 36, 49 and 50 minutes invoiced as
+  /// 3 Hrs, where a two-hour minimum gives 6. That is still NOT adopted. The
+  /// programme owner's position is that both braking tracks are booked on
+  /// two-hour terms, and booking terms win over arithmetic. Reaffirmed
+  /// 15 Sep 2026, with the T8/T11 mislabelling above now fixed - so this is a
+  /// deliberate choice against clean data, no longer a doubt about the data.
   ///
-  /// None of T8, T9, T12 or T13 has appeared on an invoice yet, so their
-  /// minimums come from the programme owner rather than from arithmetic:
-  /// T8, T9 and T13 bill from one hour, T12 from two.
+  /// T9, T12 and T13 have not appeared on an invoice, so their minimums come
+  /// from the programme owner rather than from arithmetic: T9 and T13 bill
+  /// from one hour, T12 from two.
   static const _natraxTracks = [
     {'code': 'T3W',  'name': 'T3 Wet Braking Track',     'rate': 21000.0, 'minHrs': 2.0},
     {'code': 'T3D',  'name': 'T3 Dry Braking Track',     'rate': 19000.0, 'minHrs': 2.0},
@@ -171,13 +196,39 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     {'code': 'T2',   'name': 'Dynamic Platform Track',    'rate': 20000.0, 'minHrs': 2.0},
     {'code': 'T7',   'name': 'Handling Track 4W (1.6km)', 'rate': 15000.0, 'minHrs': 1.0},
     {'code': 'T16',  'name': 'General Road Track',        'rate':  9000.0, 'minHrs': 1.0},
-    {'code': 'T8',   'name': 'Gradient Track',            'rate': 15000.0, 'minHrs': 1.0},
+    {'code': 'T8',   'name': 'Comfort Track',             'rate': 10500.0, 'minHrs': 1.0},
     {'code': 'T9',   'name': 'Noise Track',               'rate': 20000.0, 'minHrs': 1.0},
-    {'code': 'T10',  'name': 'Wet Skid Pad',              'rate': 15000.0, 'minHrs': 1.0},
-    {'code': 'T11',  'name': 'Comfort Track',             'rate': 10500.0, 'minHrs': 1.0},
+    {'code': 'T10',  'name': 'Sustainability Track',      'rate': 15000.0, 'minHrs': 1.0},
+    {'code': 'T11',  'name': 'Wet Skid Pad Track',        'rate': 15000.0, 'minHrs': 1.0},
     {'code': 'T12',  'name': 'Fatigue Track',             'rate': 20000.0, 'minHrs': 2.0},
     {'code': 'T13',  'name': 'Gravel & Off-Road Track',   'rate': 15000.0, 'minHrs': 1.0},
   ];
+
+  /// Tracks that share ONE minimum between them on a given day.
+  ///
+  /// T3 Wet and T3 Dry are two surfaces of the same braking track, and NATRAX
+  /// applies the two-hour minimum to the track once a day rather than to each
+  /// surface. Invoice INV/26-27/205 settles it. April has exactly three dry
+  /// days -- 7, 8 and 9 April, running 49, 36 and 50 minutes -- and wet ran on
+  /// all three. The invoice bills:
+  ///
+  ///   Braking Track Testing - WET   34 Hrs at 21,000 = 7,14,000
+  ///   Braking Track Testing - DRY    3 Hrs at 19,000 =   57,000
+  ///
+  /// Three dry days at 3 Hrs is one hour each: the ceiling of each day's own
+  /// time, with no minimum of its own, because wet had already met the day's
+  /// two hours. Charging each surface its own two-hour minimum gives 6 Hrs
+  /// and Rs 1,14,000 -- double what was invoiced.
+  ///
+  /// Dry running ALONE still bills two hours; nothing in the data shows such
+  /// a day, and the booking terms are unchanged.
+  static const _minGroups = <String, List<String>>{
+    'T3W': ['T3W', 'T3D'],
+    'T3D': ['T3W', 'T3D'],
+  };
+
+  /// Every track code sharing this entry's day minimum, itself included.
+  List<String> get _minGroupCodes => _minGroups[_trackCode] ?? [_trackCode];
 
   // CoASTT Coimbatore. Specs come from the CoASTT deck; rates are 0 because
   // that deck states none, and the summary reads "not recorded" rather than
@@ -399,13 +450,16 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
       final dayEnd   = dayStart.add(const Duration(days: 1));
       final rows = await SupabaseService.instance.client
           .from('engineer_sessions')
-          .select('duration_minutes, total_cost, project_name, venue')
-          .eq('track_code', _trackCode)
+          .select('track_code, duration_minutes, total_cost, project_name, venue')
+          .inFilter('track_code', _minGroupCodes)
           .gte('started_at', dayStart.toIso8601String())
           .lt('started_at', dayEnd.toIso8601String());
       final list = List<Map<String, dynamic>>.from(rows as List);
       int totalMins  = 0;
       double totalCost = 0.0;
+      // Minutes on the OTHER surface of the same track, kept per code so each
+      // rounds up on its own before the day's shared minimum is tested.
+      final siblingMins = <String, int>{};
       for (final r in list) {
         // The minimum is charged once per programme per track per day, not
         // once per track. Each PoC is invoiced separately, so letting one
@@ -419,14 +473,23 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
         // would let a CoASTT layout sharing a code count towards a NATRAX day.
         final venue = (r['venue'] as String? ?? '').trim();
         if (venue.isNotEmpty && venue != _venue.dbValue) continue;
-        totalMins  += (r['duration_minutes'] as int?  ?? 0);
-        totalCost  += (r['total_cost']       as num? ?? 0).toDouble();
+        final code = (r['track_code'] as String? ?? '').trim();
+        final mins = (r['duration_minutes'] as int? ?? 0);
+        if (code == _trackCode) {
+          totalMins += mins;
+          totalCost += (r['total_cost'] as num? ?? 0).toDouble();
+        } else {
+          siblingMins[code] = (siblingMins[code] ?? 0) + mins;
+        }
       }
+      final siblingHours =
+          siblingMins.values.fold<double>(0.0, (s, m) => s + _ceilHours(m));
       if (mounted) {
         setState(() {
-          _sameDayMinutes = totalMins;
-          _sameDayCost    = totalCost;
-          _loadingDayTotal = false;
+          _sameDayMinutes   = totalMins;
+          _sameDayCost      = totalCost;
+          _siblingCeilHours = siblingHours;
+          _loadingDayTotal  = false;
         });
         _recalcCost();
         // Refresh the Today's Entries panel at the same time.
@@ -457,16 +520,27 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     final rate    = (track['rate'] as double);
     final minHrs  = (track['minHrs'] as double);
 
-    // NATRAX bills WHOLE HOURS, rounded up, per track per day. Verified against
-    // invoice INV/26-27/205 (April 2026): 30.75 h of wet braking across ten
-    // days invoiced as 34 Hrs, which is the sum of each day rounded up. Dry
-    // braking and handling reconcile the same way, to the rupee.
+    // NATRAX bills WHOLE HOURS, rounded up, per track per day. Verified
+    // against invoice INV/26-27/205 (April 2026): 30.75 h of wet braking
+    // across nine days invoiced as 34 Hrs, the sum of each day rounded up.
     //
-    // Billing the fraction under-charged every part-hour day — 2.35 h was
+    // Billing the fraction under-charged every part-hour day - 2.35 h was
     // quoted as Rs 49,350 where NATRAX will invoice 3 Hrs at Rs 63,000.
-    final dayTotalMins = _sameDayMinutes + entryMins;
-    final billableHours =
-        math.max(_ceilHours(dayTotalMins), minHrs);
+    //
+    // The MINIMUM belongs to the group, not to this surface (see [_minGroups]).
+    // Each surface rounds up on its own, and only the shortfall the group has
+    // not already covered between them is added here. For a track with no
+    // sibling this reduces to max(ceil(day), minHrs) - unchanged behaviour.
+    //
+    // Order caveat: if the sibling surface is entered AFTER this one, this
+    // entry has already absorbed the shortfall and the day can come out an
+    // hour long. The day total is what NATRAX invoices, so on a wet+dry day
+    // enter whichever surface ran first, first.
+    final dayTotalMins  = _sameDayMinutes + entryMins;
+    final thisCeil      = _ceilHours(dayTotalMins);
+    final groupCeil     = thisCeil + _siblingCeilHours;
+    final shortfall     = math.max(0.0, minHrs - groupCeil);
+    final billableHours = thisCeil + shortfall;
 
     // Incremental: what the whole day now costs, less what is already billed
     // for it. So the first entry of a day carries the rounding up and a later
