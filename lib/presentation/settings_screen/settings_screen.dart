@@ -12,6 +12,7 @@ import '../../services/excel_backup_service.dart';
 import '../../services/invoice_opener.dart';
 import '../../services/invoice_service.dart';
 import '../../widgets/invoice_upload_flow.dart';
+import '../../services/pin_lock_service.dart';
 import '../../services/project_manager.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
@@ -65,6 +66,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadProfile();
     _loadInvoices();
     _loadLastBackup();
+    _loadPinState();
+  }
+
+  /// Whether this device holds a sign-in PIN. Device-local, so it says
+  /// nothing about the account — the same login on another machine has its
+  /// own answer.
+  bool _pinSet = false;
+
+  Future<void> _loadPinState() async {
+    final set = await PinLockService.instance.isEnabled();
+    if (mounted) setState(() => _pinSet = set);
+  }
+
+  Future<void> _removePin() async {
+    await PinLockService.instance.disable();
+    if (!mounted) return;
+    setState(() => _pinSet = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(
+        'PIN removed from this device. Sign in with your email and password; '
+        'you will be offered a new PIN afterwards.',
+        style: GoogleFonts.spaceGrotesk(
+            color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+      ),
+      backgroundColor: AppTheme.success,
+      behavior: SnackBarBehavior.floating,
+    ));
   }
 
   @override
@@ -1208,6 +1236,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         fontWeight: FontWeight.w700)),
               ),
             ),
+          ]),
+        ),
+        const SizedBox(height: 10),
+        // Device PIN. Present only so a PIN can be cleared — it is SET from
+        // the login screen, which is the one place the password is in hand.
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white.withAlpha(10),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withAlpha(30)),
+          ),
+          child: Row(children: [
+            Icon(_pinSet ? Icons.dialpad_rounded : Icons.dialpad_outlined,
+                color: _pinSet ? const Color(0xFF00F3FF) : Colors.white38,
+                size: 20),
+            const SizedBox(width: 12),
+            Expanded(child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Sign-in PIN (this device)',
+                  style: GoogleFonts.spaceGrotesk(
+                      color: Colors.white, fontSize: 13,
+                      fontWeight: FontWeight.w700)),
+              Text(
+                  _pinSet
+                      ? 'Set. Unlocks the saved login on this device only.'
+                      : 'Not set. Sign out and back in to be offered one.',
+                  style: GoogleFonts.spaceGrotesk(
+                      color: const Color(0xFF8A94B0), fontSize: 11)),
+            ])),
+            if (_pinSet) ...[
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: _removePin,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent.withAlpha(20),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.redAccent.withAlpha(80)),
+                  ),
+                  child: Text('Remove',
+                      style: GoogleFonts.spaceGrotesk(
+                          color: Colors.redAccent, fontSize: 11,
+                          fontWeight: FontWeight.w700)),
+                ),
+              ),
+            ],
           ]),
         ),
         const SizedBox(height: 10),

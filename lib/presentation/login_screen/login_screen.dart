@@ -8,6 +8,8 @@ import '../../theme/app_theme.dart';
 import '../../services/engineer_auth_service.dart';
 import '../../routes/app_routes.dart';
 import '../../services/biometric_service.dart';
+import '../../services/pin_lock_service.dart';
+import '../../widgets/pin_pad.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -31,6 +33,9 @@ class _LoginScreenState extends State<LoginScreen>
   bool _biometricAvailable = false;
   bool _biometricEnabled = false;
   bool _biometricHardwareSupported = false;
+
+  /// True when this device already holds a PIN. Set in initState.
+  bool _pinEnabled = false;
 
   late AnimationController _bgAnimController;
   late AnimationController _cardAnimController;
@@ -65,8 +70,97 @@ class _LoginScreenState extends State<LoginScreen>
     );
     _cardAnimController.forward();
     _checkBiometrics();
+    _checkPin();
   }
 
+  /// Does this device already hold a PIN?
+  ///
+  /// Separate from [_checkBiometrics], which returns early on web. A PIN
+  /// works on web too — weakly, see [PinLockService] — so this must not be
+  /// behind the same guard.
+  Future<void> _checkPin() async {
+    final enabled = await PinLockService.instance.isEnabled();
+    if (mounted) setState(() => _pinEnabled = enabled);
+  }
+
+  /// Releases the credentials this device already holds and signs in with
+  /// them. The PIN is never sent anywhere; it only unlocks local storage.
+  Future<void> _unlockWithPin() async {
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withAlpha(160),
+      builder: (ctx) => PinPad(
+        title: 'Enter your PIN',
+        subtitle: 'Unlocks the account saved on this device',
+        length: PinLockService.pinLength,
+        escapeLabel: 'Use email and password',
+        onEscape: () => Navigator.of(ctx).pop(),
+        onComplete: (pin) async {
+          final r = await PinLockService.instance.unlock(pin);
+          if (!r.ok) {
+            if (r.wiped && mounted) setState(() => _pinEnabled = false);
+            return r.message ?? 'Wrong PIN.';
+          }
+          _emailController.text = r.email ?? '';
+          _passwordController.text = r.password ?? '';
+          if (ctx.mounted) Navigator.of(ctx).pop();
+          _submit();
+          return null;
+        },
+      ),
+    );
+  }
+
+  /// Offered once, straight after a successful sign-in, because that is the
+  /// only moment the password is in hand to store.
+  Future<void> _offerPinSetup() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    if (email.isEmpty || password.isEmpty) return;
+
+    String? chosen;
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withAlpha(160),
+      builder: (ctx) => PinPad(
+        title: 'Set a PIN for this device',
+        subtitle: 'Signs you in without typing your password. The PIN stays '
+            'on this device and is never sent anywhere.',
+        length: PinLockService.pinLength,
+        escapeLabel: 'Not now',
+        onEscape: () => Navigator.of(ctx).pop(),
+        onComplete: (pin) async {
+          chosen = pin;
+          Navigator.of(ctx).pop();
+          return null;
+        },
+      ),
+    );
+    if (chosen == null || !mounted) return;
+
+    var confirmed = false;
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withAlpha(160),
+      builder: (ctx) => PinPad(
+        title: 'Confirm your PIN',
+        length: PinLockService.pinLength,
+        escapeLabel: 'Cancel',
+        onEscape: () => Navigator.of(ctx).pop(),
+        onComplete: (pin) async {
+          if (pin != chosen) return 'Those did not match. Try again.';
+          confirmed = true;
+          Navigator.of(ctx).pop();
+          return null;
+        },
+      ),
+    );
+    if (!confirmed) return;
+
+    await PinLockService.instance
+        .enable(pin: chosen!, email: email, password: password);
+    if (mounted) setState(() => _pinEnabled = true);
+  }
   Future<void> _checkBiometrics() async {
     if (kIsWeb) return;
     final supported = await BiometricService.instance.isHardwareSupported();
@@ -302,6 +396,12 @@ class _LoginScreenState extends State<LoginScreen>
               _biometricEnabled = true;
             });
           }
+        }
+        // Offered here because this is the only moment the password is in
+        // hand to store. Skipped on sign-up so a brand new account reaches
+        // the app first.
+        if (mounted && !_isSignUp && !_pinEnabled) {
+          await _offerPinSetup();
         }
         if (mounted) {
           context.go(kIsWeb ? AppRoutes.projectSelection : AppRoutes.activeSession);
@@ -1362,6 +1462,40 @@ class _LoginScreenState extends State<LoginScreen>
                                 ],
                               ),
                             ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                  // PIN unlock. Shown on every platform, including web, and
+                  // only once this device actually holds a PIN.
+                  if (!_isSignUp && _pinEnabled) ...[
+                    const SizedBox(height: 12),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.white.withAlpha(36)),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: SizedBox(
+                        height: 52,
+                        width: double.infinity,
+                        child: TextButton(
+                          onPressed: _unlockWithPin,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.dialpad_rounded,
+                                  size: 20, color: Colors.white70),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Unlock with PIN',
+                                style: GoogleFonts.spaceGrotesk(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
