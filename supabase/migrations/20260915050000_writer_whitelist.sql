@@ -3,7 +3,7 @@
 -- Migration: 20260915050000_writer_whitelist.sql
 -- ============================================================
 --
--- Dhrupad, 15 Sep 2026: dhrupad_ma@goodyear.com is the other owner; anyone
+-- Dhrupad, 15 Sep 2026: a second account of his is the other owner; anyone
 -- else operating the app gets read-only access and no Manual Entry, unless
 -- he changes it.
 --
@@ -47,11 +47,17 @@ DROP POLICY IF EXISTS "authenticated_read_tracklog_writers" ON public.tracklog_w
 CREATE POLICY "authenticated_read_tracklog_writers"
   ON public.tracklog_writers FOR SELECT TO authenticated USING (true);
 
-INSERT INTO public.tracklog_writers (email, note) VALUES
-  ('dhrupadma97@gmail.com',   'owner - Dhrupad, primary account'),
-  ('dhrupad_ma@goodyear.com', 'owner - Dhrupad, Goodyear account')
-ON CONFLICT (email) DO NOTHING;
-
+-- WHO THE OWNERS ARE IS NOT IN THIS FILE. The repository is public, and a
+-- committed list of addresses is both a permanent record of personal data and
+-- a ready-made target list. Seed the table by hand in the SQL editor:
+--
+--   INSERT INTO public.tracklog_writers (email, note)
+--        VALUES ('you@example.com', 'owner')
+--     ON CONFLICT (email) DO NOTHING;
+--
+-- An empty table means NOBODY can write, which is the safe direction to fail
+-- in: read access is unaffected, and the verification at the foot of this
+-- file says so plainly. On the live project the rows are already in place.
 -- SECURITY DEFINER so it can read auth.users, which authenticated cannot.
 -- search_path is pinned: without it, a user-created schema earlier on the
 -- path could shadow `tracklog_writers` and the function would trust the

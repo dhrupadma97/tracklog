@@ -186,6 +186,18 @@ DECLARE
     t11_rate NUMERIC := 15000;
 BEGIN
     -- Create auth users (trigger auto-creates engineer_profiles)
+    --
+    -- These three carried the password 'Goodyear@2026' in plain text until
+    -- 15 Sep 2026. This file is in a PUBLIC GitHub repository, so anyone who
+    -- found it could sign in as a Goodyear engineer and read every session,
+    -- invoice, PO and rate in the project. They now get an unguessable random
+    -- password instead; anyone who genuinely needs one of these accounts goes
+    -- through password reset.
+    --
+    -- Rewriting the file does NOT change a database where this already ran,
+    -- and it does not remove the old password from git history. Deleting the
+    -- accounts is the fix for a live project -- see
+    -- scratch/TrackLog_check_seeded_accounts.sql.
     INSERT INTO auth.users (
         id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
         created_at, updated_at, raw_user_meta_data, raw_app_meta_data,
@@ -196,17 +208,17 @@ BEGIN
         phone_change_token, phone_change_sent_at
     ) VALUES
         (eng1_uuid, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
-         'arjun.sharma@goodyear.com', crypt('Goodyear@2026', gen_salt('bf', 10)), now(), now(), now(),
+         'arjun.sharma@goodyear.com', crypt(gen_random_uuid()::text, gen_salt('bf', 10)), now(), now(), now(),
          jsonb_build_object('engineer_name', 'Arjun Sharma', 'engineer_id', 'GY-ENG-001', 'department', 'Tyre Testing'),
          jsonb_build_object('provider', 'email', 'providers', ARRAY['email']::TEXT[]),
          false, false, '', null, '', null, '', '', null, '', 0, '', null, null, '', '', null),
         (eng2_uuid, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
-         'priya.nair@goodyear.com', crypt('Goodyear@2026', gen_salt('bf', 10)), now(), now(), now(),
+         'priya.nair@goodyear.com', crypt(gen_random_uuid()::text, gen_salt('bf', 10)), now(), now(), now(),
          jsonb_build_object('engineer_name', 'Priya Nair', 'engineer_id', 'GY-ENG-002', 'department', 'Vehicle Dynamics'),
          jsonb_build_object('provider', 'email', 'providers', ARRAY['email']::TEXT[]),
          false, false, '', null, '', null, '', '', null, '', 0, '', null, null, '', '', null),
         (eng3_uuid, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
-         'rahul.mehta@goodyear.com', crypt('Goodyear@2026', gen_salt('bf', 10)), now(), now(), now(),
+         'rahul.mehta@goodyear.com', crypt(gen_random_uuid()::text, gen_salt('bf', 10)), now(), now(), now(),
          jsonb_build_object('engineer_name', 'Rahul Mehta', 'engineer_id', 'GY-ENG-003', 'department', 'Braking Systems'),
          jsonb_build_object('provider', 'email', 'providers', ARRAY['email']::TEXT[]),
          false, false, '', null, '', null, '', '', null, '', 0, '', null, null, '', '', null)
