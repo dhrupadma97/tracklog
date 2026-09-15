@@ -769,7 +769,6 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
       final sessionId = sessionResp['id'] as String;
       // Insert each selected service with correct quantity & notes
       final svcRows = _selectedServices.map((s) {
-        final total = _calcServiceTotal(s);
         double qty = 0;
         String notes = '';
         switch (s.inputType) {
@@ -779,9 +778,17 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
           case ServiceInputType.perDay:
             final inD = _svcInDate[s.code]!;
             final outD = _svcOutDate[s.code]!;
-            qty = (outD.difference(inD).inDays + 1).toDouble();
+            final days = outD.difference(inD).inDays + 1;
+            qty = days.toDouble();
             notes = '${DateFormat('dd MMM').format(inD)} – ${DateFormat('dd MMM yyyy').format(outD)}';
-            if (s.code == 'S13') { // Sand bags: store nos as qty2
+            if (s.code == 'S13') {
+              // NATRAX bills sand bags as BAG-DAYS, not days. INV/26-27/205
+              // reads "Sand Bag Charges (Per Day), 75 Nos at 150" for the
+              // 36 and 39 bags logged on 6 and 16 April. quantity must carry
+              // that product, because total_cost is generated as
+              // quantity * rate: leaving qty as the day count would have
+              // billed 2 days x 150 = 300 where NATRAX charged 11,250.
+              qty = ((_svcQty[s.code] ?? 1) * days).toDouble();
               notes = '${_svcQty[s.code] ?? 1} bags/day · $notes';
             }
             break;
@@ -799,17 +806,22 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
             notes = '${tons.toStringAsFixed(1)} tons × $days days${bags > 0 ? ' · $bags bags' : ''}';
             break;
         }
-        // The column is `rate`, not `unit_rate`. Writing the wrong name made
-        // PostgREST reject the whole insert with PGRST204, so every service
-        // line ever entered failed and session_additional_services has stood
-        // empty since the table was created. `notes` did not exist either and
-        // is added by 20260915010000_service_notes.sql.
+        // total_cost is NOT sent. It is a GENERATED column --
+        // `GENERATED ALWAYS AS (quantity * rate) STORED` -- and Postgres
+        // rejects any insert that names it: 428C9, "cannot insert a
+        // non-DEFAULT value into column total_cost". That killed every
+        // service line at the last step, after the rate/unit_rate fix had
+        // already got it past PGRST204.
+        //
+        // Because the database multiplies, `quantity` has to be the full
+        // billable quantity for every service, not a day count with the
+        // real measure hidden in notes. Sand bags were the one case that
+        // broke that rule; see the S13 branch above.
         return {
           'session_id':   sessionId,
           'service_name': s.name,
           'quantity':     qty,
           'rate':         s.rate,
-          'total_cost':   total,
           'notes':        notes,
         };
       }).toList();
