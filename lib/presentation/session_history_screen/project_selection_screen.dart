@@ -328,12 +328,32 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
         );
       }
 
-      // ── Canonical totals from NATRAX_Comprehensive_Billing_Final_V15 ──────
-      // Grand Total Incl 18% GST = ₹20,33,988.42
-      // Track+Acc (excl) = ₹14,78,719 | Workshop (excl) = ₹2,45,000
-      // Subtotal excl = ₹17,23,719 | GST = ₹3,10,269.42
-      const double mahindraEvSubtotalExcl = 1723719.0;
-      const double mahindraEvTotalInclGst = 2033988.42;
+      // ── Canonical totals, corrected 15 Sep 2026 ──────────────────────────
+      // Grand Total Incl 18% GST = Rs 20,44,608.42
+      // Track+Acc (excl) = Rs 14,87,719 | Workshop (excl) = Rs 2,45,000
+      // Subtotal excl = Rs 17,32,719 | GST = Rs 3,11,889.42
+      //
+      // WAS Rs 17,23,719 / Rs 20,33,988.42. Rs 9,000 light, and the gap is
+      // one specific session: 18-May-2026, T16, 24 min, 1 billable hour at
+      // 9,000. The original Excel import dropped that row, so every figure
+      // derived from the import inherited the hole -- including the old
+      // hardcoded May total of Rs 3,77,739, which is exactly Rs 3,86,739
+      // minus the same 9,000.
+      //
+      // T16 is NOT an estimate. It is on INV/26-27/388, inside the
+      // Rs 1,73,500 of May track lines, so the invoice-backed figure has to
+      // include it. 20260915020000_fix_excel_import.sql restored the session.
+      //
+      // The arithmetic closes exactly against what the Analyser now computes:
+      //   track from sessions   1,33,000 + 9,66,000 + 1,73,500 = 12,72,500
+      //   accessories           BillingBaseline.accessoriesTotal = 2,15,219
+      //                                            Track + Acc  = 14,87,719
+      // and 14,78,719 - 2,15,219 = 12,63,500, the track total WITHOUT T16.
+      //
+      // Changed with Dhrupad's explicit agreement. Pinned figures do not move
+      // on their own; this one moved because the invoice says so.
+      const double mahindraEvSubtotalExcl = 1732719.0;
+      const double mahindraEvTotalInclGst = 2044608.42;
 
       // For non-EV projects, still compute from Supabase (future PoCs)
       for (final s in sessionsRaw) {

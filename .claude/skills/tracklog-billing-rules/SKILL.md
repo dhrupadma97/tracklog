@@ -163,17 +163,35 @@ PO tracker, invoice totals, manager report and e-mail reports at once.
 ## Pinned figures — deliberate, do not "fix"
 
 These are hardcoded on purpose because they are reconciled against real invoices.
-Dhrupad has confirmed twice they stay:
+Dhrupad has confirmed they stay:
 
 - `BillingBaseline` — pinned monthly figures for closed Mahindra EV PoC months
-- `session_history_screen.dart` — `₹377,739` / `₹1,152,375`, and the May/April
-  2026 period pinning that goes with them
-- `project_selection_screen.dart` — `₹17,23,719` / `₹20,33,988.42` EV totals
+- `project_selection_screen.dart` — **`₹17,32,719` / `₹20,44,608.42`** EV totals
 - Track rates in `manual_entry_screen.dart` — **rates are fixed and will not
-  change**
+  change**, except the T8/T11 correction of 15 Sep 2026 (they held each other's
+  rate; see the file's own doc comment)
 
 Computed figures must never silently drift from these. If a change would make a
 pinned month recompute from sessions, say so before making it.
+
+**The EV totals moved once, on 15 Sep 2026, and the old values are not a
+target to restore.** They were `₹17,23,719` / `₹20,33,988.42` — ₹9,000 light,
+because the original Excel import dropped the 18-May-2026 T16 session (24 min,
+1 billable hour at 9,000). That row is on INV/26-27/388 inside the ₹1,73,500 of
+May track lines, so the invoice-backed figure has to include it. The same
+₹9,000 hole was in the old `session_history_screen.dart` pins of `₹377,739` /
+`₹1,152,375` — `₹3,86,739 − 9,000` — which are now gone from that file and
+survive only as a comment explaining why a screen must not hardcode live
+figures.
+
+The arithmetic that closes it:
+
+```
+track from sessions   1,33,000 + 9,66,000 + 1,73,500 = 12,72,500
+accessories           BillingBaseline.accessoriesTotal = 2,15,219
+                                           Track + Acc = 14,87,719
+14,78,719 − 2,15,219 = 12,63,500 ← the track total WITHOUT T16
+```
 
 ## Half-logged days
 
