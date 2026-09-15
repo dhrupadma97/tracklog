@@ -725,11 +725,16 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
             notes = '${tons.toStringAsFixed(1)} tons × $days days${bags > 0 ? ' · $bags bags' : ''}';
             break;
         }
+        // The column is `rate`, not `unit_rate`. Writing the wrong name made
+        // PostgREST reject the whole insert with PGRST204, so every service
+        // line ever entered failed and session_additional_services has stood
+        // empty since the table was created. `notes` did not exist either and
+        // is added by 20260915010000_service_notes.sql.
         return {
           'session_id':   sessionId,
           'service_name': s.name,
           'quantity':     qty,
-          'unit_rate':    s.rate,
+          'rate':         s.rate,
           'total_cost':   total,
           'notes':        notes,
         };
