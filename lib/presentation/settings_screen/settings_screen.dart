@@ -13,6 +13,7 @@ import '../../services/invoice_opener.dart';
 import '../../services/invoice_service.dart';
 import '../../widgets/invoice_upload_flow.dart';
 import '../../services/pin_lock_service.dart';
+import '../../widgets/pin_pad.dart';
 import '../../services/project_manager.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
@@ -74,6 +75,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// own answer.
   bool _pinSet = false;
 
+  /// Which settings tab is showing.
+  ///
+  /// The page was one scroll of seven sections, and Invoices alone is ~320
+  /// lines of it, so anything below that was effectively unreachable -- which
+  /// is how the change-password card ended up unrendered and unnoticed.
+  int _tab = 0;
+
+  static const _tabs = <({String label, IconData icon})>[
+    (label: 'Account',       icon: Icons.person_outline_rounded),
+    (label: 'Notifications', icon: Icons.notifications_none_rounded),
+    (label: 'Billing',       icon: Icons.receipt_long_outlined),
+    (label: 'Security',      icon: Icons.shield_outlined),
+  ];
+
   Future<void> _loadPinState() async {
     final set = await PinLockService.instance.isEnabled();
     if (mounted) setState(() => _pinSet = set);
@@ -93,6 +108,126 @@ class _SettingsScreenState extends State<SettingsScreen> {
       backgroundColor: AppTheme.success,
       behavior: SnackBarBehavior.floating,
     ));
+  }
+
+  /// Sets a PIN without signing out.
+  ///
+  /// The login screen offers one straight after sign-in, which is the only
+  /// moment it holds the password. Anyone already signed in never passes
+  /// through that, so this asks for the password and verifies it the same way
+  /// [_changePassword] does, rather than making them sign out and back in.
+  Future<void> _setPinFromSettings() async {
+    final email = _profile?.email ?? '';
+    if (email.isEmpty) return _snack('Profile not loaded yet', error: true);
+
+    final passCtrl = TextEditingController();
+    final password = await showDialog<String>(
+      context: context,
+      barrierColor: Colors.black.withAlpha(160),
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0A1025),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.white.withAlpha(20)),
+        ),
+        title: Text('Confirm your password',
+            style: GoogleFonts.spaceGrotesk(
+                color: Colors.white, fontSize: 16,
+                fontWeight: FontWeight.w700)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(
+            'The PIN releases this login on this device, so the password has '
+            'to be checked once before it can be stored.',
+            style: GoogleFonts.spaceGrotesk(
+                color: const Color(0xFF8A94B0), fontSize: 12),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: passCtrl,
+            obscureText: true,
+            autofocus: true,
+            style: GoogleFonts.spaceGrotesk(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: 'Password',
+              hintStyle: GoogleFonts.spaceGrotesk(color: Colors.white38),
+              filled: true,
+              fillColor: Colors.white.withAlpha(13),
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide.none),
+            ),
+            onSubmitted: (v) => Navigator.of(ctx).pop(v),
+          ),
+        ]),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text('Cancel',
+                  style: GoogleFonts.spaceGrotesk(color: Colors.white54))),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(passCtrl.text),
+              child: Text('Continue',
+                  style: GoogleFonts.spaceGrotesk(
+                      color: const Color(0xFF00F3FF),
+                      fontWeight: FontWeight.w700))),
+        ],
+      ),
+    );
+    passCtrl.dispose();
+    if (password == null || password.isEmpty || !mounted) return;
+
+    try {
+      await EngineerAuthService.instance
+          .signIn(email: email, password: password);
+    } catch (_) {
+      return _snack('Incorrect password', error: true);
+    }
+    if (!mounted) return;
+
+    String? chosen;
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withAlpha(160),
+      builder: (ctx) => PinPad(
+        title: 'Set a PIN for this device',
+        subtitle: 'Signs you in without typing your password. The PIN stays '
+            'on this device and is never sent anywhere.',
+        length: PinLockService.pinLength,
+        escapeLabel: 'Cancel',
+        onEscape: () => Navigator.of(ctx).pop(),
+        onComplete: (pin) async {
+          chosen = pin;
+          Navigator.of(ctx).pop();
+          return null;
+        },
+      ),
+    );
+    if (chosen == null || !mounted) return;
+
+    var confirmed = false;
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withAlpha(160),
+      builder: (ctx) => PinPad(
+        title: 'Confirm your PIN',
+        length: PinLockService.pinLength,
+        escapeLabel: 'Cancel',
+        onEscape: () => Navigator.of(ctx).pop(),
+        onComplete: (pin) async {
+          if (pin != chosen) return 'Those did not match. Try again.';
+          confirmed = true;
+          Navigator.of(ctx).pop();
+          return null;
+        },
+      ),
+    );
+    if (!confirmed || !mounted) return;
+
+    await PinLockService.instance
+        .enable(pin: chosen!, email: email, password: password);
+    if (!mounted) return;
+    setState(() => _pinSet = true);
+    _snack('PIN set. Next sign-in, use Unlock with PIN.');
   }
 
   @override
@@ -337,17 +472,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     physics: const BouncingScrollPhysics(),
                     slivers: [
                       SliverToBoxAdapter(child: _buildPageHeader()),
-                      SliverToBoxAdapter(child: _buildProfileCard()),
-                      SliverToBoxAdapter(child: _sectionLabel('COMMUNICATION')),
-                      SliverToBoxAdapter(child: _buildCommunicationSection()),
-                      SliverToBoxAdapter(child: _sectionLabel('PREFERENCES')),
-                      SliverToBoxAdapter(child: _buildNotificationsSection()),
-                      SliverToBoxAdapter(child: _buildExportSection()),
-                      SliverToBoxAdapter(child: _buildBackupSection()),
-                      SliverToBoxAdapter(child: _sectionLabel('BILLING')),
-                      SliverToBoxAdapter(child: _buildInvoicesSection()),
-                      SliverToBoxAdapter(child: _sectionLabel('SECURITY')),
-                      SliverToBoxAdapter(child: _buildSecuritySection()),
+                      SliverToBoxAdapter(child: _tabBar()),
+                      // Keyed on the tab so switching rebuilds rather than
+                      // trying to reuse element state across two unrelated
+                      // lists of cards.
+                      SliverList(
+                        key: ValueKey(_tab),
+                        delegate: SliverChildListDelegate(_tabContent()),
+                      ),
                       const SliverToBoxAdapter(child: SizedBox(height: 120)),
                     ],
                   ),
@@ -394,6 +526,92 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // ─── Section label ─────────────────────────────────────────────────────────
+
+
+  /// The tab strip. Scrolls horizontally so it survives a phone width without
+  /// the labels being cut or wrapped onto a second line.
+  Widget _tabBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: List.generate(_tabs.length, (i) {
+            final sel = i == _tab;
+            final t = _tabs[i];
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: GestureDetector(
+                onTap: () => setState(() => _tab = i),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: sel
+                        ? AppTheme.primary.withAlpha(28)
+                        : Colors.white.withAlpha(10),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: sel
+                          ? AppTheme.primary.withAlpha(110)
+                          : Colors.white.withAlpha(26),
+                    ),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(t.icon,
+                        size: 15,
+                        color: sel ? AppTheme.primary : Colors.white54),
+                    const SizedBox(width: 7),
+                    Text(t.label,
+                        style: GoogleFonts.spaceGrotesk(
+                          fontSize: 12.5,
+                          fontWeight: sel ? FontWeight.w700 : FontWeight.w600,
+                          color: sel ? AppTheme.primary : Colors.white60,
+                        )),
+                  ]),
+                ),
+              ),
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
+  /// Only the selected tab's content. Nothing else is built, so a tab switch
+  /// costs nothing and no section can hide below another.
+  List<Widget> _tabContent() {
+    switch (_tab) {
+      case 0:
+        return [
+          _buildProfileCard(),
+          _sectionLabel('PASSWORD'),
+          // Never rendered before this tab existed: the card was defined and
+          // left out of the sliver list, so nobody could change a password
+          // from Settings at all.
+          _buildAccountSection(),
+        ];
+      case 1:
+        return [
+          _sectionLabel('REPORT RECIPIENTS'),
+          _buildCommunicationSection(),
+          _sectionLabel('ALERTS'),
+          _buildNotificationsSection(),
+          _sectionLabel('EXPORT FREQUENCY'),
+          _buildExportSection(),
+        ];
+      case 2:
+        return [
+          _sectionLabel('INVOICES'),
+          _buildInvoicesSection(),
+          _sectionLabel('BACKUP'),
+          _buildBackupSection(),
+        ];
+      default:
+        return [_sectionLabel('SECURITY'), _buildSecuritySection()];
+    }
+  }
 
   Widget _sectionLabel(String label) => Padding(
     padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
@@ -1262,29 +1480,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Text(
                   _pinSet
                       ? 'Set. Unlocks the saved login on this device only.'
-                      : 'Not set. Sign out and back in to be offered one.',
+                      : 'Not set. Needs your password once, then four digits.',
                   style: GoogleFonts.spaceGrotesk(
                       color: const Color(0xFF8A94B0), fontSize: 11)),
             ])),
-            if (_pinSet) ...[
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: _removePin,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: Colors.redAccent.withAlpha(20),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.redAccent.withAlpha(80)),
-                  ),
-                  child: Text('Remove',
-                      style: GoogleFonts.spaceGrotesk(
-                          color: Colors.redAccent, fontSize: 11,
-                          fontWeight: FontWeight.w700)),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: _pinSet ? _removePin : _setPinFromSettings,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: (_pinSet ? Colors.redAccent : const Color(0xFF00F3FF))
+                      .withAlpha(20),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                      color: (_pinSet
+                              ? Colors.redAccent
+                              : const Color(0xFF00F3FF))
+                          .withAlpha(80)),
                 ),
+                child: Text(_pinSet ? 'Remove' : 'Set PIN',
+                    style: GoogleFonts.spaceGrotesk(
+                        color:
+                            _pinSet ? Colors.redAccent : const Color(0xFF00F3FF),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700)),
               ),
-            ],
+            ),
           ]),
         ),
         const SizedBox(height: 10),

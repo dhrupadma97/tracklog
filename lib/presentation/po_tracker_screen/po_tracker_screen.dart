@@ -32,6 +32,20 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
   bool _loading = true;
   String? _error;
 
+  /// PO numbers whose drawdown detail is open.
+  ///
+  /// Collapsed by default so the screen answers "what is left" before it
+  /// answers "why". The drawdown is ~230 lines of widget per PO; with four
+  /// POs open at once nothing above the fold was legible.
+  final Set<String> _expandedPos = <String>{};
+
+  /// The analysis cards below the PO list, behind one disclosure.
+  ///
+  /// Reconciliation, spend breakdown, progress and attachments are all
+  /// answers to follow-up questions. They were stacked permanently under the
+  /// list, which is what made this screen feel cluttered.
+  bool _showAnalysis = false;
+
   // PO data
   List<Map<String, dynamic>> _poList = [];
   List<_PoAttachment> _customAttachments = [];
@@ -986,16 +1000,35 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                                       ),
                                     )),
                               ],
+                              // Money nobody can attribute to a PO is not a
+                              // detail -- it stays on screen.
                               _buildUnattributedWarning(),
+                              // The headline answer: what is left overall.
                               _buildBalanceSummaryCard(),
-                              const SizedBox(height: 16),
-                              _buildReconciliationCard(),
-                              const SizedBox(height: 16),
-                              _buildProgressBar(),
-                              const SizedBox(height: 16),
-                              _buildSpendBreakdown(),
-                              const SizedBox(height: 16),
-                              _buildPoAttachmentsCard(),
+                              const SizedBox(height: 8),
+                              // Everything below answers a follow-up question,
+                              // so it sits behind one disclosure instead of
+                              // four permanent cards. Four stacked cards is
+                              // what made this screen unreadable.
+                              _disclosure(
+                                label: _showAnalysis
+                                    ? 'HIDE ANALYSIS'
+                                    : 'ANALYSIS & RECONCILIATION',
+                                hint: 'invoices, spend breakdown, attachments',
+                                open: _showAnalysis,
+                                onTap: () => setState(
+                                    () => _showAnalysis = !_showAnalysis),
+                              ),
+                              if (_showAnalysis) ...[
+                                const SizedBox(height: 8),
+                                _buildReconciliationCard(),
+                                const SizedBox(height: 16),
+                                _buildProgressBar(),
+                                const SizedBox(height: 16),
+                                _buildSpendBreakdown(),
+                                const SizedBox(height: 16),
+                                _buildPoAttachmentsCard(),
+                              ],
                               const SizedBox(height: 100),
                             ],
                           ),
@@ -1101,6 +1134,46 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
     );
   }
 
+
+  /// A quiet expand/collapse row.
+  ///
+  /// One visual language for both the per-PO drawdown and the analysis block,
+  /// so the screen has a single idea of "there is more here" rather than
+  /// several cards each shouting at the same volume.
+  Widget _disclosure({
+    required String label,
+    required String hint,
+    required bool open,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(children: [
+          Icon(open ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+              size: 18, color: Colors.white54),
+          const SizedBox(width: 8),
+          Text(label,
+              style: GoogleFonts.spaceGrotesk(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3)),
+          const Spacer(),
+          if (!open && hint.isNotEmpty)
+            Flexible(
+              child: Text(hint,
+                  textAlign: TextAlign.right,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.spaceGrotesk(
+                      color: const Color(0xFF6B7490), fontSize: 11)),
+            ),
+        ]),
+      ),
+    );
+  }
   Widget _buildPoInfoCard(Map<String, dynamic> po) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
@@ -1275,7 +1348,26 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                   ),
                 ],
               ),
-              _buildPoDrawdown(po),
+              // Drawdown detail, collapsed. The summary rows above already
+              // say value, spent and remaining; this says which invoices got
+              // it there, which is a follow-up question.
+              Builder(builder: (_) {
+                final n = (po['po_number'] as String? ?? '').trim();
+                final open = _expandedPos.contains(n);
+                final invCount = (_invoicesByPo[n] ?? const []).length;
+                return Column(children: [
+                  _disclosure(
+                    label: open ? 'HIDE DETAIL' : 'DETAIL',
+                    hint: invCount == 0
+                        ? 'no invoices yet'
+                        : '$invCount invoice${invCount == 1 ? '' : 's'}',
+                    open: open,
+                    onTap: () => setState(() =>
+                        open ? _expandedPos.remove(n) : _expandedPos.add(n)),
+                  ),
+                  if (open) _buildPoDrawdown(po),
+                ]);
+              }),
             ],
           ),
         ),
