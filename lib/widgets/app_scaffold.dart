@@ -158,21 +158,15 @@ class _WideScaffoldState extends State<_WideScaffold> {
       ));
     }
 
-    // 7. Updates & Trends & Instruments
+    // 7. Instruments
+    //
+    // Updates (branch 7) and Trends (branch 8) are hidden from the web rail
+    // for now. Only the nav entries are gone: both routes still exist and both
+    // screens still build, so restoring them is putting these two _NavItems
+    // back — deleting the screens would make that a rewrite instead.
+    // Mobile still lists them; see app_navigation.dart.
     if (kIsWeb) {
       items.addAll([
-        const _NavItem(
-          icon: Icons.campaign_outlined,
-          activeIcon: Icons.campaign_rounded,
-          label: 'Updates',
-          branch: 7,
-        ),
-        const _NavItem(
-          icon: Icons.trending_up_outlined,
-          activeIcon: Icons.trending_up_rounded,
-          label: 'Trends',
-          branch: 8,
-        ),
         const _NavItem(
           icon: Icons.precision_manufacturing_outlined,
           activeIcon: Icons.precision_manufacturing,
