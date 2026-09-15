@@ -222,7 +222,47 @@ class EngineerAuthService {
     }
   }
 
-  // ── Sessions ──────────────────────────────────────────────────────────────
+
+  /// Whether the signed-in user may write, as the DATABASE sees it.
+  ///
+  /// Read from `public.tracklog_writers`, the same table
+  /// `public.can_write_tracklog()` checks inside every write policy, so the
+  /// UI and RLS can never disagree about who is an owner.
+  ///
+  /// Deliberately NOT a column on engineer_profiles: `engineers_manage_own_
+  /// profile` lets a user UPDATE their own row, so a flag living there could
+  /// be granted to oneself. tracklog_writers has a read policy and no write
+  /// policy at all.
+  ///
+  /// This only decides what the UI OFFERS. It is not the security boundary —
+  /// RLS is, and it applies whatever the client believes.
+  bool? _canWriteCache;
+
+  Future<bool> canWrite({bool refresh = false}) async {
+    if (!refresh && _canWriteCache != null) return _canWriteCache!;
+    final email = currentUser?.email;
+    if (email == null || email.isEmpty) return _canWriteCache = false;
+    try {
+      final rows = await _client
+          .from('tracklog_writers')
+          .select('email')
+          .ilike('email', email);
+      return _canWriteCache = (rows as List).isNotEmpty;
+    } on PostgrestException catch (e) {
+      // 42P01 = undefined_table: the whitelist migration has not been run on
+      // this project yet. Fall OPEN so a deploy that lands before the SQL
+      // does not hide Manual Entry from the owner; the old policies still
+      // govern writes in that window. Every other failure falls CLOSED.
+      if (e.code == '42P01') return _canWriteCache = true;
+      return _canWriteCache = false;
+    } catch (_) {
+      return _canWriteCache = false;
+    }
+  }
+
+  /// Drops the cached answer, so a sign-out or account switch re-checks.
+  void clearWriteCache() => _canWriteCache = null;
+  // ── Sessions ────────────────────────────────────────────────────────
 
   Future<String> startSession({
     required String trackCode,

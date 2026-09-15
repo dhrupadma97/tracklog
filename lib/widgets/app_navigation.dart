@@ -21,6 +21,11 @@ class _AppNavigationState extends State<AppNavigation>
   int _lastIndex = 0;
   bool _isManager = false;
 
+  /// Whether this account may write, per public.tracklog_writers - the same
+  /// table every RLS write policy checks. Starts false so a read-only user
+  /// never sees Manual Entry flash into view before the check returns.
+  bool _canWrite = false;
+
   List<_TabSpec> get _tabs {
     final list = <_TabSpec>[];
 
@@ -68,13 +73,15 @@ class _AppNavigationState extends State<AppNavigation>
       ));
     }
 
-    // 4. Manual Entry
-    list.add(const _TabSpec(
-      icon: 'edit_note',
-      selectedIcon: 'edit_note',
-      label: 'Manual Entry',
-      branchIndex: 3,
-    ));
+    // 4. Manual Entry - owners only, matching the web rail.
+    if (_canWrite) {
+      list.add(const _TabSpec(
+        icon: 'edit_note',
+        selectedIcon: 'edit_note',
+        label: 'Manual Entry',
+        branchIndex: 3,
+      ));
+    }
 
     // 5. Settings
     list.add(const _TabSpec(
@@ -169,9 +176,11 @@ class _AppNavigationState extends State<AppNavigation>
 
   Future<void> _loadRole() async {
     final profile = await EngineerAuthService.instance.getCurrentProfile();
+    final canWrite = await EngineerAuthService.instance.canWrite();
     if (mounted) {
       setState(() {
         _isManager = profile?.userRole == 'manager';
+        _canWrite = canWrite;
       });
     }
   }

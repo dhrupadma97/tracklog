@@ -67,6 +67,11 @@ class _WideScaffold extends StatefulWidget {
 
 class _WideScaffoldState extends State<_WideScaffold> {
   bool _isManager = false;
+
+  /// Whether this account may write, per public.tracklog_writers - the same
+  /// table every RLS write policy checks. Starts false so a read-only user
+  /// never sees Manual Entry flash into view before the check returns.
+  bool _canWrite = false;
   EngineerProfile? _profile;
 
   @override
@@ -77,10 +82,12 @@ class _WideScaffoldState extends State<_WideScaffold> {
 
   Future<void> _loadRole() async {
     final profile = await EngineerAuthService.instance.getCurrentProfile();
+    final canWrite = await EngineerAuthService.instance.canWrite();
     if (mounted) {
       setState(() {
         _profile = profile;
         _isManager = profile?.userRole == 'manager';
+        _canWrite = canWrite;
       });
     }
   }
@@ -132,13 +139,19 @@ class _WideScaffoldState extends State<_WideScaffold> {
       ));
     }
 
-    // 4. Manual Entry
-    items.add(const _NavItem(
-      icon: Icons.edit_note_outlined,
-      activeIcon: Icons.edit_note_rounded,
-      label: 'Manual Entry',
-      branch: 3,
-    ));
+    // 4. Manual Entry - owners only.
+    //
+    // Hidden rather than disabled: a read-only user has nothing to do on that
+    // screen, and every save would be refused by RLS anyway. The database is
+    // the boundary; this only stops the app offering a dead end.
+    if (_canWrite) {
+      items.add(const _NavItem(
+        icon: Icons.edit_note_outlined,
+        activeIcon: Icons.edit_note_rounded,
+        label: 'Manual Entry',
+        branch: 3,
+      ));
+    }
 
     // 5. Settings
     items.add(const _NavItem(
