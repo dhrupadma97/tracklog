@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../services/billing_baseline.dart';
 import '../services/invoice_service.dart';
 import '../services/natrax_invoice_parser.dart';
+import '../services/pdf_text_extractor.dart';
 import '../services/project_catalog.dart';
 import '../services/project_manager.dart';
 import '../theme/app_theme.dart';
@@ -55,7 +56,8 @@ class InvoiceUploadFlow {
     if (!context.mounted) return null;
 
     if (parsed.isUnreadable) {
-      final proceed = await _unreadableDialog(context, file.name);
+      final proceed = await _unreadableDialog(context, file.name,
+          tooLarge: (file.bytes?.length ?? 0) > PdfTextExtractor.maxBytes);
       if (proceed != true || !context.mounted) return null;
     }
 
@@ -98,7 +100,8 @@ class InvoiceUploadFlow {
   }
 
   /// Shown when a PDF carries no text layer — almost always a scan.
-  static Future<bool?> _unreadableDialog(BuildContext context, String fileName) {
+  static Future<bool?> _unreadableDialog(BuildContext context, String fileName,
+      {bool tooLarge = false}) {
     return showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -120,11 +123,19 @@ class InvoiceUploadFlow {
           ),
         ]),
         content: Text(
-          '$fileName has no text layer, so it is a scanned image rather than a '
-          'digital invoice. The figures cannot be read from it automatically.\n\n'
-          'A NATRAX invoice from Tally reads itself; invoices from other '
-          'vendors often will not. You can continue and fill the amounts in by '
-          'hand.',
+          tooLarge
+              ? '$fileName is larger than '
+                  '${(PdfTextExtractor.maxBytes / (1024 * 1024)).round()} MB, so '
+                  'it was not read. Reading a file that size blocks the whole '
+                  'app while it works, with nothing on screen to say so.\n\n'
+                  'Continue and fill the amounts in by hand — it is quicker '
+                  'than the wait would have been.'
+              : '$fileName has no text layer, so it is a scanned image rather '
+                  'than a digital invoice. The figures cannot be read from it '
+                  'automatically.\n\n'
+                  'A NATRAX invoice from Tally reads itself; invoices from '
+                  'other vendors often will not. You can continue and fill the '
+                  'amounts in by hand.',
           style: GoogleFonts.spaceGrotesk(
               color: const Color(0xFF8A94B0), fontSize: 12, height: 1.55),
         ),

@@ -21,7 +21,23 @@ class PdfTextExtractor {
 
   /// Returns the document's visible text, one logical line per text-positioning
   /// operator. Empty when the PDF carries no text layer.
+  /// Largest PDF this will try to read.
+  ///
+  /// Extraction decodes the whole file to a string and runs several global
+  /// regexes over it, one of which (`/Font << ... >>` with dotAll) backtracks
+  /// badly on a large document. It is synchronous, and Flutter web has no
+  /// isolates to move it to, so a big PDF freezes the entire app with no
+  /// spinner and no way out — which is what a scanned or image-heavy e-invoice
+  /// did.
+  ///
+  /// Above this size the text layer is not read. That is not a failure: the
+  /// caller already handles an empty result as "no text layer", offers to
+  /// continue, and takes the figures by hand. Waiting is the only option that
+  /// was never acceptable.
+  static const int maxBytes = 2 * 1024 * 1024;
+
   static String extractText(Uint8List bytes) {
+    if (bytes.length > maxBytes) return '';
     final raw = _latin1.decode(bytes);
     final buffer = StringBuffer();
 
