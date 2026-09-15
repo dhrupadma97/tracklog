@@ -255,6 +255,81 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
     return s == 'used' || s == 'closed' || s == 'exhausted';
   }
 
+  /// Heading above each group of PO cards.
+  Widget _poSectionHeader(
+      String title, String subtitle, Color accent, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(children: [
+        Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: accent.withAlpha(28),
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(color: accent.withAlpha(70)),
+          ),
+          child: Icon(icon, size: 15, color: accent),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title,
+                style: GoogleFonts.spaceGrotesk(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800)),
+            Text(subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.spaceGrotesk(
+                    color: accent, fontSize: 10, fontWeight: FontWeight.w600)),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  /// Money left on a PO, incl. tax: what it is worth less what has been
+  /// invoiced against it.
+  double _balanceOf(Map<String, dynamic> po) {
+    final number = (po['po_number'] as String? ?? '').trim();
+    final val = (po['total_po_value'] as num?)?.toDouble() ?? 0;
+    final tax = (po['tax_amount'] as num?)?.toDouble() ?? 0;
+    return (val + tax) - _invoicedAgainst(number);
+  }
+
+  /// Spent, whatever its status says.
+  ///
+  /// Status alone was not enough: a PO is drawn down by invoices, and nobody
+  /// goes back to mark it 'used' the day the last one lands. 8242348442 sits
+  /// at 'active' with 80% invoiced, so it read as available funding while
+  /// having weeks left to live and only a fraction of its value free.
+  ///
+  /// One rupee of tolerance, because the tax on three invoices rarely sums to
+  /// the tax on the PO to the paisa.
+  bool _isSpent(Map<String, dynamic> po) {
+    if (_isExhausted(po)) return true;
+    final val = (po['total_po_value'] as num?)?.toDouble() ?? 0;
+    final tax = (po['tax_amount'] as num?)?.toDouble() ?? 0;
+    // A PO with no value recorded is unknown, not spent.
+    if (val + tax <= 0) return false;
+    return _balanceOf(po) <= 1;
+  }
+
+  /// POs with money left, most drawn down first — the one closest to closing
+  /// is the one that needs attention.
+  List<Map<String, dynamic>> get _livePos {
+    final live = _poList.where((p) => !_isSpent(p)).toList();
+    live.sort((a, b) => _balanceOf(a).compareTo(_balanceOf(b)));
+    return live;
+  }
+
+  /// POs with nothing left. Kept visible because their invoices are history,
+  /// but separated so they cannot be mistaken for available funding.
+  List<Map<String, dynamic>> get _spentPos =>
+      _poList.where(_isSpent).toList();
+
   /// POs that can still be booked against: not exhausted, and with a value on
   /// record. A PO whose value is unknown cannot be counted as funding.
   List<Map<String, dynamic>> get _bookablePos => _poList.where((p) {
@@ -871,10 +946,46 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                                 Center(
                                   child: Text('No POs found', style: GoogleFonts.spaceGrotesk(color: Colors.white54)),
                                 ),
-                              ..._projectPos.map((po) => Padding(
-                                padding: const EdgeInsets.only(bottom: 16),
-                                child: _buildPoInfoCard(po),
-                              )),
+                              // Split so spent POs cannot be read as funding.
+                              // A flat list put 8242348442 -- 80% gone, two
+                              // weeks from expiry -- beside an untouched PO
+                              // with no visual difference between them.
+                              if (_livePos.isNotEmpty) ...[
+                                _poSectionHeader(
+                                  'Available to book',
+                                  '${_livePos.length} PO'
+                                      '${_livePos.length == 1 ? '' : 's'} · '
+                                      '₹${_formatAmount(_livePos.fold<double>(0, (s, p) => s + _balanceOf(p)))} left',
+                                  const Color(0xFF4CAF50),
+                                  Icons.account_balance_wallet_outlined,
+                                ),
+                                ..._livePos.map((po) => Padding(
+                                      padding:
+                                          const EdgeInsets.only(bottom: 16),
+                                      child: _buildPoInfoCard(po),
+                                    )),
+                              ],
+                              if (_spentPos.isNotEmpty) ...[
+                                _poSectionHeader(
+                                  'Fully drawn down',
+                                  '${_spentPos.length} PO'
+                                      '${_spentPos.length == 1 ? '' : 's'} · '
+                                      'history only, no funding left',
+                                  const Color(0xFF6B7490),
+                                  Icons.lock_outline_rounded,
+                                ),
+                                ..._spentPos.map((po) => Padding(
+                                      padding:
+                                          const EdgeInsets.only(bottom: 16),
+                                      child: Opacity(
+                                        // Dimmed, not hidden: the invoices on
+                                        // it are real history and still have
+                                        // to be findable.
+                                        opacity: 0.62,
+                                        child: _buildPoInfoCard(po),
+                                      ),
+                                    )),
+                              ],
                               _buildUnattributedWarning(),
                               _buildBalanceSummaryCard(),
                               const SizedBox(height: 16),
