@@ -126,10 +126,12 @@ class InvoiceUploadFlow {
           tooLarge
               ? '$fileName is larger than '
                   '${(PdfTextExtractor.maxBytes / (1024 * 1024)).round()} MB, so '
-                  'it was not read. Reading a file that size blocks the whole '
-                  'app while it works, with nothing on screen to say so.\n\n'
-                  'Continue and fill the amounts in by hand — it is quicker '
-                  'than the wait would have been.'
+                  'the figures were not read off it automatically. Reading a '
+                  'file that size blocks the whole app while it works, with '
+                  'nothing on screen to say so.\n\n'
+                  'The PDF itself uploads normally — only the automatic '
+                  'reading is skipped. Continue, type the amounts in, and the '
+                  'file is stored with them.'
               : '$fileName has no text layer, so it is a scanned image rather '
                   'than a digital invoice. The figures cannot be read from it '
                   'automatically.\n\n'
@@ -149,7 +151,7 @@ class InvoiceUploadFlow {
             style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFFFB547)),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Enter by hand',
+            child: Text(tooLarge ? 'Continue' : 'Enter by hand',
                 style: TextStyle(color: Color(0xFF1A1200))),
           ),
         ],
