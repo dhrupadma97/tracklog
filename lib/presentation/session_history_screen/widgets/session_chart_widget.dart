@@ -41,53 +41,24 @@ class _SessionChartWidgetState extends State<SessionChartWidget> {
     return spots;
   }
 
-  List<FlSpot> _buildLastMonthSpots() {
-    // Simulated last month data (fallback)
-    return [
-      const FlSpot(1, 0),
-      const FlSpot(2, 2.1),
-      const FlSpot(3, 0),
-      const FlSpot(4, 4.5),
-      const FlSpot(5, 3.2),
-      const FlSpot(6, 0),
-      const FlSpot(7, 1.8),
-      const FlSpot(8, 5.0),
-      const FlSpot(9, 2.7),
-      const FlSpot(10, 0),
-      const FlSpot(11, 3.3),
-      const FlSpot(12, 4.1),
-      const FlSpot(13, 1.2),
-      const FlSpot(14, 0),
-      const FlSpot(15, 6.0),
-      const FlSpot(16, 2.8),
-      const FlSpot(17, 0),
-      const FlSpot(18, 3.5),
-      const FlSpot(19, 4.2),
-      const FlSpot(20, 1.0),
-      const FlSpot(21, 0),
-      const FlSpot(22, 1.5),
-      const FlSpot(23, 0),
-      const FlSpot(24, 0),
-      const FlSpot(25, 2.0),
-      const FlSpot(26, 0),
-      const FlSpot(27, 3.0),
-      const FlSpot(28, 1.0),
-      const FlSpot(29, 0),
-      const FlSpot(30, 0.5),
-    ];
-  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final spots = _buildSpots().isEmpty || widget.sessions.isEmpty
-        ? _buildLastMonthSpots()
-        : _buildSpots();
-    final maxY = spots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
-    final chartMax = (maxY + 1).ceilToDouble();
-
-    // Find max day label
-    final maxSpot = spots.reduce((a, b) => a.y > b.y ? a : b);
+    // NO SIMULATED DATA. This used to fall back to a hardcoded curve --
+    // peak 6.0 hrs on day 15 -- whenever the selected period had no
+    // sessions. A closed programme therefore drew a full month of track
+    // time it never ran, directly beside a counter correctly reading
+    // "0 sessions". Every figure on this screen has to come from a session.
+    final spots = _buildSpots();
+    final hasData = widget.sessions.isNotEmpty && spots.any((s) => s.y > 0);
+    final maxY = hasData
+        ? spots.map((s) => s.y).reduce((a, b) => a > b ? a : b)
+        : 0.0;
+    final chartMax = hasData ? (maxY + 1).ceilToDouble() : 4.0;
+    final maxSpot = hasData
+        ? spots.reduce((a, b) => a.y > b.y ? a : b)
+        : const FlSpot(0, 0);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
@@ -235,9 +206,12 @@ class _SessionChartWidgetState extends State<SessionChartWidget> {
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    'Peak: ${maxSpot.y.toStringAsFixed(1)} hrs on Day ${maxSpot.x.toInt()}',
+                    hasData
+                        ? 'Peak: ${maxSpot.y.toStringAsFixed(1)} hrs on Day '
+                            '${maxSpot.x.toInt()}'
+                        : 'No sessions in this period',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: AppTheme.primary,
+                      color: hasData ? AppTheme.primary : Colors.white38,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
