@@ -187,7 +187,7 @@ DECLARE
 BEGIN
     -- Create auth users (trigger auto-creates engineer_profiles)
     --
-    -- These three carried the password 'Goodyear@2026' in plain text until
+    -- These three carried a shared password in plain text until
     -- 15 Sep 2026. This file is in a PUBLIC GitHub repository, so anyone who
     -- found it could sign in as a Goodyear engineer and read every session,
     -- invoice, PO and rate in the project. They now get an unguessable random
