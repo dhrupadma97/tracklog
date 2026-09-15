@@ -303,6 +303,13 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
 
   int get _currentSessionCount => _currentPeriodSessions.length;
 
+  /// Track spend across the whole history in scope, not just this month.
+  /// What Project Charges needs, so its three rows cover the same period.
+  double get _lifetimeTrackCost => _sessionMaps.fold(
+        0.0,
+        (sum, s) => sum + ((s['costINR'] as num?)?.toDouble() ?? 0),
+      );
+
   int get _currentAvgDuration {
     if (_currentPeriodSessions.isEmpty) return 0;
     final totalMinutes = _currentPeriodSessions.fold<int>(
@@ -893,6 +900,14 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
             totalHours: _currentHours,
             sessionCount: _currentSessionCount,
             avgDurationMinutes: _currentAvgDuration,
+            // Project Charges is a programme total, not a month's. It reads
+            // manpower and workshop from the whole muster, so its track figure
+            // has to span the whole history too — pairing a month of track
+            // with all-time muster produced a total for no period at all:
+            // Tata Harrier showed Rs 0 track against Rs 67,600 of August
+            // muster, under one heading.
+            lifetimeTrackCost: _lifetimeTrackCost,
+            lifetimeSessionCount: _sessionMaps.length,
             // Null means every programme — the charges panel then totals the
             // whole muster rather than one project's slice.
             activeProject: _allProjects ? null : _activeProject,
@@ -1086,6 +1101,11 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
 
 class _RightPanel extends StatefulWidget {
   final double totalCost;
+
+  /// Track spend over the whole history in scope. Project Charges uses this
+  /// rather than [totalCost], which is one month.
+  final double lifetimeTrackCost;
+  final int lifetimeSessionCount;
   final double totalHours;
   final int sessionCount;
   final int avgDurationMinutes;
@@ -1094,6 +1114,8 @@ class _RightPanel extends StatefulWidget {
 
   const _RightPanel({
     required this.totalCost,
+    this.lifetimeTrackCost = 0,
+    this.lifetimeSessionCount = 0,
     required this.totalHours,
     required this.sessionCount,
     required this.avgDurationMinutes,
@@ -1292,7 +1314,7 @@ class _RightPanelState extends State<_RightPanel> {
   /// different figures for one project.
   Widget _chargesCard() {
     final c = _charges;
-    final track = widget.totalCost;
+    final track = widget.lifetimeTrackCost;
     final manpower = c?.manpowerCost ?? 0;
     final workshop = c?.workshopCost ?? 0;
     final total = track + manpower + workshop;
@@ -1318,15 +1340,18 @@ class _RightPanelState extends State<_RightPanel> {
                     color: AppTheme.primary, strokeWidth: 1.5)),
         ]),
         const SizedBox(height: 4),
-        Text(widget.activeProject ?? 'All programmes',
+        // Says the period out loud. The summary above it is this month, these
+        // are everything, and without saying so the two invite being read as
+        // the same thing.
+        Text('${widget.activeProject ?? 'All programmes'} · whole programme',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: GoogleFonts.spaceGrotesk(
                 color: const Color(0xFF6B7490), fontSize: 10)),
         const SizedBox(height: 12),
         _chargeRow('Track + Accessories', track, total, AppTheme.primary,
-            '${widget.sessionCount} session'
-            '${widget.sessionCount == 1 ? '' : 's'}'),
+            '${widget.lifetimeSessionCount} session'
+            '${widget.lifetimeSessionCount == 1 ? '' : 's'}'),
         _chargeRow('Manpower', manpower, total, const Color(0xFFB794F6),
             c == null
                 ? ''
