@@ -825,9 +825,33 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
           'notes':        notes,
         };
       }).toList();
-      await SupabaseService.instance.client
-          .from('session_additional_services')
-          .insert(svcRows);
+      // The container session is created BEFORE the lines that give it
+      // meaning, so a failed insert leaves an empty MISC session behind. It
+      // then counts as a session on History for ever, at zero cost, with
+      // nothing hanging off it. That is how Mahindra EV PoC came to show 47
+      // sessions for 46 days of testing: one service save failed earlier
+      // today and left its container.
+      //
+      // Deleted here rather than hidden on the screens. A MISC row that DOES
+      // carry service lines is the only record of that accessory spend, and
+      // both History and the PO Tracker read their costs through it -- filter
+      // MISC out of those and the money disappears with it.
+      try {
+        await SupabaseService.instance.client
+            .from('session_additional_services')
+            .insert(svcRows);
+      } catch (_) {
+        try {
+          await SupabaseService.instance.client
+              .from('engineer_sessions')
+              .delete()
+              .eq('id', sessionId);
+        } catch (_) {
+          // Swallowed: the outer catch reports the failure that matters, and
+          // a stray empty container is better than masking it.
+        }
+        rethrow;
+      }
       _snack('${_selectedServices.length} services saved ✓ · ${_inr.format(_svcGrandTotal)}');
       _backUpAfterEntry();
       setState(() {
