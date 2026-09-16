@@ -7,12 +7,17 @@ class HeroMetricWidget extends StatelessWidget {
   final int sessionCount;
   final bool isLastMonth;
 
+  /// Overrides the "this month" wording when the screen is anchored on a
+  /// programme's own last month of testing rather than on today.
+  final String? periodLabel;
+
   const HeroMetricWidget({
     super.key,
     required this.totalHours,
     required this.totalCost,
     required this.sessionCount,
     this.isLastMonth = false,
+    this.periodLabel,
   });
 
   @override
@@ -41,7 +46,11 @@ class HeroMetricWidget extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  isLastMonth ? 'Total track usage last month' : 'Total track usage this month',
+                  periodLabel != null
+                      ? 'Total track usage in '
+                      : isLastMonth
+                          ? 'Total track usage last month'
+                          : 'Total track usage this month',
                   style: theme.textTheme.bodySmall,
                 ),
                 const SizedBox(height: 8),

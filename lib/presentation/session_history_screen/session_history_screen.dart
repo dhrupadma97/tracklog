@@ -71,7 +71,9 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
   /// 'YYYY-MM-DD|project'. Empty until the day_notes migration is applied.
   Map<String, DayNote> _dayNotes = {};
 
-  int _selectedPeriod = 0; // 0 = This Month, 1 = Last Month
+  // Index into [_monthsWithData], newest first. 0 is the programme's most
+  // recent month of testing, not necessarily this month.
+  int _selectedPeriod = 0;
 
   @override
   void initState() {
@@ -229,6 +231,19 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
       if (mounted) {
         setState(() {
           _sessionMaps = mapped;
+          // Anchor the two period tabs on the LAST month this programme
+          // actually ran, not on today.
+          //
+          // Both tabs used to count back from the current date, so a closed
+          // programme could not reach its own data at all: Mahindra EV PoC
+          // finished in May, and in September "This Month" and "Last Month"
+          // were September and August - two empty screens with no third
+          // option. Tata Harrier read as empty for the same reason, one month
+          // out. The figures were always on the right-hand panel; the left
+          // half of the screen simply had no way to point at them.
+          // Switching programme can shrink the month list, so a tab index
+          // from the previous one must not survive.
+          _selectedPeriod = 0;
           _isLoading = false;
         });
       }
@@ -260,17 +275,58 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
   List<Map<String, dynamic>> get _currentPeriodSessions =>
       _getSessionsForPeriod(_selectedPeriod);
 
-  /// The month a period refers to, counted back from today.
+  /// Every month this programme actually ran, newest first.
   ///
-  /// This was pinned to May and April 2026, so 'This Month' meant May whatever
-  /// the date actually was. From June onwards the screen showed a fixed
-  /// four-month-old window and labelled it as current — a programme that
-  /// started in September could only ever read as empty.
+  /// The period tabs are built from this, so a programme shows its own months
+  /// and nothing else. Mahindra EV PoC ran March, April and May 2026 and
+  /// closed; a fixed "This Month / Last Month" pair counting back from today
+  /// could reach none of them, which is why the screen read as empty in
+  /// September with 46 sessions sitting in the database.
+  ///
+  /// Falls back to the current month only when the programme has no sessions
+  /// at all, so there is always at least one tab.
+  List<DateTime> get _monthsWithData {
+    final seen = <String, DateTime>{};
+    for (final s in _sessionMaps) {
+      final dt = DateTime.tryParse(s['startTime'] as String? ?? '');
+      if (dt == null) continue;
+      final m = DateTime(dt.year, dt.month);
+      seen['${m.year}-${m.month}'] = m;
+    }
+    if (seen.isEmpty) {
+      final now = DateTime.now();
+      return [DateTime(now.year, now.month)];
+    }
+    return seen.values.toList()..sort((a, b) => b.compareTo(a));
+  }
+
+  /// The month a period tab refers to.
   DateTime monthFor(int period) {
+    final months = _monthsWithData;
+    if (period < 0 || period >= months.length) return months.first;
+    return months[period];
+  }
+
+  /// Caption for a tab: "This Month" and "Last Month" where those are true,
+  /// otherwise the month outright. Calling May "This Month" in September
+  /// would simply be wrong.
+  String _periodLabel(int period) {
+    final m = monthFor(period);
     final now = DateTime.now();
-    // Year/month arithmetic rather than subtracting days, so stepping back
-    // from the 31st cannot land in the wrong month.
-    return DateTime(now.year, now.month - period);
+    if (m.year == now.year && m.month == now.month) return 'This Month';
+    final last = DateTime(now.year, now.month - 1);
+    if (m.year == last.year && m.month == last.month) return 'Last Month';
+    return DateFormat('MMM yyyy').format(m);
+  }
+
+  List<String> get _periodLabels =>
+      [for (var i = 0; i < _monthsWithData.length; i++) _periodLabel(i)];
+
+  /// Null while the tab reads "This Month" or "Last Month", so the hero keeps
+  /// its natural wording. Otherwise the month name, e.g. "May 2026".
+  String? get _heroPeriodLabel {
+    final l = _periodLabel(_selectedPeriod);
+    return (l == 'This Month' || l == 'Last Month') ? null : l;
   }
 
   List<Map<String, dynamic>> _getSessionsForPeriod(int period) {
@@ -405,6 +461,7 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
             totalCost: _currentCost,
             sessionCount: _currentSessionCount,
             isLastMonth: _selectedPeriod == 1,
+            periodLabel: _heroPeriodLabel,
           ),
         ),
         SliverToBoxAdapter(
@@ -412,6 +469,7 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
             sessions: _currentPeriodSessions,
             selectedPeriod: _selectedPeriod,
             onPeriodChanged: (p) => setState(() => _selectedPeriod = p),
+            periodLabels: _periodLabels,
           ),
         ),
         SliverToBoxAdapter(
@@ -421,6 +479,7 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
             sessionCount: _currentSessionCount,
             avgDurationMinutes: _currentAvgDuration,
             isLastMonth: _selectedPeriod == 1,
+            month: monthFor(_selectedPeriod),
           ),
         ),
         SliverToBoxAdapter(child: _buildFilterRow(theme)),

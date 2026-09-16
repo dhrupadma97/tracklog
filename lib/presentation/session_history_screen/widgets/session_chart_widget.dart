@@ -8,11 +8,16 @@ class SessionChartWidget extends StatefulWidget {
   final int selectedPeriod;
   final ValueChanged<int> onPeriodChanged;
 
+  /// One caption per selectable month, newest first. "This Month" and
+  /// "Last Month" where those are true, otherwise the month name.
+  final List<String> periodLabels;
+
   const SessionChartWidget({
     super.key,
     required this.sessions,
     required this.selectedPeriod,
     required this.onPeriodChanged,
+    this.periodLabels = const ['This Month', 'Last Month'],
   });
 
   @override
@@ -71,23 +76,30 @@ class _SessionChartWidgetState extends State<SessionChartWidget> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Period tab selector — anatomy locked: inside card top
+            // Period tabs — anatomy locked: inside card top.
+            //
+            // One tab per month the programme actually ran, newest first,
+            // rather than a fixed "This Month / Last Month" pair. Mahindra EV
+            // PoC ran March, April and May; two tabs counting back from today
+            // could reach none of them, and even anchored on May they left
+            // March unreachable. Scrolls sideways so a long programme does
+            // not wrap or clip.
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: Row(
-                children: [
-                  _PeriodTab(
-                    label: 'This Month',
-                    isSelected: widget.selectedPeriod == 0,
-                    onTap: () => widget.onPeriodChanged(0),
-                  ),
-                  const SizedBox(width: 4),
-                  _PeriodTab(
-                    label: 'Last Month',
-                    isSelected: widget.selectedPeriod == 1,
-                    onTap: () => widget.onPeriodChanged(1),
-                  ),
-                ],
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (var i = 0; i < widget.periodLabels.length; i++) ...[
+                      if (i > 0) const SizedBox(width: 4),
+                      _PeriodTab(
+                        label: widget.periodLabels[i],
+                        isSelected: widget.selectedPeriod == i,
+                        onTap: () => widget.onPeriodChanged(i),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 16),

@@ -10,6 +10,12 @@ class MonthlySummaryCardWidget extends StatelessWidget {
   final bool vertical;
   final bool isLastMonth;
 
+  /// The month actually on screen. The History tabs are anchored on the
+  /// programme's last month of testing, which for a closed programme is not
+  /// this month or last month, so it has to be passed in rather than worked
+  /// out from today.
+  final DateTime? month;
+
   const MonthlySummaryCardWidget({
     super.key,
     required this.totalCost,
@@ -18,12 +24,16 @@ class MonthlySummaryCardWidget extends StatelessWidget {
     required this.avgDurationMinutes,
     this.vertical = false,
     this.isLastMonth = false,
+    this.month,
   });
 
-  /// The month this card is describing, from today rather than a fixed date.
+  /// The month this card is describing.
   String get monthLabel {
-    final now = DateTime.now();
-    final m = DateTime(now.year, now.month - (isLastMonth ? 1 : 0));
+    final m = month ??
+        () {
+          final now = DateTime.now();
+          return DateTime(now.year, now.month - (isLastMonth ? 1 : 0));
+        }();
     return DateFormat('MMMM yyyy').format(m);
   }
 
