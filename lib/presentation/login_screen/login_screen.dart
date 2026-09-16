@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -385,6 +386,10 @@ class _LoginScreenState extends State<LoginScreen>
         );
       }
       if (mounted) {
+        // Tells the browser the sign-in finished, which is what makes Chrome
+        // and the password managers actually show the "Save password?" prompt.
+        // Without it the fields are filled but never offered for saving.
+        TextInput.finishAutofillContext();
         if (_biometricAvailable && !_biometricEnabled) {
           final shouldEnable = await _showEnableBiometricsDialog();
           if (shouldEnable) {
@@ -1212,7 +1217,11 @@ class _LoginScreenState extends State<LoginScreen>
           // Form body
           Padding(
             padding: const EdgeInsets.all(24),
-            child: Form(
+            // AutofillGroup ties the e-mail and password together as one
+            // credential, which is what makes the browser offer to save both
+            // rather than treating them as unrelated boxes.
+            child: AutofillGroup(
+              child: Form(
               key: _formKey,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1250,6 +1259,14 @@ class _LoginScreenState extends State<LoginScreen>
                     hint: 'engineer@goodyear.com',
                     icon: Icons.email_outlined,
                     keyboardType: TextInputType.emailAddress,
+                    // Without these the browser does not see this as a login
+                    // form, so it never offers to save the password. Flutter
+                    // turns them into the autocomplete attributes Chrome and
+                    // the password managers look for.
+                    autofillHints: const [
+                      AutofillHints.username,
+                      AutofillHints.email,
+                    ],
                     validator: (v) {
                       if (v == null || v.trim().isEmpty) {
                         return 'Please enter your email';
@@ -1265,6 +1282,7 @@ class _LoginScreenState extends State<LoginScreen>
                   TextFormField(
                     controller: _passwordController,
                     obscureText: _obscurePassword,
+                    autofillHints: const [AutofillHints.password],
                     style: GoogleFonts.spaceGrotesk(
                       color: const Color(0xFFdfe2f0),
                       fontSize: 14,
@@ -1503,6 +1521,7 @@ class _LoginScreenState extends State<LoginScreen>
                   ],
                 ],
               ),
+              ),
             ),
           ),
         ],
@@ -1647,11 +1666,13 @@ class _LoginScreenState extends State<LoginScreen>
     TextInputType keyboardType = TextInputType.text,
     TextCapitalization textCapitalization = TextCapitalization.none,
     String? Function(String?)? validator,
+    Iterable<String>? autofillHints,
   }) {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
       textCapitalization: textCapitalization,
+      autofillHints: autofillHints,
       style: GoogleFonts.spaceGrotesk(color: const Color(0xFFdfe2f0), fontSize: 14),
       decoration: _inputDecoration(hint: hint, icon: icon),
       validator: validator,
