@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../services/email_report_service.dart';
 import '../../services/engineer_auth_service.dart';
 import '../../services/project_manager.dart';
 import '../../services/supabase_service.dart';
@@ -848,7 +849,18 @@ class _EmailPreviewDialog extends StatelessWidget {
                   child: Column(children: [
                     _metaRow('From', _from, const Color(0xFF94A3B8)),
                     _metaRow('To', _to, AppTheme.primary),
-                    _metaRow('CC', _cc.join(' · '), const Color(0xFF94A3B8)),
+                    // Read from the subscriber table, not from _cc. A preview
+                    // that lists different people from the ones who actually
+                    // receive the mail is worse than no preview at all.
+                    FutureBuilder<List<String>>(
+                      future: EmailReportService.instance
+                          .ccRecipients(exclude: _to),
+                      builder: (_, snap) => _metaRow(
+                        'CC',
+                        (snap.data ?? _cc).join(' · '),
+                        const Color(0xFF94A3B8),
+                      ),
+                    ),
                     _metaRow('Subject', subject, Colors.white),
                     const SizedBox(height: 12),
                     Container(height: 1, color: Colors.white.withAlpha(10)),

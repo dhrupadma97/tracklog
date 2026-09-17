@@ -78,6 +78,50 @@ class EmailReportService {
   SupabaseClient get _client => SupabaseService.instance.client;
 
 
+
+  // ── Who gets copied ───────────────────────────────────────────────────────
+
+  /// The default CC list, used only when the subscriber table cannot answer.
+  ///
+  /// Kept so a report never goes out with nobody copied — if the table is
+  /// empty, or the query fails, the people who were being copied before still
+  /// are.
+  static const fallbackCc = <String>[
+    'v_vimal@goodyear.com',
+    'ashish_pandit@goodyear.com',
+    'kartheek_nedunuri@goodyear.com',
+  ];
+
+  /// Everyone to copy on a report, from `email_report_subscriptions`.
+  ///
+  /// This used to be a const list hardcoded in FOUR files — ten lines in all —
+  /// so adding or removing a name meant a code change and a deploy, and
+  /// missing one of the ten sent the report to somebody who should not have
+  /// had it. Now it is a row in a table and the Add Subscriber sheet on the
+  /// Email Reports screen manages it.
+  ///
+  /// [exclude] drops the To address, so the manager is not copied on their
+  /// own report. Inactive subscribers are left out; the toggle on that screen
+  /// is how you stop someone receiving it without deleting them.
+  Future<List<String>> ccRecipients({String? exclude}) async {
+    final skip = (exclude ?? '').trim().toLowerCase();
+    try {
+      final rows = await _client
+          .from('email_report_subscriptions')
+          .select('email, is_active')
+          .eq('is_active', true);
+      final emails = <String>{};
+      for (final r in rows as List) {
+        final e = ((r as Map)['email'] as String? ?? '').trim();
+        if (e.isEmpty || e.toLowerCase() == skip) continue;
+        emails.add(e);
+      }
+      if (emails.isNotEmpty) return emails.toList()..sort();
+    } catch (_) {
+      // Fall through to the default rather than sending with no CC.
+    }
+    return fallbackCc.where((e) => e.toLowerCase() != skip).toList();
+  }
   // ── Subscriptions ─────────────────────────────────────────────────────────
 
   Future<List<EmailReportSubscription>> getSubscriptions() async {
@@ -424,8 +468,10 @@ class EmailReportService {
       );
 
       final toEmail = customToEmail ?? 'praharshithkumar_komaragiri@goodyear.com';
-      final ccEmails = customCcEmails ?? ['v_vimal@goodyear.com', 'ashish_pandit@goodyear.com',
-                   'kartheek_nedunuri@goodyear.com'];
+      // Subscribers, not a hardcoded list: managed from Add Subscriber on the
+      // Email Reports screen. Falls back to the built-in list if the table
+      // cannot answer, so a report never goes out with nobody copied.
+      final ccEmails = customCcEmails ?? await ccRecipients(exclude: toEmail);
 
       // --- Call edge function ---
       final response = await _client.functions.invoke(

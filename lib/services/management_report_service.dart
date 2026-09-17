@@ -1,3 +1,4 @@
+import 'email_report_service.dart';
 import 'billing_baseline.dart';
 import 'invoice_service.dart';
 import 'muster_service.dart';
@@ -457,7 +458,10 @@ class ManagementReportService {
   }) async {
     final client = SupabaseService.instance.client;
     final to = toEmail ?? _defaultTo;
-    final cc = ccEmails ?? _defaultCc;
+    // Subscribers, not a hardcoded list. _defaultCc is only the fallback for
+    // when the table cannot answer, so a report never goes out with nobody
+    // copied. Managed from Add Subscriber on the Email Reports screen.
+    final cc = ccEmails ?? await EmailReportService.instance.ccRecipients(exclude: to);
     try {
       final response = await client.functions.invoke(
         'send-report-email',

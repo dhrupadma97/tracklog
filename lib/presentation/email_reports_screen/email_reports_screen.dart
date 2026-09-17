@@ -448,11 +448,9 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                   onPressed: () async {
                     final err = await EmailDraft.openInOutlook(
                       to: 'praharshithkumar_komaragiri@goodyear.com',
-                      cc: const [
-                        'v_vimal@goodyear.com',
-                        'ashish_pandit@goodyear.com',
-                        'kartheek_nedunuri@goodyear.com',
-                      ],
+                      // Subscribers, from the Add Subscriber sheet below.
+                      cc: await EmailReportService.instance
+                          .ccRecipients(exclude: 'praharshithkumar_komaragiri@goodyear.com'),
                       subject: update.subject,
                       htmlBody: update.html,
                       fileName: 'management-update-'
@@ -486,11 +484,9 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                   onPressed: () async {
                     final err = await EmailDraft.composeInOutlook(
                       to: 'praharshithkumar_komaragiri@goodyear.com',
-                      cc: const [
-                        'v_vimal@goodyear.com',
-                        'ashish_pandit@goodyear.com',
-                        'kartheek_nedunuri@goodyear.com',
-                      ],
+                      // Subscribers, from the Add Subscriber sheet below.
+                      cc: await EmailReportService.instance
+                          .ccRecipients(exclude: 'praharshithkumar_komaragiri@goodyear.com'),
                       subject: update.subject,
                       htmlBody: update.html,
                       plainBody: update.plainText,
