@@ -163,8 +163,24 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
   /// 1 April 2026 to 31 March 2027, so a March figure will not reconcile
   /// against it.
   ///
-  /// T9, T12 and T13 have not appeared on any invoice yet, so their rates
-  /// are still unverified and are left as they were.
+  /// EVERY RATE NOW COMES FROM QUOTATION NATRAX/Q/BIP/26-27/018, 7 Apr 2026.
+  /// Four were wrong and three tracks were missing entirely:
+  ///
+  ///   T9  Noise Track 20,000        -> Handling Track 2W        5,000
+  ///   T10 Wet Skid Pad 15,000       -> Sustainability Track     6,000
+  ///   T12 Fatigue Track 20,000      -> Suspension & Traction    6,000
+  ///   T13 Gravel & Off-Road 15,000  -> External Noise Track    14,000
+  ///   T4  Test Hill Track (All Gradient)                        8,000  NEW
+  ///   T5  Accelerated Fatigue Track                            14,000  NEW
+  ///   T6  Gravel & Off-Road Track                               7,500  NEW
+  ///
+  /// The names were wrong as well as the prices: T13 was carrying the gravel
+  /// track's name, and the gravel track (T6) did not exist, so logging on it
+  /// meant picking T13 and paying 15,000 for a 7,500 track.
+  ///
+  /// `track_rates` in Supabase has had all of these right since the very
+  /// first migration. Only this hardcoded list drifted - the same way T8 and
+  /// T11 held each other's rate until 15 Sep 2026.
   ///
   /// A day's usage on a track is summed, rounded UP to the whole hour, and
   /// then floored at `minHrs`. T1, T2, T3W and T3D carry a two-hour minimum;
@@ -187,9 +203,10 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
   /// 15 Sep 2026, with the T8/T11 mislabelling above now fixed - so this is a
   /// deliberate choice against clean data, no longer a doubt about the data.
   ///
-  /// T9, T12 and T13 have not appeared on an invoice, so their minimums come
-  /// from the programme owner rather than from arithmetic: T9 and T13 bill
-  /// from one hour, T12 from two.
+  /// Minimums are NOT on the quotation - it prices per hour and says nothing
+  /// about a floor. T1, T2, T3W and T3D carry two hours from the booking
+  /// terms; the rest bill from one, per the programme owner. T12 is the one
+  /// exception at two hours, also his call.
   static const _natraxTracks = [
     {'code': 'T3W',  'name': 'T3 Wet Braking Track',     'rate': 21000.0, 'minHrs': 2.0},
     {'code': 'T3D',  'name': 'T3 Dry Braking Track',     'rate': 19000.0, 'minHrs': 2.0},
@@ -198,11 +215,14 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     {'code': 'T7',   'name': 'Handling Track 4W (1.6km)', 'rate': 15000.0, 'minHrs': 1.0},
     {'code': 'T16',  'name': 'General Road Track',        'rate':  9000.0, 'minHrs': 1.0},
     {'code': 'T8',   'name': 'Comfort Track',             'rate': 10500.0, 'minHrs': 1.0},
-    {'code': 'T9',   'name': 'Noise Track',               'rate': 20000.0, 'minHrs': 1.0},
-    {'code': 'T10',  'name': 'Sustainability Track',      'rate': 15000.0, 'minHrs': 1.0},
+    {'code': 'T9',   'name': 'Handling Track 2W',         'rate':  5000.0, 'minHrs': 1.0},
+    {'code': 'T10',  'name': 'Sustainability Track',      'rate':  6000.0, 'minHrs': 1.0},
     {'code': 'T11',  'name': 'Wet Skid Pad Track',        'rate': 15000.0, 'minHrs': 1.0},
-    {'code': 'T12',  'name': 'Fatigue Track',             'rate': 20000.0, 'minHrs': 2.0},
-    {'code': 'T13',  'name': 'Gravel & Off-Road Track',   'rate': 15000.0, 'minHrs': 1.0},
+    {'code': 'T12',  'name': 'Suspension & Traction',      'rate':  6000.0, 'minHrs': 2.0},
+    {'code': 'T13',  'name': 'External Noise Track',       'rate': 14000.0, 'minHrs': 1.0},
+    {'code': 'T4',   'name': 'Test Hill Track (All Grad.)', 'rate':  8000.0, 'minHrs': 1.0},
+    {'code': 'T5',   'name': 'Accelerated Fatigue Track',   'rate': 14000.0, 'minHrs': 1.0},
+    {'code': 'T6',   'name': 'Gravel & Off-Road Track',    'rate':  7500.0, 'minHrs': 1.0},
     // ── EXCLUSIVE BOOKINGS ────────────────────────────────────────────────
     // Sold in fixed 2-hour blocks, not by the hour. Quotation
     // NATRAX/Q/BIP/26-27/018, 7 Apr 2026.
