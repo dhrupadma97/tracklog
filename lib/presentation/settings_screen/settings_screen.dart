@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../services/app_settings_service.dart';
+import '../../services/billing_baseline.dart';
 import '../../services/engineer_auth_service.dart';
 import '../../services/excel_backup_downloader.dart';
 import '../../services/excel_backup_service.dart';
@@ -59,6 +61,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   static final _inr = NumberFormat.currency(
       locale: 'en_IN', symbol: '₹', decimalDigits: 0);
 
+  static final _dmy = DateFormat('dd MMM yyyy');
+
+  // Workshop bay. These were constants in billing_baseline.dart until the
+  // monthly "stop accruing for the invoiced month" edit proved it needed to
+  // be a field, not a redeploy.
+  DateTime? _wsSettledTo;
+  DateTime? _wsResumedOn;
+  DateTime? _wsReleasedOn;
+  bool _loadingWorkshop = true;
+  bool _savingWorkshop = false;
+  /// Read from tracklog_writers, the same table RLS checks, so the screen
+  /// never offers an edit the database will refuse.
+  bool _canEditWorkshop = false;
+
   bool get _canEditInvoices => !(_profile?.isReadOnly ?? true);
 
   @override
@@ -68,6 +84,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadInvoices();
     _loadLastBackup();
     _loadPinState();
+    _loadWorkshop();
   }
 
   /// Whether this device holds a sign-in PIN. Device-local, so it says
@@ -277,7 +294,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       await SupabaseService.instance.client.auth.resetPasswordForEmail(
         email,
-        redirectTo: 'https://sightlinevalidation.web.app',
+        redirectTo: SupabaseService.appUrl,
       );
       _snack('Reset link sent to $email');
     } catch (_) {
@@ -718,6 +735,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return [
           _sectionLabel('INVOICES'),
           _buildInvoicesSection(),
+          _sectionLabel('WORKSHOP BAY'),
+          _buildWorkshopSection(),
           _sectionLabel('BACKUP'),
           _buildBackupSection(),
         ];
@@ -1671,6 +1690,256 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // ─── Shared helpers ────────────────────────────────────────────────────────
 
+  // ─── Workshop bay ──────────────────────────────────────────────────────────
+
+  /// The workshop accrual used to be governed by three constants in Dart, so
+  /// closing off an invoiced month meant a code change and a redeploy. These
+  /// dates now live in `app_settings` and are edited here.
+
+  Future<void> _loadWorkshop() async {
+    await AppSettingsService.instance.load(force: true);
+    final canEdit = await EngineerAuthService.instance.canWrite();
+    if (!mounted) return;
+    setState(() {
+      _wsSettledTo  = BillingBaseline.workshopSettledTo;
+      _wsResumedOn  = BillingBaseline.workshopResumedOn;
+      _wsReleasedOn = BillingBaseline.workshopReleasedOn;
+      _canEditWorkshop = canEdit;
+      _loadingWorkshop = false;
+    });
+  }
+
+  Future<void> _setWorkshopDate(String key, DateTime? value) async {
+    setState(() => _savingWorkshop = true);
+    try {
+      await AppSettingsService.instance.setDate(key, value);
+      await _loadWorkshop();
+      _snack('Saved. The report will use the new date.');
+    } catch (_) {
+      // Refresh either way, so the row never shows a value the database
+      // rejected. A failed save that still looks saved is the worst outcome.
+      await _loadWorkshop();
+      _snack('Could not save that date. Check your connection.', error: true);
+    } finally {
+      if (mounted) setState(() => _savingWorkshop = false);
+    }
+  }
+
+  Future<void> _pickWorkshopDate({
+    required String key,
+    required DateTime? current,
+    required String label,
+  }) async {
+    if (!_canEditWorkshop || _savingWorkshop) return;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      // Future dates allowed: a bay can be given up on a date already agreed.
+      lastDate: DateTime(DateTime.now().year + 2),
+      helpText: label,
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(colorScheme: const ColorScheme.dark(
+            primary: Color(0xFFFFB547), surface: Color(0xFF0A1025))),
+        child: child!,
+      ),
+    );
+    if (picked == null) return;
+    await _setWorkshopDate(
+        key, DateTime(picked.year, picked.month, picked.day));
+  }
+
+  Widget _buildWorkshopSection() {
+    if (_loadingWorkshop) {
+      return _card(
+        child: const Center(
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 18),
+            child: SizedBox(
+              width: 22, height: 22,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2.4, color: Color(0xFFFFB547)),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final today = DateTime.now();
+    final openDays = BillingBaseline.openWorkshopDays(today);
+    final openRent = BillingBaseline.openWorkshopRental(today);
+    final countingFrom = _wsSettledTo?.add(const Duration(days: 1));
+
+    return _card(
+      borderColor: const Color(0xFFFFB547).withAlpha(70),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _cardTitle(Icons.home_repair_service_outlined, 'Workshop bay',
+            color: const Color(0xFFFFB547)),
+        const SizedBox(height: 12),
+        Text(
+          'The bay costs ${_inr.format(BillingBaseline.workshopDayRate)} a day '
+          'whether or not anyone is testing. These dates tell the manager\u2019s '
+          'report when to start and stop counting.',
+          style: GoogleFonts.spaceGrotesk(
+              fontSize: 12, height: 1.45, color: const Color(0xFF9AA3BE)),
+        ),
+        const SizedBox(height: 16),
+        _workshopRow(
+          label: 'Settled by invoice up to',
+          hint: 'Move this forward the day NATRAX invoices another month.',
+          value: _wsSettledTo,
+          empty: 'Not set',
+          onTap: () => _pickWorkshopDate(
+              key: AppSettingsService.kWorkshopSettledTo,
+              current: _wsSettledTo,
+              label: 'Settled by invoice up to'),
+        ),
+        _workshopRow(
+          label: 'Bay taken back on',
+          hint: 'Nothing is counted before this date.',
+          value: _wsResumedOn,
+          empty: 'Not set',
+          onTap: () => _pickWorkshopDate(
+              key: AppSettingsService.kWorkshopResumedOn,
+              current: _wsResumedOn,
+              label: 'Bay taken back on'),
+        ),
+        _workshopRow(
+          label: 'Bay given up on',
+          hint: 'Leave empty while you still hold it.',
+          value: _wsReleasedOn,
+          empty: 'Still held',
+          // Clearing matters as much as setting: a date entered by mistake
+          // would silently stop the accrual with no way back from this screen.
+          onClear: _wsReleasedOn == null
+              ? null
+              : () => _setWorkshopDate(
+                  AppSettingsService.kWorkshopReleasedOn, null),
+          onTap: () => _pickWorkshopDate(
+              key: AppSettingsService.kWorkshopReleasedOn,
+              current: _wsReleasedOn,
+              label: 'Bay given up on'),
+        ),
+        const SizedBox(height: 14),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: (openDays > 0 ? const Color(0xFFFFB547) : AppTheme.success)
+                .withAlpha(20),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+                color: (openDays > 0
+                        ? const Color(0xFFFFB547)
+                        : AppTheme.success)
+                    .withAlpha(70)),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(
+              openDays == 0
+                  ? 'Nothing waiting to be invoiced.'
+                  : '$openDays day${openDays == 1 ? '' : 's'} not yet invoiced '
+                      '\u2014 ${_inr.format(openRent)}',
+              style: GoogleFonts.spaceGrotesk(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: openDays > 0
+                      ? const Color(0xFFFFB547)
+                      : AppTheme.success),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              openDays == 0
+                  ? 'Everything up to the settled date is on an invoice.'
+                  : 'Counting from ${countingFrom == null ? '?' : _dmy.format(countingFrom)}'
+                      ', and growing by ${_inr.format(BillingBaseline.workshopDayRate)} a day.',
+              style: GoogleFonts.spaceGrotesk(
+                  fontSize: 11.5, color: const Color(0xFF9AA3BE)),
+            ),
+          ]),
+        ),
+        if (!_canEditWorkshop) ...[
+          const SizedBox(height: 10),
+          Text(
+            'You can see these dates but not change them. Ask an owner to '
+            'update them.',
+            style: GoogleFonts.spaceGrotesk(
+                fontSize: 11.5, color: const Color(0xFF6B7490)),
+          ),
+        ],
+      ]),
+    );
+  }
+
+  Widget _workshopRow({
+    required String label,
+    required String hint,
+    required DateTime? value,
+    required String empty,
+    required VoidCallback onTap,
+    VoidCallback? onClear,
+  }) {
+    final locked = !_canEditWorkshop;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: InkWell(
+        onTap: locked ? null : onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          decoration: BoxDecoration(
+            color: Colors.white.withAlpha(10),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withAlpha(26)),
+          ),
+          child: Row(children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: GoogleFonts.spaceGrotesk(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFFdfe2f0))),
+                  const SizedBox(height: 2),
+                  Text(hint,
+                      style: GoogleFonts.spaceGrotesk(
+                          fontSize: 11, color: const Color(0xFF6B7490))),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              value == null ? empty : _dmy.format(value),
+              style: GoogleFonts.spaceGrotesk(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: value == null
+                      ? const Color(0xFF6B7490)
+                      : const Color(0xFFFFB547)),
+            ),
+            if (onClear != null && !locked) ...[
+              const SizedBox(width: 4),
+              IconButton(
+                onPressed: _savingWorkshop ? null : onClear,
+                icon: const Icon(Icons.close_rounded, size: 16),
+                color: const Color(0xFF9AA3BE),
+                tooltip: 'Clear \u2014 the bay is still held',
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                padding: EdgeInsets.zero,
+              ),
+            ] else if (!locked) ...[
+              const SizedBox(width: 6),
+              const Icon(Icons.chevron_right_rounded,
+                  size: 18, color: Color(0xFF6B7490)),
+            ],
+          ]),
+        ),
+      ),
+    );
+  }
   Widget _card({required Widget child, Color? borderColor}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),

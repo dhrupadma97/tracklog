@@ -9,6 +9,8 @@
 /// These are an *estimate*; an uploaded invoice always outranks them.
 library;
 
+import './app_settings_service.dart';
+
 class MonthBaseline {
   /// 'YYYY-MM'
   final String month;
@@ -215,9 +217,24 @@ class BillingBaseline {
 
   static double workshopDaysTotal(String project) =>
       forProject(project).fold(0.0, (s, m) => s + m.workshopDays);
+  // ── Workshop bay: dates the billing owner edits, not the developer ───────
+  //
+  // These three were `static final DateTime` constants. Moving a settled date
+  // forward each time NATRAX invoiced a month meant a code change and a
+  // redeploy, so the accrual only ever stopped when someone remembered to ask.
+  // They now come from `app_settings` and are edited in Settings → Workshop
+  // bay. The values below are the fallback for a client that has not loaded
+  // yet, or a database without the migration — never the figure of record.
+
+  static AppSettingsService get _settings => AppSettingsService.instance;
+
   /// The workshop was released over the June–July 2026 pause and re-occupied
   /// on 12 August 2026 — which is why those two months carry no row above.
-  static final DateTime workshopResumedOn = DateTime(2026, 8, 12);
+  static final DateTime defaultWorkshopResumedOn = DateTime(2026, 8, 12);
+
+  static DateTime get workshopResumedOn =>
+      _settings.getDate(AppSettingsService.kWorkshopResumedOn) ??
+      defaultWorkshopResumedOn;
 
   /// The workshop is SETTLED BY INVOICE up to and including this date.
   ///
@@ -233,15 +250,18 @@ class BillingBaseline {
   ///
   /// Left running, the accrual asked twice for money already paid and reached
   /// the manager's report as a point needing attention.
-  ///
-  /// MOVE THIS FORWARD whenever another period is invoiced.
-  static final DateTime workshopSettledTo = DateTime(2026, 8, 31);
+  static final DateTime defaultWorkshopSettledTo = DateTime(2026, 8, 31);
 
-  /// Set this when the bay is given up; null means it is still held.
+  static DateTime get workshopSettledTo =>
+      _settings.getDate(AppSettingsService.kWorkshopSettledTo) ??
+      defaultWorkshopSettledTo;
+
+  /// Set when the bay is given up; null means it is still held.
   ///
   /// Without it the accrual runs for ever, so a workshop released months ago
   /// keeps adding ₹5,000 a day to a report nobody has corrected.
-  static final DateTime? workshopReleasedOn = null;
+  static DateTime? get workshopReleasedOn =>
+      _settings.getDate(AppSettingsService.kWorkshopReleasedOn);
 
   /// Days the workshop has been held that NOBODY HAS INVOICED YET.
   ///

@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tracklog/services/app_settings_service.dart';
 import 'package:tracklog/services/billing_baseline.dart';
 import 'package:tracklog/services/invoice_service.dart';
 import 'package:tracklog/services/natrax_invoice_parser.dart';
@@ -66,6 +67,7 @@ NatraxInvoice _inv(String month, double total) => NatraxInvoice(
 
 void main() {
   workshopAccrualAfterInvoice();
+  workshopDatesComeFromSettings();
   const project = 'Mahindra EV PoC';
   const poInclTax = 1904375.0 + 342788.0; // PO 8242348442
 
@@ -344,6 +346,68 @@ void workshopAccrualAfterInvoice() {
     test('the settled date is not before the resumption date', () {
       expect(BillingBaseline.workshopSettledTo
           .isAfter(BillingBaseline.workshopResumedOn), isTrue);
+    });
+  });
+}
+
+// ── The dates are settings now, so the arithmetic must follow them ─────────
+void workshopDatesComeFromSettings() {
+  group('workshop dates read from app_settings', () {
+    final s = AppSettingsService.instance;
+
+    setUp(s.clear);
+    tearDown(s.clear);
+
+    test('with nothing loaded, the built-in defaults still govern', () {
+      // A client that has not reached the database, or a database without the
+      // migration, must behave exactly as it did when these were constants.
+      expect(BillingBaseline.workshopSettledTo,
+          BillingBaseline.defaultWorkshopSettledTo);
+      expect(BillingBaseline.workshopResumedOn,
+          BillingBaseline.defaultWorkshopResumedOn);
+      expect(BillingBaseline.workshopReleasedOn, isNull);
+    });
+
+    test('moving the settled date forward stops the accrual', () {
+      // What happens the day September is invoiced: 10 October goes from
+      // 40 open days to ten and then to none, without a redeploy.
+      expect(BillingBaseline.openWorkshopDays(DateTime(2026, 10, 10)), 40);
+      s.setLocalForTest(
+          AppSettingsService.kWorkshopSettledTo, '2026-09-30');
+      expect(BillingBaseline.openWorkshopDays(DateTime(2026, 10, 10)), 10);
+      s.setLocalForTest(
+          AppSettingsService.kWorkshopSettledTo, '2026-10-31');
+      expect(BillingBaseline.openWorkshopDays(DateTime(2026, 10, 10)), 0);
+    });
+
+    test('releasing the bay stops the accrual on that day', () {
+      s.setLocalForTest(
+          AppSettingsService.kWorkshopReleasedOn, '2026-09-10');
+      // Counted to the release date and no further, however late it is read.
+      expect(BillingBaseline.openWorkshopDays(DateTime(2026, 9, 10)), 10);
+      expect(BillingBaseline.openWorkshopDays(DateTime(2026, 12, 31)), 10);
+    });
+
+    test('an empty released_on means the bay is still held', () {
+      s.setLocalForTest(AppSettingsService.kWorkshopReleasedOn, '');
+      expect(BillingBaseline.workshopReleasedOn, isNull);
+      expect(BillingBaseline.openWorkshopDays(DateTime(2026, 9, 10)), 10);
+    });
+
+    test('a resumption after the settled date wins', () {
+      // Bay given up and taken back again: nothing accrues for the gap.
+      s.setLocalForTest(
+          AppSettingsService.kWorkshopSettledTo, '2026-09-30');
+      s.setLocalForTest(
+          AppSettingsService.kWorkshopResumedOn, '2026-11-01');
+      expect(BillingBaseline.openWorkshopDays(DateTime(2026, 10, 20)), 0);
+      expect(BillingBaseline.openWorkshopDays(DateTime(2026, 11, 3)), 3);
+    });
+
+    test('rubbish in the column falls back rather than throwing', () {
+      s.setLocalForTest(AppSettingsService.kWorkshopSettledTo, 'not a date');
+      expect(BillingBaseline.workshopSettledTo,
+          BillingBaseline.defaultWorkshopSettledTo);
     });
   });
 }

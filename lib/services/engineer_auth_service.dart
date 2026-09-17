@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import './app_settings_service.dart';
 import './supabase_service.dart';
 import './venue_manager.dart';
 import 'session_status.dart';
@@ -173,15 +174,31 @@ class EngineerAuthService {
 
   // ── Auth ──────────────────────────────────────────────────────────────────
 
-  Future<void> signUp({
+  /// Creates an account, and hands back what actually happened.
+  ///
+  /// The two outcomes look nothing alike to the person signing up:
+  ///   * confirmation ON  — `session` is null and NOTHING more happens until
+  ///     they click the link in their email;
+  ///   * confirmation OFF — they are signed in there and then.
+  /// This used to return void, so the screen said "welcome" and walked into
+  /// the app either way. The day confirmation is switched on, that becomes a
+  /// bounce straight back to the sign-in page with no explanation.
+  ///
+  /// An address that already has an account comes back with a user whose
+  /// `identities` list is empty. Supabase will not say so outright, so that
+  /// the form cannot be used to test which addresses exist.
+  Future<AuthResponse> signUp({
     required String engineerName,
     required String engineerId,
     required String email,
     required String password,
-  }) async {
-    await _client.auth.signUp(
+  }) {
+    return _client.auth.signUp(
       email: email,
       password: password,
+      // Where "confirm your account" comes back to. Without it Supabase falls
+      // back to the project's Site URL, which is not necessarily this app.
+      emailRedirectTo: SupabaseService.appUrl,
       data: {
         'engineer_name': engineerName,
         'engineer_id': engineerId,
@@ -196,6 +213,11 @@ class EngineerAuthService {
 
   Future<void> signOut() async {
     await _client.auth.signOut();
+    // Both caches are per-account. Left standing, the next person to sign in
+    // on this device inherits the previous one's write permission and the
+    // previous one's settings until something else happens to refresh them.
+    clearWriteCache();
+    AppSettingsService.instance.clear();
   }
 
   User? get currentUser => _client.auth.currentUser;

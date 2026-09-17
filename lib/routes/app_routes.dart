@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../presentation/active_session_screen/active_session_screen.dart';
 import '../presentation/email_reports_screen/email_reports_screen.dart';
@@ -10,6 +11,7 @@ import '../presentation/login_screen/login_screen.dart';
 import '../presentation/manual_entry_screen/manual_entry_screen.dart';
 import '../presentation/po_tracker_screen/po_tracker_screen.dart';
 import '../presentation/privacy_policy_screen/privacy_policy_screen.dart';
+import '../presentation/reset_password_screen/reset_password_screen.dart';
 import '../presentation/tracks_screen/tracks_screen.dart';
 import '../presentation/session_history_screen/project_selection_screen.dart';
 import '../presentation/session_history_screen/session_history_screen.dart';
@@ -29,6 +31,7 @@ class AppRoutes {
   static const String initial = '/';
   static const String splash = '/';
   static const String login = '/login';
+  static const String resetPassword = '/reset-password';
   static const String projectSelection = '/project-selection';
   static const String activeSession = '/active-session-screen';
   static const String sessionHistory = '/session-history-screen';
@@ -85,13 +88,68 @@ class _AuthRefreshNotifier extends ChangeNotifier {
 
 final _authRefreshNotifier = _AuthRefreshNotifier();
 
+/// Tracks whether the app is mid password-reset.
+///
+/// A recovery link SIGNS THE USER IN. Without this the app simply opened the
+/// dashboard, and the only way to change a password was Settings — which asks
+/// for the current one, the thing they had forgotten. The flag survives until
+/// a new password is saved, so a refresh or a stray tap cannot skip past it.
+class _PasswordRecoveryNotifier extends ChangeNotifier {
+  _PasswordRecoveryNotifier() {
+    _sub = EngineerAuthService.instance.authStateChanges.listen((s) {
+      if (s.event == AuthChangeEvent.passwordRecovery) {
+        if (_recovering) return;
+        _recovering = true;
+        notifyListeners();
+      } else if (s.event == AuthChangeEvent.signedOut && _recovering) {
+        _recovering = false;
+        notifyListeners();
+      }
+    });
+  }
+
+  bool _recovering = false;
+  bool get recovering => _recovering;
+
+  void clear() {
+    if (!_recovering) return;
+    _recovering = false;
+    notifyListeners();
+  }
+
+  late final StreamSubscription<dynamic> _sub;
+
+  @override
+  void dispose() {
+    _sub.cancel();
+    super.dispose();
+  }
+}
+
+final _passwordRecoveryNotifier = _PasswordRecoveryNotifier();
+
+/// Called by the reset screen once a new password is saved, or abandoned.
+void clearPasswordRecovery() => _passwordRecoveryNotifier.clear();
+
 final GoRouter appRouter = GoRouter(
   initialLocation: AppRoutes.initial,
-  refreshListenable: _authRefreshNotifier,
+  refreshListenable:
+      Listenable.merge([_authRefreshNotifier, _passwordRecoveryNotifier]),
   redirect: (context, state) {
     final isLoggedIn = EngineerAuthService.instance.isSignedIn;
     final isSplash = state.matchedLocation == AppRoutes.splash;
     final isLogin = state.matchedLocation == AppRoutes.login;
+    final isReset = state.matchedLocation == AppRoutes.resetPassword;
+
+    // Checked before the splash exemption: the recovery link lands on the
+    // splash route, and letting it through would drop the user in the app
+    // with no way to finish setting a password.
+    if (_passwordRecoveryNotifier.recovering) {
+      return isReset ? null : AppRoutes.resetPassword;
+    }
+    // Reached any other way, the screen has no recovery session behind it and
+    // would fail on save, so it is not a page anyone can simply navigate to.
+    if (isReset) return isLoggedIn ? AppRoutes.settings : AppRoutes.login;
 
     // Allow splash to always show first
     if (isSplash) return null;
@@ -127,6 +185,18 @@ final GoRouter appRouter = GoRouter(
       pageBuilder: (context, state) => CustomTransitionPage(
         key: state.pageKey,
         child: const LoginScreen(),
+        transitionDuration: const Duration(milliseconds: 300),
+        transitionsBuilder: (context, animation, _, child) => FadeTransition(
+          opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+          child: child,
+        ),
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.resetPassword,
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const ResetPasswordScreen(),
         transitionDuration: const Duration(milliseconds: 300),
         transitionsBuilder: (context, animation, _, child) => FadeTransition(
           opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),

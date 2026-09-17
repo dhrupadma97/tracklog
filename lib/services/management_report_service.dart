@@ -1,3 +1,4 @@
+import 'app_settings_service.dart';
 import 'email_report_service.dart';
 import 'billing_baseline.dart';
 import 'invoice_service.dart';
@@ -43,6 +44,10 @@ class ManagementReportService {
     DateTime? asOn,
     String recipientName = 'Harsh',
   }) async {
+    // The workshop accrual dates are edited in Settings now, so the report
+    // reads them fresh. A stale cache here would reinstate the exact bug
+    // this replaced: asking a second time for a month already invoiced.
+    await AppSettingsService.instance.load(force: true);
     final client = SupabaseService.instance.client;
     final date = asOn ?? DateTime.now();
 

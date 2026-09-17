@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_theme.dart';
 import '../../services/engineer_auth_service.dart';
+import '../../services/supabase_service.dart';
 import '../../routes/app_routes.dart';
 import '../../services/biometric_service.dart';
 import '../../services/pin_lock_service.dart';
@@ -29,6 +30,14 @@ class _LoginScreenState extends State<LoginScreen>
 
   bool _isLoading = false;
   bool _isSignUp = false;
+
+  /// The address a confirmation email has just gone to, or null.
+  ///
+  /// Set only when sign-up returns no session — i.e. the account exists but
+  /// is waiting on the link. The form is replaced by an explanation, because
+  /// there is nothing useful left to type.
+  String? _confirmationSentTo;
+  bool _resending = false;
   bool _obscurePassword = true;
   String? _errorMessage;
   bool _biometricAvailable = false;
@@ -385,16 +394,36 @@ class _LoginScreenState extends State<LoginScreen>
     setState(() {
       _isLoading = true;
       _errorMessage = null;
+      _confirmationSentTo = null;
     });
 
     try {
       if (_isSignUp) {
-        await EngineerAuthService.instance.signUp(
+        final res = await EngineerAuthService.instance.signUp(
           engineerName: _nameController.text.trim(),
           engineerId: _idController.text.trim().toUpperCase(),
           email: _emailController.text.trim(),
           password: _passwordController.text,
         );
+
+        // Supabase answers an existing address with a user carrying no
+        // identities rather than an error, so the form cannot be used to test
+        // which addresses exist. Treating that as success created a profile
+        // in the user's head that does not exist in the database.
+        if (res.user?.identities?.isEmpty ?? false) {
+          setState(() => _errorMessage =
+              'There is already an account for this email address. '
+              'Sign in instead, or use Forgot Password.');
+          return;
+        }
+
+        // No session means email confirmation is switched on and NOTHING
+        // more happens until the link is clicked. Walking into the app here
+        // would bounce straight back to this page with no explanation.
+        if (res.session == null) {
+          setState(() => _confirmationSentTo = _emailController.text.trim());
+          return;
+        }
       } else {
         await EngineerAuthService.instance.signIn(
           email: _emailController.text.trim(),
@@ -610,7 +639,7 @@ class _LoginScreenState extends State<LoginScreen>
                                         .resetPasswordForEmail(
                                           email,
                                           redirectTo:
-                                              'https://sightlinevalidation.web.app',
+                                              SupabaseService.appUrl,
                                         );
                                     setDialogState(() {
                                       emailSent = true;
@@ -729,6 +758,7 @@ class _LoginScreenState extends State<LoginScreen>
     setState(() {
       _isSignUp = !_isSignUp;
       _errorMessage = null;
+      _confirmationSentTo = null;
     });
     _cardAnimController.reset();
     _cardAnimController.forward();
@@ -1145,6 +1175,124 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   // ── Login card ────────────────────────────────────────────────────────
+  /// Shown after sign-up when the account still needs its email confirmed.
+  ///
+  /// The old screen navigated into the app at this point. With confirmation
+  /// on that is a bounce back to sign-in and no clue why, so the form is
+  /// replaced by the one thing left to do: go and open the email.
+  Widget _buildConfirmationPanel() {
+    final email = _confirmationSentTo ?? '';
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 52, height: 52,
+              decoration: BoxDecoration(
+                color: AppTheme.success.withAlpha(28),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppTheme.success.withAlpha(80)),
+              ),
+              child: const Icon(Icons.mark_email_unread_outlined,
+                  color: AppTheme.success, size: 26),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text('Check your email',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.spaceGrotesk(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white)),
+          const SizedBox(height: 8),
+          Text(
+            'Your account is created. We have sent a confirmation link to '
+            '$email. Open it and you can sign in.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.spaceGrotesk(
+                fontSize: 13, height: 1.5, color: const Color(0xFF9AA3BE)),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Nothing there? Check the spam folder. Links expire, so use it '
+            'soon.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.spaceGrotesk(
+                fontSize: 11.5, height: 1.45, color: const Color(0xFF6B7490)),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            height: 46,
+            child: OutlinedButton(
+              onPressed: _resending ? null : _resendConfirmation,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF00F3FF),
+                side: BorderSide(color: const Color(0xFF00F3FF).withAlpha(110)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              child: _resending
+                  ? const SizedBox(
+                      width: 18, height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Color(0xFF00F3FF))))
+                  : Text('Send the link again',
+                      style: GoogleFonts.spaceGrotesk(
+                          fontSize: 13.5, fontWeight: FontWeight.w700)),
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: () => setState(() {
+              _confirmationSentTo = null;
+              _isSignUp = false;
+            }),
+            child: Text('Back to sign in',
+                style: GoogleFonts.spaceGrotesk(
+                    fontSize: 13, color: const Color(0xFF9AA3BE))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _resendConfirmation() async {
+    final email = _confirmationSentTo;
+    if (email == null || email.isEmpty) return;
+    setState(() => _resending = true);
+    try {
+      await Supabase.instance.client.auth.resend(
+        type: OtpType.signup,
+        email: email,
+        emailRedirectTo: SupabaseService.appUrl,
+      );
+      if (mounted) _toast('Sent again. Check your email.');
+    } on AuthException catch (e) {
+      // Rate limiting lands here, and its message is the useful one.
+      if (mounted) _toast(e.message, error: true);
+    } catch (_) {
+      if (mounted) _toast('Could not send it. Try again shortly.', error: true);
+    } finally {
+      if (mounted) setState(() => _resending = false);
+    }
+  }
+
+  void _toast(String msg, {bool error = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg,
+          style: GoogleFonts.spaceGrotesk(
+              color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+      backgroundColor: error ? AppTheme.error : AppTheme.success,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: const EdgeInsets.all(16),
+    ));
+  }
+
   Widget _buildLoginCard() {
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
@@ -1240,7 +1388,11 @@ class _LoginScreenState extends State<LoginScreen>
             ),
           ),
 
-          // Form body
+          // Form body. Swapped for the "check your email" panel once an
+          // account is created and waiting on its confirmation link.
+          if (_confirmationSentTo != null)
+            _buildConfirmationPanel()
+          else
           Padding(
             padding: const EdgeInsets.all(24),
             // AutofillGroup ties the e-mail and password together as one
