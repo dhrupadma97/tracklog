@@ -146,7 +146,10 @@ class MonthlySummaryCardWidget extends StatelessWidget {
             )
           else
             SizedBox(
-              height: 110,
+              // 110 was 7 to 36 pixels short of the content, so the cards
+              // showed overflow stripes on a narrow window. Found by the
+              // widget test, not on screen.
+              height: 132,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.only(right: 20),
@@ -191,7 +194,20 @@ class _SummaryCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: data.color.withAlpha(51), width: 1),
       ),
-      child: Column(
+      // Scales down rather than overflowing. The card sits in a strip of
+      // fixed height, and the content is within a few pixels of it: a
+      // larger OS text size, or a substituted font, tips it over and the
+      // user gets yellow-and-black stripes. Found by a widget test.
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.topLeft,
+        child: SizedBox(
+          width: 102,
+          child: Column(
+        // Sizes to its content. It used to rely on a Spacer, which needs a
+        // bounded height: in a short row - a phone, or a narrow window - the
+        // card overflowed and showed the yellow-and-black stripes.
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -204,7 +220,7 @@ class _SummaryCard extends StatelessWidget {
               const Spacer(),
             ],
           ),
-          const Spacer(),
+          const SizedBox(height: 8),
           Text(
             data.value,
             style: TextStyle(
@@ -229,6 +245,8 @@ class _SummaryCard extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
         ],
+      ),
+        ),
       ),
     );
   }

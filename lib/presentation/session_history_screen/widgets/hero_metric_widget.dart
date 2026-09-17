@@ -47,7 +47,7 @@ class HeroMetricWidget extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   periodLabel != null
-                      ? 'Total track usage in '
+                      ? 'Total track usage in $periodLabel'
                       : isLastMonth
                           ? 'Total track usage last month'
                           : 'Total track usage this month',

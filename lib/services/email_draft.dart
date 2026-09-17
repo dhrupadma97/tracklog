@@ -7,6 +7,8 @@ import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:universal_html/html.dart' as html;
 
+import 'rich_clipboard.dart';
+
 /// Turning a composed report into something you can look at, and into a draft
 /// Outlook will open with a Send button.
 class EmailDraft {
@@ -96,36 +98,15 @@ class EmailDraft {
   /// Copies [htmlBody] as rich text via a hidden contenteditable selection, so
   /// pasting into Outlook keeps the tables and colours rather than arriving as
   /// a wall of markup.
-  static bool _copyRichText(String htmlBody) {
-    html.DivElement? holder;
-    try {
-      holder = html.DivElement()
-        ..innerHtml = htmlBody
-        ..contentEditable = 'true'
-        // Off-screen rather than display:none — a hidden element cannot be
-        // selected, and an unselectable one cannot be copied.
-        ..style.position = 'fixed'
-        ..style.left = '-99999px'
-        ..style.top = '0'
-        ..style.opacity = '0';
-      html.document.body!.append(holder);
-
-      final range = html.document.createRange()..selectNodeContents(holder);
-      final selection = html.window.getSelection();
-      if (selection == null) return false;
-      selection
-        ..removeAllRanges()
-        ..addRange(range);
-
-      final ok = html.document.execCommand('copy');
-      selection.removeAllRanges();
-      return ok;
-    } catch (_) {
-      return false;
-    } finally {
-      holder?.remove();
-    }
-  }
+  /// Copies [htmlBody] as rich text, so pasting into Outlook keeps the
+  /// tables and colours rather than arriving as a wall of markup.
+  ///
+  /// The DOM work lives in rich_clipboard_web.dart behind a conditional
+  /// import. It used to be inline here using universal_html, whose Range
+  /// class is an empty stub - which meant this file could not compile off
+  /// the web, and widget_test.dart imports main.dart, so NO widget test
+  /// could run at all.
+  static bool _copyRichText(String htmlBody) => copyRichHtml(htmlBody);
 
   /// Builds an RFC-822 message and hands it to the OS.
   ///
