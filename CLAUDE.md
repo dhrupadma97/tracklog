@@ -31,7 +31,10 @@
   so workshop accrues rupees and has no days-remaining figure; manpower POs are
   contracted in days and do. Manpower days = SUM(head_count); workshop days =
   COUNT(rows), with head_count forced to 0.
-- Email reports To: `praharshithkumar_komaragiri@goodyear.com`, CC: vimal, ashish, yeswanth, niranjan
+- Email reports To: `praharshithkumar_komaragiri@goodyear.com`, CC: vimal, ashish,
+  kartheek (yeswanth and niranjan removed 17 Sep 2026). The list is hardcoded in
+  FOUR files — email_reports_screen, project_updates_screen, email_report_service
+  and management_report_service — so a change means all four.
 
 ## Projects tracked
 | Key | Display Name | Vehicle | Status |

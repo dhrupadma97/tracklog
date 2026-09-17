@@ -789,7 +789,7 @@ class _EmailPreviewDialog extends StatelessWidget {
 
   static const _to = 'praharshithkumar_komaragiri@goodyear.com';
   static const _cc = ['v_vimal@goodyear.com', 'ashish_pandit@goodyear.com',
-                       'yeswanth_golla@goodyear.com', 'niranjan_poloju@goodyear.com'];
+                       'kartheek_nedunuri@goodyear.com'];
   static const _from = 'dhrupad_ma@goodyear.com';
 
   @override

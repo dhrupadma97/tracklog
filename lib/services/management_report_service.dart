@@ -32,8 +32,7 @@ class ManagementReportService {
   static const _defaultCc = [
     'v_vimal@goodyear.com',
     'ashish_pandit@goodyear.com',
-    'yeswanth_golla@goodyear.com',
-    'niranjan_poloju@goodyear.com',
+    'kartheek_nedunuri@goodyear.com',
   ];
 
   /// Gathers everything and renders the mail without sending it.

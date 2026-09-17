@@ -395,7 +395,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                   const SizedBox(height: 12),
                   Text(
                     'To: praharshithkumar_komaragiri@goodyear.com\n'
-                    'Cc: vimal, ashish, yeswanth, niranjan',
+                    'Cc: vimal, ashish, kartheek',
                     style: GoogleFonts.spaceGrotesk(
                         color: const Color(0xFF6B7490),
                         fontSize: 10.5,
@@ -451,8 +451,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                       cc: const [
                         'v_vimal@goodyear.com',
                         'ashish_pandit@goodyear.com',
-                        'yeswanth_golla@goodyear.com',
-                        'niranjan_poloju@goodyear.com',
+                        'kartheek_nedunuri@goodyear.com',
                       ],
                       subject: update.subject,
                       htmlBody: update.html,
@@ -490,8 +489,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                       cc: const [
                         'v_vimal@goodyear.com',
                         'ashish_pandit@goodyear.com',
-                        'yeswanth_golla@goodyear.com',
-                        'niranjan_poloju@goodyear.com',
+                        'kartheek_nedunuri@goodyear.com',
                       ],
                       subject: update.subject,
                       htmlBody: update.html,
@@ -801,7 +799,7 @@ class _EmailReportsScreenState extends State<EmailReportsScreen>
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   _recipientRow('To', 'Harsh · praharshithkumar_komaragiri@goodyear.com'),
                   const SizedBox(height: 4),
-                  _recipientRow('CC', 'v_vimal, ashish_pandit, yeswanth_golla, niranjan_poloju'),
+                  _recipientRow('CC', 'v_vimal, ashish_pandit, kartheek_nedunuri'),
                 ]),
               ),
               const SizedBox(height: 14),
@@ -1478,7 +1476,7 @@ class _NatraxComposeSheetState extends State<_NatraxComposeSheet> {
   String _reportType = 'monthly'; // 'weekly' | 'monthly'
   final _vehicleCtrl = TextEditingController(text: 'Mahindra XEV 9e');
   final _toCtrl = TextEditingController(text: 'praharshithkumar_komaragiri@goodyear.com');
-  final _ccCtrl = TextEditingController(text: 'v_vimal@goodyear.com, ashish_pandit@goodyear.com, yeswanth_golla@goodyear.com, niranjan_poloju@goodyear.com');
+  final _ccCtrl = TextEditingController(text: 'v_vimal@goodyear.com, ashish_pandit@goodyear.com, kartheek_nedunuri@goodyear.com');
   final _bodyCtrl = TextEditingController();
   bool _sending = false;
   bool _previewing = false;

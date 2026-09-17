@@ -425,7 +425,7 @@ class EmailReportService {
 
       final toEmail = customToEmail ?? 'praharshithkumar_komaragiri@goodyear.com';
       final ccEmails = customCcEmails ?? ['v_vimal@goodyear.com', 'ashish_pandit@goodyear.com',
-                   'yeswanth_golla@goodyear.com', 'niranjan_poloju@goodyear.com'];
+                   'kartheek_nedunuri@goodyear.com'];
 
       // --- Call edge function ---
       final response = await _client.functions.invoke(
