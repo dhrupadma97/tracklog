@@ -525,12 +525,24 @@ class ManagementReportService {
     required List<ResourceUtilisation> resources,
     required List<String> attention,
   }) {
-    const th = 'style="text-align:left;padding:7px 10px;background:#0057e6;'
-        'color:#fff;font-size:12px;font-weight:600;"';
-    const td = 'style="padding:7px 10px;border-bottom:1px solid #e6e9f0;'
-        'font-size:13px;"';
-    const tdr = 'style="padding:7px 10px;border-bottom:1px solid #e6e9f0;'
-        'font-size:13px;text-align:right;"';
+    // Table styling, one place for every table in the report.
+    //
+    // The solid blue header band read as a website chrome rather than a
+    // financial statement, and 7px padding crowded four-figure rupee amounts
+    // into each other. A light header with a firm rule under it, and room to
+    // breathe, is what a finance reader expects — the weight goes on the
+    // numbers instead of the furniture.
+    const th = 'style="text-align:left;padding:10px 12px;background:#f4f7fb;'
+        'color:#5a6780;font-size:10.5px;font-weight:700;'
+        'letter-spacing:.7px;text-transform:uppercase;'
+        'border-bottom:2px solid #d9e1ec;"';
+    const td = 'style="padding:11px 12px;border-bottom:1px solid #edf1f6;'
+        'font-size:13px;color:#233149;"';
+    // Figures are right-aligned and a shade darker, so a column of rupees
+    // scans down cleanly.
+    const tdr = 'style="padding:11px 12px;border-bottom:1px solid #edf1f6;'
+        'font-size:13px;text-align:right;color:#0b1b34;'
+        'font-variant-numeric:tabular-nums;"';
 
     // Drawdown per PO, from the PO each invoice names. This is what answers
     // "which PO paid for track time and which paid for manpower".
@@ -697,18 +709,44 @@ class ManagementReportService {
             'which is not yet loaded in the tracker — available funding above '
             'is understated.</td></tr>';
 
+    // Track and manpower are SEPARATE POOLS drawing separate POs, and a
+    // single flat list read as one bill: NATRAX track invoices (INV/...) sat
+    // beside MOICARS manpower invoices (MOI/TV-...) with nothing to tell them
+    // apart, so a reader totalling the track spend picked up manpower with
+    // it. Grouped by the category of the PO each invoice names.
+    final poCategory = <String, String>{
+      for (final p in pos)
+        (p['po_number'] as String? ?? '').trim():
+            (p['category'] as String? ?? 'other').toLowerCase(),
+    };
+    bool isManpower(NatraxInvoice i) =>
+        poCategory[(i.poNumber ?? '').trim()] == 'manpower';
+
+    final trackInvoices = invoices.where((i) => !isManpower(i)).toList();
+    final manpowerInvoices = invoices.where(isManpower).toList();
+
+    String invoiceGroup(String label, List<NatraxInvoice> rows) {
+      if (rows.isEmpty) return '';
+      final sum = rows.fold<double>(0, (s, i) => s + i.totalAmount);
+      final body = rows
+          .map((i) => '<tr><td $td>${i.invoiceNumber}</td>'
+              '<td $td>${i.invoiceDate == null ? '—' : _fmtDate(i.invoiceDate!)}</td>'
+              '<td $td>${i.periodMonth == null ? '—' : _monthLabel(i.periodMonth!)}</td>'
+              '<td $tdr><b>${_inr(i.totalAmount)}</b></td></tr>')
+          .join();
+      return '<tr><td colspan="4" style="padding:9px 10px 4px;font-size:11px;'
+          'font-weight:700;color:#0057e6;letter-spacing:.5px;'
+          'border-bottom:1px solid #e6e9f0;">$label</td></tr>'
+          '$body'
+          '<tr><td $td colspan="3" style="padding:7px 10px;">'
+          '<i>$label subtotal</i></td>'
+          '<td $tdr style="padding:7px 10px;"><i>${_inr(sum)}</i></td></tr>';
+    }
+
     final invoiceRows = invoices.isEmpty
         ? '<tr><td $td colspan="4" style="color:#b26a00;">No invoices uploaded yet</td></tr>'
-        : invoices.map((i) {
-            return '<tr><td $td>${i.invoiceNumber}</td>'
-                '<td $td>${i.invoiceDate == null ? '—' : _fmtDate(i.invoiceDate!)}</td>'
-                '<td $td>${i.periodMonth == null ? '—' : _monthLabel(i.periodMonth!)}</td>'
-                '<td $tdr><b>${_inr(i.totalAmount)}</b></td></tr>';
-          }).join();
-
-    // Work that is done but unbilled was still booked against a PO — the first
-    // track PO, which is what it will draw on when NATRAX raises the invoice.
-    // Naming it matters: that PO is the one with the least headroom left.
+        : invoiceGroup('TRACK &amp; WORKSHOP — NATRAX', trackInvoices) +
+            invoiceGroup('MANPOWER — MOICARS', manpowerInvoices);
     String firstTrackPo = '';
     for (final p in pos) {
       if ((p['category'] as String? ?? '').toLowerCase() != 'track_booking') {
@@ -762,21 +800,9 @@ class ManagementReportService {
     final workshopDaysAll = workshopDays + openDays;
     final workshopCostAll = workshopCost + openRental;
 
-    final workshopRows = (workshopMonths.isEmpty && openDays == 0)
-        ? '<tr><td $td colspan="3">No workshop rental recorded</td></tr>'
-        : workshopMonths
-                .map((m) => '<tr><td $td>${_monthLabel(m.month)}</td>'
-                    '<td $tdr>${_trimNum(m.workshopDays)}</td>'
-                    '<td $tdr>${_inr(m.workshopRental)}</td></tr>')
-                .join() +
-            (openDays == 0
-                ? ''
-                : '<tr><td $td>Since '
-                    '${_fmtDate(BillingBaseline.workshopResumedOn)} '
-                    '<span style="color:#6b7490;font-size:11px;">'
-                    '(open, not invoiced)</span></td>'
-                    '<td $tdr>$openDays</td>'
-                    '<td $tdr>${_inr(openRental)}</td></tr>');
+    // The per-month workshop breakdown was dropped on 17 Sep 2026: Dhrupad
+    // asked for the cost to date and nothing else. workshopDaysAll and
+    // workshopCostAll above are what the section now prints.
 
     final trackRows = tracks.isEmpty
         ? '<tr><td $td colspan="3">No sessions logged</td></tr>'
@@ -840,13 +866,18 @@ ${barLeft > 0 ? '<td width="$barLeft%" bgcolor="#dbe2ec" style="height:8px;line-
   </td></tr></table>
 </td>''';
 
+    // A quiet heading with a hairline under the whole width, rather than a
+    // short heavy underline beneath the words. It separates sections without
+    // competing with the figures inside them, and gives each block enough air
+    // to be read as its own statement.
     String section(String title, String body, {String? note}) => '''
-<tr><td style="padding:24px 26px 0;">
-  <div style="font-size:13px;font-weight:700;color:#0a1f44;
-              border-bottom:2px solid #0057e6;display:inline-block;
-              padding-bottom:3px;margin-bottom:10px;">$title</div>
+<tr><td style="padding:30px 26px 0;">
+  <div style="font-size:11px;font-weight:700;color:#5a6780;
+              letter-spacing:1.1px;text-transform:uppercase;
+              padding-bottom:8px;border-bottom:1px solid #e2e8f1;
+              margin-bottom:14px;">$title</div>
   $body
-  ${note == null ? '' : '<div style="font-size:11px;color:#7a8699;padding-top:6px;line-height:1.5;">$note</div>'}
+  ${note == null ? '' : '<div style="font-size:11.5px;color:#7a8699;padding-top:10px;line-height:1.6;">$note</div>'}
 </td></tr>''';
 
     final resourceSection = allocated.isEmpty
@@ -1031,22 +1062,14 @@ $manpowerPendingRows
         'a surprise.')}
 
 ${section('Workshop rental', '''
-<table cellpadding="0" cellspacing="0" border="0" width="100%"
-       style="border-collapse:collapse;">
-<tr><th $th>Month</th><th $th style="text-align:right">Days</th>
-<th $th style="text-align:right">Rental</th></tr>
-$workshopRows
-<tr><td $td style="padding:8px 10px;background:#f6f8fb;">
-  <b>Total</b></td>
-<td $tdr style="padding:8px 10px;background:#f6f8fb;">
-  <b>${_trimNum(workshopDaysAll)} days</b></td>
-<td $tdr style="padding:8px 10px;background:#f6f8fb;">
-  <b>${_inr(workshopCostAll)}</b></td></tr>
-</table>''', note: 'Charged at ${_inr(BillingBaseline.workshopDayRate)} per '
-        'operational day on the Continuous Workshop Flat Rate. June and July '
-        'carry no rental — the bay was released over the pause and re-occupied '
-        'on ${_fmtDate(BillingBaseline.workshopResumedOn)}, so that period is '
-        'still accruing and not yet invoiced.')}
+<div style="font-size:26px;font-weight:800;color:#0b1b34;letter-spacing:-.5px;">
+  ${_inr(workshopCostAll)}</div>
+<div style="font-size:13px;color:#5a6780;padding-top:2px;">
+  ${_trimNum(workshopDaysAll)} operational days at
+  ${_inr(BillingBaseline.workshopDayRate)} a day, to date
+</div>''', note: 'Charged on the Continuous Workshop Flat Rate. Invoiced '
+        'periods are settled at the invoice; anything after them is accrued '
+        'at the same day rate until NATRAX bills it.')}
 
 ${section('Track utilisation', '''
 <div style="font-size:13px;color:#3d4757;padding-bottom:8px;">
