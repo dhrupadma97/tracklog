@@ -190,6 +190,29 @@ class ManagementReportService {
     for (final prog in ProjectCatalog.all) {
       final billedMonths = invoicedMonths[prog.key] ?? const <String, double>{};
       final live = liveCost[prog.key] ?? const <String, double>{};
+      // ONLY MAHINDRA EV POC HAS A PINNED BASELINE, so iterating the baseline
+      // alone left every other programme at zero: Mahindra ICE PoC reported no
+      // spend at all against 10 sessions and 13.6 hours of real track time.
+      //
+      // Costed from its own sessions instead, which for these programmes is
+      // the whole point — CLAUDE.md: "Every other programme costs live from
+      // what is logged".
+      //
+      // Deliberately NOT added to `unbilled`. That list drives the "invoice
+      // outstanding" points needing attention, and Dhrupad asked for the
+      // figure without the flag: work in progress on a live programme is not
+      // something to chase NATRAX about.
+      if (BillingBaseline.forProject(prog.key).isEmpty) {
+        for (final month in live.keys.toList()..sort()) {
+          if (billedMonths.containsKey(month)) continue;
+          final cost = live[month] ?? 0;
+          if (cost <= 0) continue;
+          unbilledByProgramme[prog.key] = (unbilledByProgramme[prog.key] ?? 0) +
+              cost * (1 + BillingBaseline.gstRate);
+        }
+        continue;
+      }
+
       for (final m in BillingBaseline.forProject(prog.key)) {
         if (billedMonths.containsKey(m.month)) continue;
         final resolved = m.isTrackComputed
@@ -291,8 +314,11 @@ class ManagementReportService {
     final openWsDays = BillingBaseline.openWorkshopDays(date);
     if (openWsDays > 0) {
       attention.add(
+          // Counted from the day after the last INVOICED period, not from the
+          // day the bay was re-occupied. Saying "since 12 August" while August
+          // is settled invites a second payment for a month already paid.
           '<b>Workshop rental accruing since '
-          '${_fmtDate(BillingBaseline.workshopResumedOn)}.</b> The bay has been '
+          '${_fmtDate(BillingBaseline.workshopSettledTo.add(const Duration(days: 1)))}.</b> The bay has been '
           'held for $openWsDays day${openWsDays == 1 ? '' : 's'} at '
           '${_inr(BillingBaseline.workshopDayRate)}/day — '
           '${_inr(BillingBaseline.openWorkshopRental(date))} not yet invoiced '
