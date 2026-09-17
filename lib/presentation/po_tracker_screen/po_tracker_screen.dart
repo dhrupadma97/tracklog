@@ -554,6 +554,9 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) {
         return AlertDialog(
+          // Scrolls rather than overflowing: a long list or a small laptop
+          // screen otherwise pushes the buttons off the bottom, out of reach.
+          scrollable: true,
           backgroundColor: const Color(0xFF0A1025),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
@@ -2553,6 +2556,9 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
       context: context,
       builder: (ctx) {
         return AlertDialog(
+          // Scrolls rather than overflowing: a long list or a small laptop
+          // screen otherwise pushes the buttons off the bottom, out of reach.
+          scrollable: true,
           backgroundColor: const Color(0xFF0A1025),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),

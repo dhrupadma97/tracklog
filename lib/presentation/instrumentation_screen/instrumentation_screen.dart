@@ -1758,6 +1758,9 @@ class _SchematicTabState extends State<_SchematicTab>
     final ok = await showDialog<bool>(
       context: context,
       builder: (dCtx) => AlertDialog(
+        // Scrolls rather than overflowing: a long list or a small laptop
+        // screen otherwise pushes the buttons off the bottom, out of reach.
+        scrollable: true,
         backgroundColor: const Color(0xFF0A1025),
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1811,6 +1814,9 @@ class _SchematicTabState extends State<_SchematicTab>
     final ok = await showDialog<bool>(
       context: context,
       builder: (dCtx) => AlertDialog(
+        // Scrolls rather than overflowing: a long list or a small laptop
+        // screen otherwise pushes the buttons off the bottom, out of reach.
+        scrollable: true,
         backgroundColor: const Color(0xFF0A1025),
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1942,6 +1948,9 @@ class _SchematicTabState extends State<_SchematicTab>
     final ok = await showDialog<bool>(
       context: context,
       builder: (dCtx) => AlertDialog(
+        // Scrolls rather than overflowing: a long list or a small laptop
+        // screen otherwise pushes the buttons off the bottom, out of reach.
+        scrollable: true,
         backgroundColor: const Color(0xFF0A1025),
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -2034,6 +2043,9 @@ class _SchematicTabState extends State<_SchematicTab>
       context: context,
       builder: (dCtx) => StatefulBuilder(
         builder: (dCtx, setD) => AlertDialog(
+          // Scrolls rather than overflowing: a long list or a small laptop
+          // screen otherwise pushes the buttons off the bottom, out of reach.
+          scrollable: true,
           backgroundColor: const Color(0xFF0A1025),
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16)),
@@ -2430,6 +2442,9 @@ class _SchematicTabState extends State<_SchematicTab>
     final ok = await showDialog<bool>(
       context: context,
       builder: (dCtx) => AlertDialog(
+        // Scrolls rather than overflowing: a long list or a small laptop
+        // screen otherwise pushes the buttons off the bottom, out of reach.
+        scrollable: true,
         backgroundColor: const Color(0xFF0A1025),
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -2771,6 +2786,9 @@ class _SchematicTabState extends State<_SchematicTab>
       context: context,
       builder: (dCtx) => StatefulBuilder(
         builder: (dCtx, setD) => AlertDialog(
+          // Scrolls rather than overflowing: a long list or a small laptop
+          // screen otherwise pushes the buttons off the bottom, out of reach.
+          scrollable: true,
           backgroundColor: const Color(0xFF0A1025),
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16)),
@@ -3195,6 +3213,9 @@ class _SchematicTabState extends State<_SchematicTab>
       context: context,
       builder: (dCtx) => StatefulBuilder(
         builder: (dCtx, setD) => AlertDialog(
+          // Scrolls rather than overflowing: a long list or a small laptop
+          // screen otherwise pushes the buttons off the bottom, out of reach.
+          scrollable: true,
           backgroundColor: const Color(0xFF0A1025),
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16)),

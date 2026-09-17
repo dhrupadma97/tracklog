@@ -773,6 +773,9 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheet) => AlertDialog(
+          // Scrolls rather than overflowing: a long list or a small laptop
+          // screen otherwise pushes the buttons off the bottom, out of reach.
+          scrollable: true,
           backgroundColor: const Color(0xFF0A1025),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),

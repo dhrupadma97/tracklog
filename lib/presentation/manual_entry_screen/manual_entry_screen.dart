@@ -10,6 +10,7 @@ import '../../core/app_export.dart';
 import '../../services/engineer_auth_service.dart';
 import '../../services/excel_backup_downloader.dart';
 import '../../services/offline_queue_service.dart';
+import '../../services/track_cost_rules.dart';
 import '../../services/project_catalog.dart';
 import '../../services/project_manager.dart';
 import '../../services/supabase_service.dart';
@@ -204,31 +205,12 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     {'code': 'T13',  'name': 'Gravel & Off-Road Track',   'rate': 15000.0, 'minHrs': 1.0},
   ];
 
-  /// Tracks that share ONE minimum between them on a given day.
-  ///
-  /// T3 Wet and T3 Dry are two surfaces of the same braking track, and NATRAX
-  /// applies the two-hour minimum to the track once a day rather than to each
-  /// surface. Invoice INV/26-27/205 settles it. April has exactly three dry
-  /// days -- 7, 8 and 9 April, running 49, 36 and 50 minutes -- and wet ran on
-  /// all three. The invoice bills:
-  ///
-  ///   Braking Track Testing - WET   34 Hrs at 21,000 = 7,14,000
-  ///   Braking Track Testing - DRY    3 Hrs at 19,000 =   57,000
-  ///
-  /// Three dry days at 3 Hrs is one hour each: the ceiling of each day's own
-  /// time, with no minimum of its own, because wet had already met the day's
-  /// two hours. Charging each surface its own two-hour minimum gives 6 Hrs
-  /// and Rs 1,14,000 -- double what was invoiced.
-  ///
-  /// Dry running ALONE still bills two hours; nothing in the data shows such
-  /// a day, and the booking terms are unchanged.
-  static const _minGroups = <String, List<String>>{
-    'T3W': ['T3W', 'T3D'],
-    'T3D': ['T3W', 'T3D'],
-  };
-
   /// Every track code sharing this entry's day minimum, itself included.
-  List<String> get _minGroupCodes => _minGroups[_trackCode] ?? [_trackCode];
+  ///
+  /// The grouping and the whole cost rule live in [TrackCostRules], which is
+  /// pure and covered by test/track_cost_rules_test.dart. They used to sit
+  /// here inside the widget, where no test could reach them.
+  List<String> get _minGroupCodes => TrackCostRules.groupFor(_trackCode);
 
   // CoASTT Coimbatore. Specs come from the CoASTT deck; rates are 0 because
   // that deck states none, and the summary reads "not recorded" rather than
@@ -350,6 +332,9 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        // Scrolls rather than overflowing: a long list or a small laptop
+        // screen otherwise pushes the buttons off the bottom, out of reach.
+        scrollable: true,
         backgroundColor: const Color(0xFF0A1025),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text('Delete this session?',
@@ -536,25 +521,26 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     // entry has already absorbed the shortfall and the day can come out an
     // hour long. The day total is what NATRAX invoices, so on a wet+dry day
     // enter whichever surface ran first, first.
-    final dayTotalMins  = _sameDayMinutes + entryMins;
-    final thisCeil      = _ceilHours(dayTotalMins);
-    final groupCeil     = thisCeil + _siblingCeilHours;
-    final shortfall     = math.max(0.0, minHrs - groupCeil);
-    final billableHours = thisCeil + shortfall;
-
-    // Incremental: what the whole day now costs, less what is already billed
-    // for it. So the first entry of a day carries the rounding up and a later
-    // one adds nothing until the day crosses into the next whole hour.
-    final cost = billableHours * rate - _sameDayCost;
-    _costCtrl.text = cost.clamp(0, double.infinity).toStringAsFixed(0);
+    // All of this lives in TrackCostRules, which is pure and under test in
+    // test/track_cost_rules_test.dart. It used to be inline here, where no
+    // test could reach it - which is how a flat 25,000 rate, fraction
+    // billing and a per-entry minimum all shipped unnoticed.
+    final cost = TrackCostRules.marginalCost(
+      entryMinutes: entryMins,
+      sameDayMinutes: _sameDayMinutes,
+      sameDayCost: _sameDayCost,
+      rate: rate,
+      minHours: minHrs,
+      siblingCeilHours: _siblingCeilHours,
+    );
+    _costCtrl.text = cost.toStringAsFixed(0);
   }
 
   /// Minutes to whole billable hours, always rounding up.
   ///
   /// Zero stays zero: a day with nothing logged has nothing to bill. One
   /// minute is an hour, which is the floor NATRAX charges.
-  double _ceilHours(int minutes) =>
-      minutes <= 0 ? 0 : (minutes / 60.0).ceilToDouble();
+  double _ceilHours(int minutes) => TrackCostRules.ceilHours(minutes);
 
   void _recalcFromTime() {
     final s = _start.hour * 60 + _start.minute;

@@ -105,6 +105,9 @@ class InvoiceUploadFlow {
     return showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        // Scrolls rather than overflowing: a long list or a small laptop
+        // screen otherwise pushes the buttons off the bottom, out of reach.
+        scrollable: true,
         backgroundColor: const Color(0xFF0A1025),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
@@ -218,6 +221,9 @@ class InvoiceUploadFlow {
         final accent =
             good ? const Color(0xFF4CAF50) : const Color(0xFFFFB547);
         return AlertDialog(
+          // Scrolls rather than overflowing: a long list or a small laptop
+          // screen otherwise pushes the buttons off the bottom, out of reach.
+          scrollable: true,
           backgroundColor: const Color(0xFF0A1025),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),

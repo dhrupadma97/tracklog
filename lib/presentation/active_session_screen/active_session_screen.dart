@@ -229,7 +229,15 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
       builder: (dialogContext) {
         return Dialog(
           backgroundColor: Colors.transparent,
-          child: Container(
+          // Height-capped and scrollable: on a laptop this dialog ran past
+          // the bottom of the screen and its buttons could not be reached,
+          // with nothing to scroll.
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.9,
+            ),
+            child: SingleChildScrollView(
+              child: Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
               color: const Color(0xFF0A1025),
@@ -344,6 +352,8 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen>
                   ],
                 ),
               ],
+            ),
+          ),
             ),
           ),
         );

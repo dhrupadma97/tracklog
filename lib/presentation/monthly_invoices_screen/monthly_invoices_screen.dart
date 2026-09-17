@@ -203,7 +203,12 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
     final chosen = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
+      isScrollControlled: true,
+      builder: (ctx) => ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(ctx).size.height * 0.85,
+        ),
+        child: SingleChildScrollView(child: Container(
         padding: const EdgeInsets.all(20),
         decoration: const BoxDecoration(
           color: Color(0xFF0A1025),
@@ -283,6 +288,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
             }),
           ],
         ),
+      )),
       ),
     );
     if (chosen != null && chosen != _activeProject) {

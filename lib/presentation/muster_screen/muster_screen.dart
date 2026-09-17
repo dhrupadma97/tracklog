@@ -808,10 +808,22 @@ class _MusterScreenState extends State<MusterScreen> {
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheet) => Padding(
-          padding: EdgeInsets.fromLTRB(
-              20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 24),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
+        // The sheet grew past the screen: on a laptop the Save button sat
+        // below the fold with nothing to scroll, so a day could be filled in
+        // and never recorded. A bottom sheet does not scroll on its own -
+        // isScrollControlled only lets it exceed half the screen.
+        //
+        // Capped at 92% so the sheet never covers the whole screen, and the
+        // keyboard inset stays inside the scroll view so the focused field
+        // is reachable when the keyboard is up.
+        builder: (ctx, setSheet) => ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(ctx).size.height * 0.92,
+          ),
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+                20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 24),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
             Text(existing == null ? 'Mark a day' : 'Edit day',
                 style: GoogleFonts.spaceGrotesk(
                     color: Colors.white,
@@ -1165,6 +1177,7 @@ class _MusterScreenState extends State<MusterScreen> {
               ),
             ]),
           ]),
+        ),
         ),
       ),
     );

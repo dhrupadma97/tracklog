@@ -125,6 +125,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       barrierColor: Colors.black.withAlpha(160),
       builder: (ctx) => AlertDialog(
+        // Scrolls rather than overflowing: a long list or a small laptop
+        // screen otherwise pushes the buttons off the bottom, out of reach.
+        scrollable: true,
         backgroundColor: const Color(0xFF0A1025),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
@@ -361,6 +364,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       barrierColor: Colors.black.withAlpha(160),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
+          // Scrolls rather than overflowing: a long list or a small laptop
+          // screen otherwise pushes the buttons off the bottom, out of reach.
+          scrollable: true,
           backgroundColor: const Color(0xFF0A1025),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
@@ -445,6 +451,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        // Scrolls rather than overflowing: a long list or a small laptop
+        // screen otherwise pushes the buttons off the bottom, out of reach.
+        scrollable: true,
         backgroundColor: const Color(0xFF0A1025),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),

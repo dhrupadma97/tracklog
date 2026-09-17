@@ -191,6 +191,9 @@ class _LoginScreenState extends State<LoginScreen>
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
+            // Scrolls rather than overflowing: a long list or a small laptop
+            // screen otherwise pushes the buttons off the bottom, out of reach.
+            scrollable: true,
             backgroundColor: const Color(0xFF0A1025),
             title: Text(
               'Biometrics Not Set Up',
@@ -227,6 +230,9 @@ class _LoginScreenState extends State<LoginScreen>
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
+            // Scrolls rather than overflowing: a long list or a small laptop
+            // screen otherwise pushes the buttons off the bottom, out of reach.
+            scrollable: true,
             backgroundColor: const Color(0xFF0A1025),
             title: Text(
               'Fingerprint Login Not Enabled',
@@ -281,7 +287,15 @@ class _LoginScreenState extends State<LoginScreen>
             borderRadius: BorderRadius.circular(20.0),
             side: BorderSide(color: Colors.white.withAlpha(20)),
           ),
-          child: Padding(
+          // Height-capped and scrollable: on a laptop this dialog ran past
+          // the bottom of the screen and its buttons could not be reached,
+          // with nothing to scroll.
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.9,
+            ),
+            child: SingleChildScrollView(
+              child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -346,6 +360,8 @@ class _LoginScreenState extends State<LoginScreen>
                   ],
                 ),
               ],
+            ),
+          ),
             ),
           ),
         );
@@ -441,7 +457,15 @@ class _LoginScreenState extends State<LoginScreen>
                 borderRadius: BorderRadius.circular(20.0),
                 side: BorderSide(color: Colors.white.withAlpha(20)),
               ),
-              child: Padding(
+              // Height-capped and scrollable: on a laptop this dialog ran past
+              // the bottom of the screen and its buttons could not be reached,
+              // with nothing to scroll.
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.9,
+                ),
+                child: SingleChildScrollView(
+                  child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -689,6 +713,8 @@ class _LoginScreenState extends State<LoginScreen>
                       ),
                     ],
                   ],
+                ),
+              ),
                 ),
               ),
             );
