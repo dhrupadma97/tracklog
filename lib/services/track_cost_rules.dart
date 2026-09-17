@@ -91,6 +91,26 @@ class TrackCostRules {
     return cost < 0 ? 0 : cost;
   }
 
+
+  /// What an EXCLUSIVE booking costs.
+  ///
+  /// Exclusive is sold in fixed blocks, not by the hour: quotation
+  /// NATRAX/Q/BIP/26-27/018 (7 Apr 2026) prices High Speed at ₹1,80,000 per
+  /// 2 hours and ₹3,60,000 per 4 hours. Booking the track at all costs the
+  /// block, whether thirty minutes of it are used or the lot.
+  ///
+  /// Running past a block buys another one, which is why this rounds up on
+  /// blocks rather than on hours — the whole point of exclusive is that
+  /// nobody else can be let on in the meantime.
+  static double exclusiveCost({
+    required int totalMinutes,
+    required double blockPrice,
+    required double blockHours,
+  }) {
+    if (totalMinutes <= 0 || blockPrice <= 0 || blockHours <= 0) return 0;
+    final blocks = (totalMinutes / (blockHours * 60)).ceil();
+    return blocks * blockPrice;
+  }
   /// What a whole day on one track costs, ignoring how it is split.
   ///
   /// This is the figure that has to match an invoice line. Use it to check a

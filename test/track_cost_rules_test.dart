@@ -7,6 +7,7 @@ const t3w = 21000.0, t3d = 19000.0, t1 = 25000.0, t2 = 20000.0;
 const t7 = 15000.0, t8 = 10500.0, t11 = 15000.0, t16 = 9000.0;
 
 void main() {
+  exclusiveBookings();
   edgeCases();
   group('whole hours, rounded up', () {
     test('nothing logged bills nothing', () {
@@ -247,6 +248,85 @@ void edgeCases() {
     test('a minimum of zero does not force an hour', () {
       expect(TrackCostRules.dayCost(totalMinutes: 0, rate: 21000, minHours: 0),
           0);
+    });
+  });
+}
+
+// ── Exclusive bookings: NATRAX/Q/BIP/26-27/018, 7 April 2026 ───────────────
+void exclusiveBookings() {
+  group('exclusive is charged by the block, not the hour', () {
+    test('T1 — 1,80,000 per 2 hours', () {
+      expect(
+        TrackCostRules.exclusiveCost(
+            totalMinutes: 120, blockPrice: 180000, blockHours: 2),
+        180000,
+      );
+    });
+
+    test('T1 — 3,60,000 per 4 hours, which is two blocks', () {
+      expect(
+        TrackCostRules.exclusiveCost(
+            totalMinutes: 240, blockPrice: 180000, blockHours: 2),
+        360000,
+      );
+    });
+
+    test('half a block still costs the block', () {
+      // Booking the track at all takes it off everyone else.
+      expect(
+        TrackCostRules.exclusiveCost(
+            totalMinutes: 30, blockPrice: 180000, blockHours: 2),
+        180000,
+      );
+    });
+
+    test('a minute past the block buys the next one', () {
+      expect(
+        TrackCostRules.exclusiveCost(
+            totalMinutes: 121, blockPrice: 180000, blockHours: 2),
+        360000,
+      );
+    });
+
+    test('every quoted 2 h and 4 h pair holds', () {
+      final quoted = <double, double>{
+        180000.0: 360000.0, // T1  High Speed
+        120000.0: 240000.0, // T2  Dynamic Platform
+        150000.0: 300000.0, // T3  Braking
+        60000.0: 120000.0, // T7  Handling 4W
+        48000.0: 96000.0, // T8  Comfort
+      };
+      quoted.forEach((twoHour, fourHour) {
+        expect(
+          TrackCostRules.exclusiveCost(
+              totalMinutes: 120, blockPrice: twoHour, blockHours: 2),
+          twoHour,
+        );
+        expect(
+          TrackCostRules.exclusiveCost(
+              totalMinutes: 240, blockPrice: twoHour, blockHours: 2),
+          fourHour,
+          reason: 'the 4-hour price must come out of two 2-hour blocks',
+        );
+      });
+    });
+
+    test('nothing booked costs nothing', () {
+      expect(
+        TrackCostRules.exclusiveCost(
+            totalMinutes: 0, blockPrice: 180000, blockHours: 2),
+        0,
+      );
+    });
+
+    test('an exclusive block is never cheaper than the hourly rate', () {
+      // 2 hours of T1 hourly is 50,000; exclusive is 1,80,000. If that ever
+      // inverts, the wrong row is being charged.
+      final hourly =
+          TrackCostRules.dayCost(totalMinutes: 120, rate: 25000, minHours: 2);
+      final exclusive = TrackCostRules.exclusiveCost(
+          totalMinutes: 120, blockPrice: 180000, blockHours: 2);
+      expect(exclusive, greaterThan(hourly));
     });
   });
 }

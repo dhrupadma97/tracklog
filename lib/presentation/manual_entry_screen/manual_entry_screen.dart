@@ -203,6 +203,22 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     {'code': 'T11',  'name': 'Wet Skid Pad Track',        'rate': 15000.0, 'minHrs': 1.0},
     {'code': 'T12',  'name': 'Fatigue Track',             'rate': 20000.0, 'minHrs': 2.0},
     {'code': 'T13',  'name': 'Gravel & Off-Road Track',   'rate': 15000.0, 'minHrs': 1.0},
+    // ── EXCLUSIVE BOOKINGS ────────────────────────────────────────────────
+    // Sold in fixed 2-hour blocks, not by the hour. Quotation
+    // NATRAX/Q/BIP/26-27/018, 7 Apr 2026.
+    //
+    // One entry each rather than separate 2 h and 4 h rows, because every
+    // 4-hour price in that quote is exactly twice the 2-hour price - T1 is
+    // 1,80,000 and 3,60,000, T2 1,20,000 and 2,40,000, and so on - so a
+    // second block gives the 4-hour figure on the nose.
+    //
+    // `rate` is the BLOCK price, and `blockHrs` is what marks the row as
+    // exclusive. minHrs is irrelevant once a block is being charged.
+    {'code': 'T1X',  'name': 'High Speed Track (Exclusive)',       'rate': 180000.0, 'minHrs': 0.0, 'blockHrs': 2.0},
+    {'code': 'T2X',  'name': 'Dynamic Platform Track (Exclusive)', 'rate': 120000.0, 'minHrs': 0.0, 'blockHrs': 2.0},
+    {'code': 'T3X',  'name': 'Braking Track (Exclusive)',          'rate': 150000.0, 'minHrs': 0.0, 'blockHrs': 2.0},
+    {'code': 'T7X',  'name': 'Handling Track 4W (Exclusive)',      'rate':  60000.0, 'minHrs': 0.0, 'blockHrs': 2.0},
+    {'code': 'T8X',  'name': 'Comfort Track (Exclusive)',          'rate':  48000.0, 'minHrs': 0.0, 'blockHrs': 2.0},
   ];
 
   /// Every track code sharing this entry's day minimum, itself included.
@@ -504,6 +520,23 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     final track   = _tracks.firstWhere((t) => t['code'] == _trackCode, orElse: () => _tracks.first);
     final rate    = (track['rate'] as double);
     final minHrs  = (track['minHrs'] as double);
+    final blockHrs = (track['blockHrs'] as double?);
+
+    // EXCLUSIVE is a block booking, so hours and minimums do not apply: the
+    // block is charged whether thirty minutes of it are used or the lot, and
+    // running past one buys another. Priced against the whole day so a second
+    // entry on the same block does not charge it twice.
+    if (blockHrs != null) {
+      final dayTotal = _sameDayMinutes + entryMins;
+      final cost = TrackCostRules.exclusiveCost(
+            totalMinutes: dayTotal,
+            blockPrice: rate,
+            blockHours: blockHrs,
+          ) -
+          _sameDayCost;
+      _costCtrl.text = (cost < 0 ? 0 : cost).toStringAsFixed(0);
+      return;
+    }
 
     // NATRAX bills WHOLE HOURS, rounded up, per track per day. Verified
     // against invoice INV/26-27/205 (April 2026): 30.75 h of wet braking

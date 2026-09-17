@@ -1,7 +1,7 @@
 ﻿name: tracklog
 description: A new Flutter project.
 publish_to: none
-version: 1.32.0+39
+version: 1.33.0+40
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
