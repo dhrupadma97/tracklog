@@ -16,6 +16,26 @@ import 'dart:math' as math;
 class TrackCostRules {
   const TrackCostRules._();
 
+
+  /// Minutes in a day. No single entry can be longer.
+  static const int minutesInDay = 24 * 60;
+
+  /// Minutes between two clock times, wrapping past midnight.
+  ///
+  /// Testing runs late: 9 April 2026 ran 21:36 to 00:25 and the workbook
+  /// records it as one session of 169 minutes. The screen used to compute
+  /// `end - start` and, when that came out negative, silently left whatever
+  /// was already in the duration boxes — so a midnight session saved the
+  /// PREVIOUS entry's duration, at the previous entry's cost, with nothing
+  /// on screen to say so.
+  ///
+  /// Wrapping caps a single entry at 1439 minutes by construction, which is
+  /// also why no separate upper bound is needed on this path.
+  static int minutesBetween(int startMinuteOfDay, int endMinuteOfDay) {
+    var diff = endMinuteOfDay - startMinuteOfDay;
+    if (diff < 0) diff += minutesInDay;
+    return diff;
+  }
   /// Minutes to whole billable hours, always rounding up.
   ///
   /// Zero stays zero: a day with nothing logged has nothing to bill. One

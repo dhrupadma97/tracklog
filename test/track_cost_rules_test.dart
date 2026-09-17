@@ -7,6 +7,7 @@ const t3w = 21000.0, t3d = 19000.0, t1 = 25000.0, t2 = 20000.0;
 const t7 = 15000.0, t8 = 10500.0, t11 = 15000.0, t16 = 9000.0;
 
 void main() {
+  edgeCases();
   group('whole hours, rounded up', () {
     test('nothing logged bills nothing', () {
       expect(TrackCostRules.ceilHours(0), 0);
@@ -190,6 +191,62 @@ void main() {
       );
       expect(hours, 34);
       expect(hours * t3w, 714000);
+    });
+  });
+}
+
+// ── Edge cases: what a tired engineer at 11pm can actually type ────────────
+void edgeCases() {
+  group('clock times that cross midnight', () {
+    test('9 April 2026 — 21:36 to 00:25 is 169 minutes, not negative', () {
+      final mins = TrackCostRules.minutesBetween(21 * 60 + 36, 0 * 60 + 25);
+      expect(mins, 169);
+    });
+
+    test('an ordinary daytime session is unaffected', () {
+      expect(TrackCostRules.minutesBetween(9 * 60, 11 * 60 + 30), 150);
+    });
+
+    test('23:30 to 00:30 is an hour', () {
+      expect(TrackCostRules.minutesBetween(23 * 60 + 30, 30), 60);
+    });
+
+    test('identical start and end is zero, not a whole day', () {
+      expect(TrackCostRules.minutesBetween(10 * 60, 10 * 60), 0);
+    });
+
+    test('wrapping can never exceed a day', () {
+      for (var s = 0; s < 1440; s += 37) {
+        for (var e = 0; e < 1440; e += 53) {
+          final m = TrackCostRules.minutesBetween(s, e);
+          expect(m, inInclusiveRange(0, TrackCostRules.minutesInDay - 1));
+        }
+      }
+    });
+  });
+
+  group('absurd input cannot produce absurd money', () {
+    test('a whole day on T3W bills 24 hours, not more', () {
+      final c = TrackCostRules.dayCost(
+          totalMinutes: TrackCostRules.minutesInDay, rate: 21000, minHours: 2);
+      expect(c, 24 * 21000);
+    });
+
+    test('negative minutes cost nothing', () {
+      expect(TrackCostRules.dayCost(totalMinutes: -60, rate: 21000, minHours: 2),
+          0);
+      expect(TrackCostRules.ceilHours(-1), 0);
+    });
+
+    test('a zero rate costs nothing however long the day', () {
+      // CoASTT layouts seed at rate 0 with rate_pending, and must not invent
+      // a charge.
+      expect(TrackCostRules.dayCost(totalMinutes: 600, rate: 0, minHours: 1), 0);
+    });
+
+    test('a minimum of zero does not force an hour', () {
+      expect(TrackCostRules.dayCost(totalMinutes: 0, rate: 21000, minHours: 0),
+          0);
     });
   });
 }

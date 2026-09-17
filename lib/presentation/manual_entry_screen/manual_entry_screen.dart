@@ -545,7 +545,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
   void _recalcFromTime() {
     final s = _start.hour * 60 + _start.minute;
     final e = _end.hour   * 60 + _end.minute;
-    final diff = e - s;
+    final diff = TrackCostRules.minutesBetween(s, e);
     if (diff > 0) {
       _hrsCtrl.text  = (diff ~/ 60).toString();
       _minsCtrl.text = (diff % 60).toString();
@@ -600,6 +600,12 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     final mins = int.tryParse(_minsCtrl.text) ?? 0;
     final totalMins = hrs * 60 + mins;
     if (totalMins <= 0) { _snack('Duration must be > 0', error: true); return; }
+    // A typo in the hours box could otherwise bill a 99-hour session. The
+    // time pickers cannot produce this - it only comes from typing.
+    if (totalMins > TrackCostRules.minutesInDay) {
+      _snack('That is longer than a day - check the hours', error: true);
+      return;
+    }
     final cost = double.tryParse(_costCtrl.text.replaceAll(',', '')) ?? 0.0;
     setState(() => _savingTrack = true);
     try {
