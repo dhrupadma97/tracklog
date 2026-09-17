@@ -65,6 +65,7 @@ NatraxInvoice _inv(String month, double total) => NatraxInvoice(
     );
 
 void main() {
+  workshopAccrualAfterInvoice();
   const project = 'Mahindra EV PoC';
   const poInclTax = 1904375.0 + 342788.0; // PO 8242348442
 
@@ -308,6 +309,41 @@ void main() {
           expect(parsed.missingFields, isNotEmpty);
         }
       }
+    });
+  });
+}
+
+// ── An invoice is final: the accrual it replaces must stop ─────────────────
+void workshopAccrualAfterInvoice() {
+  group('workshop accrual stops at the invoiced period', () {
+    test('August is settled, so nothing accrues within it', () {
+      // INV/26-27/467 bills August: 11 workshop days, 20-30 Aug, Rs 55,000.
+      // The 8 uncharged days 12-19 Aug are NOT owed - NATRAX decided what
+      // that month costs.
+      expect(BillingBaseline.openWorkshopDays(DateTime(2026, 8, 31)), 0);
+      expect(BillingBaseline.openWorkshopRental(DateTime(2026, 8, 31)), 0);
+    });
+
+    test('a date inside the settled period accrues nothing', () {
+      expect(BillingBaseline.openWorkshopDays(DateTime(2026, 8, 20)), 0);
+      expect(BillingBaseline.openWorkshopDays(DateTime(2026, 8, 12)), 0);
+    });
+
+    test('days after the settled period do accrue', () {
+      // 1 September is the first unsettled day.
+      expect(BillingBaseline.openWorkshopDays(DateTime(2026, 9, 1)), 1);
+      expect(BillingBaseline.openWorkshopDays(DateTime(2026, 9, 10)), 10);
+      expect(BillingBaseline.openWorkshopRental(DateTime(2026, 9, 10)),
+          10 * BillingBaseline.workshopDayRate);
+    });
+
+    test('nothing accrues before the bay was re-occupied', () {
+      expect(BillingBaseline.openWorkshopDays(DateTime(2026, 7, 31)), 0);
+    });
+
+    test('the settled date is not before the resumption date', () {
+      expect(BillingBaseline.workshopSettledTo
+          .isAfter(BillingBaseline.workshopResumedOn), isTrue);
     });
   });
 }

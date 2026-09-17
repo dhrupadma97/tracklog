@@ -119,6 +119,33 @@ against days recorded — a day worked draws nothing down until somebody bills i
 Treating accrual as drawdown once made a PO read overspent with ₹6.4 lakh still
 on it.
 
+### An invoice is FINAL — retire the assumption it replaces
+
+Confirmed with Dhrupad, 17 Sep 2026: *"though I add workshop charge as a worst
+case, if invoicing is done which means that is the final. So remove those
+assumptions."*
+
+The worst-case accrual is a **placeholder for a bill that has not arrived**.
+Once NATRAX invoices a period, the invoice is the figure of record and the
+placeholder must stop — for the whole period, not just the days the invoice
+happened to cover.
+
+So if a month is invoiced and the invoice carries fewer workshop days than were
+accrued, the difference is **not** owed and must never be shown as outstanding,
+flagged for attention, or added to a total. NATRAX has decided what that month
+costs. This is the same rule as "accrued > invoiced is the normal state", applied
+forward in time instead of backwards.
+
+Worked example. `workshopResumedOn` was 12 Aug 2026 and ran open-ended.
+INV/26-27/467 (17 Sep, billing period August) carries 11 workshop days at 5,000
+— 20 to 30 August — inside its ₹97,875 ex-GST. August is therefore settled in
+full, 12–19 August included, and the accrual restarts only after it.
+
+**Whenever a period is invoiced, move the settled-to date forward.** An accrual
+that outlives its invoice asks twice for money already paid, and it reaches the
+manager's report as a point needing attention — which is how a wrong figure gets
+in front of Harsh.
+
 ## Which PO a day books against
 
 **From August 2026 onwards, every resource books to 8242390552**

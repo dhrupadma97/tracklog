@@ -215,23 +215,52 @@ class BillingBaseline {
 
   static double workshopDaysTotal(String project) =>
       forProject(project).fold(0.0, (s, m) => s + m.workshopDays);
-
   /// The workshop was released over the June–July 2026 pause and re-occupied
   /// on 12 August 2026 — which is why those two months carry no row above.
-  ///
-  /// The period is deliberately open-ended: the bay accrues rental every day
-  /// it is held, so the figure is computed as-on rather than frozen into a
-  /// month row that would be wrong the next morning. When NATRAX invoices this
-  /// period, add it as a normal [MonthBaseline] and clear this date, or the
-  /// month will be counted twice.
   static final DateTime workshopResumedOn = DateTime(2026, 8, 12);
 
-  /// Days the workshop has been held since it was re-occupied, counting both
-  /// the resumption day and [asOn]. Zero before resumption.
+  /// The workshop is SETTLED BY INVOICE up to and including this date.
+  ///
+  /// AN INVOICE IS FINAL. The accrual is a placeholder for a bill that has not
+  /// arrived; once NATRAX invoices a period, the invoice is the figure of
+  /// record and the placeholder stops — for the WHOLE period, not just the
+  /// days the invoice happened to carry.
+  ///
+  /// INV/26-27/467 (17 Sep 2026, billing period August) carries 11 workshop
+  /// days at 5,000 — 20 to 30 August — inside its ₹97,875 ex-GST. August is
+  /// therefore settled in full, 12–19 August included. NATRAX has decided what
+  /// that month costs and the eight uncharged days are not owed.
+  ///
+  /// Left running, the accrual asked twice for money already paid and reached
+  /// the manager's report as a point needing attention.
+  ///
+  /// MOVE THIS FORWARD whenever another period is invoiced.
+  static final DateTime workshopSettledTo = DateTime(2026, 8, 31);
+
+  /// Set this when the bay is given up; null means it is still held.
+  ///
+  /// Without it the accrual runs for ever, so a workshop released months ago
+  /// keeps adding ₹5,000 a day to a report nobody has corrected.
+  static final DateTime? workshopReleasedOn = null;
+
+  /// Days the workshop has been held that NOBODY HAS INVOICED YET.
+  ///
+  /// Counts from the day after [workshopSettledTo], or from
+  /// [workshopResumedOn] if that is later, up to [asOn] or the day the bay was
+  /// released — whichever comes first. Zero when everything is settled.
   static int openWorkshopDays(DateTime asOn) {
-    final to = DateTime(asOn.year, asOn.month, asOn.day);
-    if (to.isBefore(workshopResumedOn)) return 0;
-    return to.difference(workshopResumedOn).inDays + 1;
+    final afterSettled = DateTime(workshopSettledTo.year,
+        workshopSettledTo.month, workshopSettledTo.day + 1);
+    final from = workshopResumedOn.isAfter(afterSettled)
+        ? workshopResumedOn
+        : afterSettled;
+
+    var to = DateTime(asOn.year, asOn.month, asOn.day);
+    final released = workshopReleasedOn;
+    if (released != null && released.isBefore(to)) to = released;
+
+    if (to.isBefore(from)) return 0;
+    return to.difference(from).inDays + 1;
   }
 
   static double openWorkshopRental(DateTime asOn) =>
