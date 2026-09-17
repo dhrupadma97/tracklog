@@ -337,6 +337,110 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (err != null) _snack(err, error: true);
   }
 
+
+  /// Moves an invoice onto a different PO.
+  ///
+  /// Added because the only way to correct a wrong PO was to delete the
+  /// invoice and upload it again — and deleting takes the stored PDF with it,
+  /// so a mis-filed invoice cost you the document unless you still had the
+  /// original file. InvoiceService.update() could already do this; nothing
+  /// had ever called it.
+  Future<void> _editInvoicePo(NatraxInvoice inv) async {
+    final options = _poOptions
+        .map((r) => (r['po_number'] as String?) ?? '')
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (options.isEmpty) {
+      return _snack('No POs loaded to choose from', error: true);
+    }
+
+    var chosen = options.contains(inv.poNumber) ? inv.poNumber : options.first;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withAlpha(160),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: const Color(0xFF0A1025),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: Colors.white.withAlpha(20)),
+          ),
+          title: Text('Change PO',
+              style: GoogleFonts.spaceGrotesk(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700)),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(
+              '${inv.invoiceNumber} — ${_inr.format(inv.amountExclGst)} excl GST',
+              style: GoogleFonts.spaceGrotesk(
+                  color: const Color(0xFF8A94B0), fontSize: 12),
+            ),
+            const SizedBox(height: 6),
+            Text('Currently on ${inv.poNumber ?? 'no PO'}',
+                style: GoogleFonts.spaceGrotesk(
+                    color: const Color(0xFF8A94B0), fontSize: 11)),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: chosen,
+              isExpanded: true,
+              dropdownColor: const Color(0xFF0A1025),
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                labelText: 'Draws down PO',
+                labelStyle: TextStyle(color: Colors.white70),
+              ),
+              items: [
+                for (final r in _poOptions)
+                  if (((r['po_number'] as String?) ?? '').isNotEmpty)
+                    DropdownMenuItem(
+                      value: r['po_number'] as String,
+                      child: Text(
+                        'PO # ${r['po_number']}'
+                        ' · ${(r['category'] as String?) ?? 'other'}',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+              ],
+              onChanged: (v) => setLocal(() => chosen = v ?? chosen),
+            ),
+          ]),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: Text('Cancel',
+                    style: GoogleFonts.spaceGrotesk(color: Colors.white54))),
+            TextButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: Text('Move',
+                    style: GoogleFonts.spaceGrotesk(
+                        color: AppTheme.primary,
+                        fontWeight: FontWeight.w700))),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true || chosen == inv.poNumber || !mounted) return;
+
+    try {
+      await InvoiceService.instance.updateAmounts(
+        id: inv.id,
+        // Amounts are resent unchanged: update() requires them, and this
+        // dialog deliberately does not let you edit money.
+        amountExclGst: inv.amountExclGst,
+        gstAmount: inv.gstAmount,
+        totalAmount: inv.totalAmount,
+        poNumber: chosen,
+      );
+      if (!mounted) return;
+      _snack('${inv.invoiceNumber} moved to PO $chosen');
+      _loadInvoices();
+    } catch (e) {
+      if (mounted) _snack('Could not move it — $e', error: true);
+    }
+  }
   Future<void> _confirmDeleteInvoice(NatraxInvoice inv) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -1396,6 +1500,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               icon: const Icon(Icons.remove_red_eye_outlined, size: 16),
               color: AppTheme.primary,
               tooltip: 'View original',
+              visualDensity: VisualDensity.compact,
+            ),
+          if (_canEditInvoices)
+            IconButton(
+              onPressed: () => _editInvoicePo(inv),
+              icon: const Icon(Icons.edit_outlined, size: 16),
+              color: AppTheme.primary,
+              tooltip: 'Change PO',
               visualDensity: VisualDensity.compact,
             ),
           if (_canEditInvoices)
