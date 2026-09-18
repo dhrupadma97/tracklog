@@ -350,24 +350,72 @@ class ManagementReportService {
 
     // Cover running out is a different question from billing lag, and needs
     // raising earlier: a new PO takes longer than an invoice.
-    for (final p in pos.where(
-        (p) => (p['category'] as String? ?? '').toLowerCase() == 'manpower')) {
-      final number = (p['po_number'] as String? ?? '').trim();
-      final contracted = (p['manpower_days'] as num?)?.toDouble() ?? 0;
-      if (contracted <= 0) continue;
-      final used = ((p['manpower_days_opening'] as num?)?.toDouble() ?? 0) +
-          ((p['man_days_mustered'] as num?)?.toDouble() ?? 0);
-      final left = contracted - used;
-      if (left > 10) continue;
+    //
+    // Read across the whole manpower pool rather than one PO at a time. A PO
+    // that is spent but has already handed over to its successor is settled
+    // business, not an action. Judged per-PO, 8242356330 sitting at exactly
+    // its 38 days asked for a follow-on PO in the same mail whose previous
+    // bullet reported days being mustered against 8242399275 — the successor
+    // that had already taken over.
+    final manpower = pos
+        .where((p) =>
+            (p['category'] as String? ?? '').toLowerCase() == 'manpower')
+        .map((p) {
+          final contracted = (p['manpower_days'] as num?)?.toDouble() ?? 0;
+          final used = ((p['manpower_days_opening'] as num?)?.toDouble() ?? 0) +
+              ((p['man_days_mustered'] as num?)?.toDouble() ?? 0);
+          final status = (p['po_status'] as String? ?? '').toLowerCase();
+          return (
+            number: (p['po_number'] as String? ?? '').trim(),
+            contracted: contracted,
+            used: used,
+            left: contracted - used,
+            closed: status == 'used' || status == 'closed',
+          );
+        })
+        .where((m) => m.contracted > 0)
+        .toList();
 
-      attention.add(left < 0
-          ? '<b>Manpower PO $number is overrun.</b> '
-              '${_trimNum(used)} man-days used against '
-              '${_trimNum(contracted)} contracted. A follow-on PO is needed '
-              'before further manpower is booked.'
-          : '<b>Manpower PO $number is nearly exhausted.</b> Only '
-              '${_trimNum(left)} of ${_trimNum(contracted)} man-days remain. '
-              'A follow-on PO should be raised now to avoid a gap in cover.');
+    // What is still bookable elsewhere in the pool, most room first. A PO
+    // marked used or closed is not cover even when the arithmetic leaves days
+    // on it — someone has said it is finished.
+    final withRoom = manpower.where((m) => !m.closed && m.left > 0).toList()
+      ..sort((a, b) => b.left.compareTo(a.left));
+
+    for (final m in manpower) {
+      if (m.left > 10) continue;
+
+      final elsewhere = withRoom.where((o) => o.number != m.number).toList();
+      final cover = elsewhere.fold<double>(0, (s, o) => s + o.left);
+      final coverLine = elsewhere.isEmpty
+          ? 'A follow-on PO should be raised now to avoid a gap in cover.'
+          : 'Manpower now books to PO ${elsewhere.first.number}, which has '
+              '${_trimNum(cover)} man-day${cover == 1 ? '' : 's'} left, so no '
+              'follow-on PO is needed yet.';
+
+      if (m.left < 0) {
+        attention.add('<b>Manpower PO ${m.number} is overrun.</b> '
+            '${_trimNum(m.used)} man-days used against '
+            '${_trimNum(m.contracted)} contracted — '
+            '${_trimNum(-m.left)} day${m.left == -1 ? '' : 's'} booked with no '
+            'cover behind them. $coverLine');
+        continue;
+      }
+
+      // Exactly spent is not "nearly" spent: the old wording read "nearly
+      // exhausted — only 0 man-days remain", which is a contradiction.
+      if (m.left == 0) {
+        // Spent, closed off and handed over is not an attention item.
+        if (m.closed && elsewhere.isNotEmpty) continue;
+        attention.add('<b>Manpower PO ${m.number} is fully drawn.</b> All '
+            '${_trimNum(m.contracted)} contracted man-days are used. '
+            '$coverLine');
+        continue;
+      }
+
+      attention.add('<b>Manpower PO ${m.number} is nearly exhausted.</b> Only '
+          '${_trimNum(m.left)} of ${_trimNum(m.contracted)} man-days remain. '
+          '$coverLine');
     }
 
     final overAllocated = resources.where((r) => r.isOverAllocated).toList();
