@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tracklog/services/app_settings_service.dart';
 import 'package:tracklog/services/billing_baseline.dart';
 import 'package:tracklog/services/invoice_service.dart';
+import 'package:tracklog/services/muster_service.dart';
 import 'package:tracklog/services/natrax_invoice_parser.dart';
 
 /// Pure reimplementations of the PO Tracker's getters.
@@ -66,6 +67,7 @@ NatraxInvoice _inv(String month, double total) => NatraxInvoice(
     );
 
 void main() {
+  musterDayExpansion();
   workshopAccrualAfterInvoice();
   workshopDatesComeFromSettings();
   const project = 'Mahindra EV PoC';
@@ -410,4 +412,82 @@ void workshopDatesComeFromSettings() {
           BillingBaseline.defaultWorkshopSettledTo);
     });
   });
+}
+
+/// The muster's day-expansion rule.
+///
+/// Workshop and manpower count differently, and the screen used to apply the
+/// manpower rule to both — showing "22 working days" over a stretch that then
+/// saved 31 rows, and offering a Saturday picker that changed nothing. Screen
+/// and save now call [MusterService.booksADay], so these cases pin both.
+void musterDayExpansion() {
+  // Mon 20 Jul 2026 .. Sun 26 Jul 2026, a full week. Anchors verified against
+  // the calendar, not assumed: 20 Jul is a Monday, 25 Jul a Saturday.
+  DateTime day(int offset) => DateTime(2026, 7, 20 + offset);
+  String key(DateTime d) => d.toIso8601String().split('T').first;
+
+  int count(MusterKind kind, Set<String> sats, {int days = 7}) {
+    var n = 0;
+    for (var i = 0; i < days; i++) {
+      if (MusterService.booksADay(day(i), kind, sats)) n++;
+    }
+    return n;
+  }
+
+  group('workshop books every calendar day', () {
+    test('a full week is seven days, Sunday included', () {
+      expect(count(MusterKind.workshop, const {}), 7);
+    });
+
+    test('Sunday on its own still books', () {
+      final sunday = day(6);
+      expect(sunday.weekday, DateTime.sunday);
+      expect(
+          MusterService.booksADay(sunday, MusterKind.workshop, const {}), true);
+    });
+
+    test('the Saturday list is irrelevant — the bay is held either way', () {
+      expect(count(MusterKind.workshop, const {}),
+          count(MusterKind.workshop, {key(day(5))}));
+    });
+  });
+
+  group('manpower keeps the Mon-Fri week', () {
+    test('a full week with no Saturday named is five days', () {
+      expect(count(MusterKind.manpower, const {}), 5);
+    });
+
+    test('naming that Saturday makes it six', () {
+      expect(count(MusterKind.manpower, {key(day(5))}), 6);
+    });
+
+    test('naming a different Saturday does not count this one', () {
+      expect(count(MusterKind.manpower, {'2026-07-11'}), 5);
+    });
+
+    test('Sunday never books, however it is asked for', () {
+      final sunday = day(6);
+      expect(
+          MusterService.booksADay(sunday, MusterKind.manpower, {key(sunday)}),
+          false);
+    });
+  });
+
+  group('the two kinds disagree, and that is the point', () {
+    test('20 Aug to 17 Sep 2026 is 29 workshop days but 21 manpower days', () {
+      var shop = 0, man = 0;
+      var d = DateTime(2026, 8, 20);
+      final end = DateTime(2026, 9, 17);
+      while (!d.isAfter(end)) {
+        if (MusterService.booksADay(d, MusterKind.workshop, const {})) shop++;
+        if (MusterService.booksADay(d, MusterKind.manpower, const {})) man++;
+        d = DateTime(d.year, d.month, d.day + 1);
+      }
+      // The stretch already on file reads 29 days, which only agrees with the
+      // calendar count — evidence the save was right and the screen was not.
+      expect(shop, 29);
+      expect(man, 21);
+    });
+  });
+
 }

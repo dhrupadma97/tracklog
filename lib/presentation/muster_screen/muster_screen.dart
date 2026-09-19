@@ -921,8 +921,8 @@ class _MusterScreenState extends State<MusterScreen> {
                           ? Icons.calendar_today
                           : Icons.date_range),
                   stillRunning
-                      ? _openStretchLabel(date, saturdaysWorked)
-                      : _dateLabel(date, endDate, saturdaysWorked),
+                      ? _openStretchLabel(date, saturdaysWorked, kind)
+                      : _dateLabel(date, endDate, saturdaysWorked, kind),
                   enabled: existing == null),
             ),
             if (existing == null) ...[
@@ -945,6 +945,7 @@ class _MusterScreenState extends State<MusterScreen> {
                 onToggle: (k) => setSheet(() => saturdaysWorked.contains(k)
                     ? saturdaysWorked.remove(k)
                     : saturdaysWorked.add(k)),
+                kind: kind,
               ),
             ],
             const SizedBox(height: 12),
@@ -1011,8 +1012,8 @@ class _MusterScreenState extends State<MusterScreen> {
                 alignment: Alignment.centerLeft,
                 child: Text(
                     'Recorded against each of the '
-                    '${_workingDays(date, stillRunning ? _today : endDate!, saturdaysWorked)} '
-                    'working days.',
+                    '${_workingDays(date, stillRunning ? _today : endDate!, saturdaysWorked, kind)} '
+                    '${kind == MusterKind.workshop ? 'days, weekends included' : 'working days'}.',
                     style: GoogleFonts.spaceGrotesk(
                         color: _muted, fontSize: 11)),
               ),
@@ -1266,8 +1267,12 @@ class _MusterScreenState extends State<MusterScreen> {
     required DateTime? to,
     required Set<String> selected,
     required void Function(String key) onToggle,
+    MusterKind kind = MusterKind.manpower,
   }) {
     if (to == null) return const [];
+    // Workshop books all seven days, so there is nothing to opt into and the
+    // "Sundays are never counted" line beneath it was simply untrue there.
+    if (kind == MusterKind.workshop) return const [];
     final sats = <DateTime>[];
     var d = DateTime(from.year, from.month, from.day);
     final end = DateTime(to.year, to.month, to.day);
@@ -1392,19 +1397,25 @@ class _MusterScreenState extends State<MusterScreen> {
         ),
       );
 
-  /// Working days in an inclusive range, honouring the Mon-Fri default.
-  int _workingDays(DateTime from, DateTime to, Set<String> saturdays) {
+  /// Days in an inclusive range that will actually be recorded.
+  ///
+  /// Mirrors the rule in [MusterService.saveRange] rather than restating it:
+  /// manpower keeps the Mon-Fri week with named Saturdays, workshop books
+  /// every calendar day because the bay is rented continuously and is payable
+  /// whether or not anybody is in it.
+  ///
+  /// The weekday rule used to be applied to both. The save was right and only
+  /// the screen was wrong, which is the worst way round — a workshop sheet
+  /// read "22 working days" and then wrote 31 rows, and offered a Saturday
+  /// picker that changed nothing.
+  int _workingDays(DateTime from, DateTime to, Set<String> saturdays,
+      [MusterKind kind = MusterKind.manpower]) {
     var d = DateTime(from.year, from.month, from.day);
     final end = DateTime(to.year, to.month, to.day);
+    if (end.isBefore(d)) return 0;
     var n = 0;
     while (!d.isAfter(end)) {
-      final key = d.toIso8601String().split('T').first;
-      final counts = d.weekday == DateTime.sunday
-          ? false
-          : (d.weekday == DateTime.saturday
-              ? saturdays.contains(key)
-              : true);
-      if (counts) n++;
+      if (MusterService.booksADay(d, kind, saturdays)) n++;
       d = DateTime(d.year, d.month, d.day + 1);
     }
     return n;
@@ -1416,11 +1427,15 @@ class _MusterScreenState extends State<MusterScreen> {
     return DateTime(n.year, n.month, n.day);
   }
 
-  String _openStretchLabel(DateTime from, Set<String> saturdays) {
-    final n = _workingDays(from, _today, saturdays);
+  String _openStretchLabel(DateTime from, Set<String> saturdays,
+      [MusterKind kind = MusterKind.manpower]) {
+    final n = _workingDays(from, _today, saturdays, kind);
     final left = DateFormat('d MMM yyyy').format(from);
     if (_today.isBefore(from)) return '$left  -  still running';
-    return '$left  -  today   ·   $n working days so far';
+    // "working days" would be a lie on a workshop stretch, where weekends
+    // count too.
+    final unit = kind == MusterKind.workshop ? 'days' : 'working days';
+    return '$left  -  today   ·   $n $unit so far';
   }
 
   /// The most recent unbroken run of recorded days for one kind and PO.
@@ -1446,10 +1461,14 @@ class _MusterScreenState extends State<MusterScreen> {
     var count = 1;
     // Walk backwards while the previous recorded day is the previous working
     // day. Anything further back is a separate stretch.
+    //
+    // A workshop stretch has no weekend hole to step over, so a missing
+    // Saturday there is a real break in the hire and must not be bridged.
     for (var i = keys.length - 2; i >= 0; i--) {
       var probe = DateTime(start.year, start.month, start.day - 1);
-      while (probe.weekday == DateTime.saturday ||
-          probe.weekday == DateTime.sunday) {
+      while (kind != MusterKind.workshop &&
+          (probe.weekday == DateTime.saturday ||
+              probe.weekday == DateTime.sunday)) {
         probe = DateTime(probe.year, probe.month, probe.day - 1);
       }
       if (keys[i] == probe || keys[i] == DateTime(start.year, start.month, start.day - 1)) {
@@ -1462,12 +1481,19 @@ class _MusterScreenState extends State<MusterScreen> {
     return (from: start, to: last, days: count);
   }
 
-  /// Working days between the end of a run and today, excluding both ends.
-  int _gapToToday(DateTime lastRecorded) {
+  /// Days between the end of a run and today that are still unrecorded.
+  ///
+  /// Counted on the same rule the save uses, so the banner cannot promise a
+  /// smaller catch-up than "Extend to today" will actually write.
+  int _gapToToday(DateTime lastRecorded,
+      [MusterKind kind = MusterKind.manpower]) {
     var d = DateTime(lastRecorded.year, lastRecorded.month, lastRecorded.day + 1);
     var n = 0;
     while (d.isBefore(_today) || d.isAtSameMomentAs(_today)) {
-      if (d.weekday != DateTime.saturday && d.weekday != DateTime.sunday) n++;
+      if (kind == MusterKind.workshop ||
+          (d.weekday != DateTime.saturday && d.weekday != DateTime.sunday)) {
+        n++;
+      }
       d = DateTime(d.year, d.month, d.day + 1);
     }
     return n;
@@ -1487,7 +1513,7 @@ class _MusterScreenState extends State<MusterScreen> {
     final run = _currentRun(kind, po);
     if (run == null) return const [];
 
-    final gap = _gapToToday(run.to);
+    final gap = _gapToToday(run.to, kind);
     final upToDate = gap == 0;
     final colour = upToDate ? _green : _amber;
     final label = kind == MusterKind.workshop ? 'Workshop' : 'Manpower';
@@ -1521,7 +1547,8 @@ class _MusterScreenState extends State<MusterScreen> {
           Text(
               upToDate
                   ? 'Up to date. Nothing further to record for this stretch.'
-                  : '$gap working day${gap == 1 ? '' : 's'} since, not yet '
+                  : '$gap ${kind == MusterKind.workshop ? 'day' : 'working day'}'
+                      '${gap == 1 ? '' : 's'} since, not yet '
                       'recorded. Extend if the stretch ran on; leave it if it '
                       'stopped on ${DateFormat('d MMM').format(run.to)}.',
               style: GoogleFonts.spaceGrotesk(
@@ -1716,9 +1743,10 @@ class _MusterScreenState extends State<MusterScreen> {
       1;
 
   String _dateLabel(DateTime from, DateTime? to,
-      [Set<String> saturdays = const {}]) {
+      [Set<String> saturdays = const {},
+      MusterKind kind = MusterKind.manpower]) {
     if (to == null) return DateFormat('EEE, d MMM yyyy').format(from);
-    final n = _workingDays(from, to, saturdays);
+    final n = _workingDays(from, to, saturdays, kind);
     final span = _daysInclusive(from, to);
     final sameYear = from.year == to.year;
     final left = DateFormat(sameYear ? 'd MMM' : 'd MMM yyyy').format(from);
@@ -1752,10 +1780,11 @@ class _MusterScreenState extends State<MusterScreen> {
         kind: kind,
         saturdaysWorked: saturdaysWorked,
       );
-      // Zero is a real outcome: a Sat-Sun range with weekends off.
+      // Zero is a real outcome: a Sat-Sun range with weekends off. Cannot
+      // happen for workshop, which books every day.
       if (n == 0) {
         _snack('Nothing recorded - that range is all weekend. '
-            'Turn on Include Sat & Sun to book it.');
+            'Tick the Saturday you worked, or pick a weekday.');
         return;
       }
       _snack('$n ${n == 1 ? 'day' : 'days'} recorded');

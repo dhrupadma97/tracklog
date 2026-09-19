@@ -321,6 +321,35 @@ class MusterService extends ChangeNotifier {
   /// input convenience only.
   ///
   /// Returns how many days were written.
+  /// Whether one day inside a dragged range gets a row written for it.
+  ///
+  /// The contract week is Mon-Fri. Dragging a range across a weekend must not
+  /// book those days and draw them off the PO - the silent over-count this
+  /// register exists to stop. Sunday is never worked, so a range never books
+  /// one. Saturday is worked some weeks and not others, so each one has to be
+  /// named explicitly rather than guessed from a blanket setting.
+  ///
+  /// Workshop is the exception, the other way round: the rental is payable for
+  /// every calendar day of the hire, whether or not anybody is in the workshop
+  /// that day. So a workshop range books all seven days and skips nothing.
+  /// Manpower keeps the weekday rule, because a technician is paid for days
+  /// actually worked.
+  ///
+  /// Public and pure so the muster screen counts days by the same rule that
+  /// writes them. They were separate implementations, and the screen's copy
+  /// applied the weekday rule to workshop too — it promised "22 working days"
+  /// on a stretch that then saved 31 rows, and offered a Saturday picker that
+  /// changed nothing.
+  static bool booksADay(
+      DateTime day, MusterKind kind, Set<String> saturdaysWorked) {
+    if (kind == MusterKind.workshop) return true;
+    if (day.weekday == DateTime.sunday) return false;
+    if (day.weekday == DateTime.saturday) {
+      return saturdaysWorked.contains(day.toIso8601String().split('T').first);
+    }
+    return true;
+  }
+
   Future<int> saveRange({
     required DateTime from,
     required DateTime to,
@@ -341,25 +370,7 @@ class MusterService extends ChangeNotifier {
 
     final rows = <Map<String, dynamic>>[];
     while (!day.isAfter(end)) {
-      // The contract week is Mon-Fri. Dragging a range across a weekend
-      // must not book those days and draw them off the PO - the silent
-      // over-count this register exists to stop.
-      //
-      // Sunday is never worked, so a range never books one. Saturday is
-      // worked some weeks and not others, so each one in the range has to
-      // be named explicitly rather than guessed from a blanket setting.
-      //
-      // Workshop is the exception, the other way round: the rental is payable
-      // for every calendar day of the hire, whether or not anybody is in the
-      // workshop that day. So a workshop range books all seven days and skips
-      // nothing. Manpower keeps the weekday rule, because a technician is paid
-      // for days actually worked.
-      final key = day.toIso8601String().split('T').first;
-      final skip = kind == MusterKind.workshop
-          ? false
-          : (day.weekday == DateTime.sunday ||
-              (day.weekday == DateTime.saturday &&
-                  !saturdaysWorked.contains(key)));
+      final skip = !booksADay(day, kind, saturdaysWorked);
       if (skip) {
         day = DateTime(day.year, day.month, day.day + 1);
         continue;
