@@ -68,6 +68,7 @@ NatraxInvoice _inv(String month, double total) => NatraxInvoice(
 
 void main() {
   musterDayExpansion();
+  thisWeekWindow();
   workshopAccrualAfterInvoice();
   workshopDatesComeFromSettings();
   const project = 'Mahindra EV PoC';
@@ -490,4 +491,65 @@ void musterDayExpansion() {
     });
   });
 
+}
+
+/// The "This Week" window on Session History.
+///
+/// It was `DateTime.now().subtract(Duration(days: now.weekday - 1))`, which
+/// keeps the time of day. On a Monday that puts the start of the week at the
+/// current moment, so the filter showed nothing at all however much had been
+/// logged; on other days it silently dropped Monday's entries made before the
+/// current clock time. Service entries are stamped 08:00, so Monday's went
+/// every week.
+void thisWeekWindow() {
+  // Mirrors the screen's rule. Kept here rather than reaching into the
+  // StatefulWidget, the same way the PO Tracker getters are mirrored above.
+  DateTime weekStart(DateTime now) => DateTime(now.year, now.month, now.day)
+      .subtract(Duration(days: now.weekday - 1));
+  bool inWeek(DateTime session, DateTime now) =>
+      !session.isBefore(weekStart(now));
+
+  group('this week starts at midnight on Monday', () {
+    // Mon 28 Sep 2026, checked against the calendar.
+    final monday = DateTime(2026, 9, 28);
+
+    test('the week starts at midnight, not at the current time', () {
+      expect(weekStart(DateTime(2026, 9, 28, 18, 24)), monday);
+    });
+
+    test('an 08:00 service entry counts on the Monday it was logged', () {
+      final entry = DateTime(2026, 9, 28, 8, 0);
+      expect(inWeek(entry, DateTime(2026, 9, 28, 18, 24)), true);
+    });
+
+    test('a 14:58 track session counts when read later that evening', () {
+      final entry = DateTime(2026, 9, 28, 14, 58);
+      expect(inWeek(entry, DateTime(2026, 9, 28, 18, 24)), true);
+    });
+
+    test('midnight Monday itself is in the week', () {
+      expect(inWeek(monday, DateTime(2026, 9, 28, 9, 0)), true);
+    });
+
+    test("the previous Sunday is not", () {
+      expect(inWeek(DateTime(2026, 9, 27, 23, 59), DateTime(2026, 9, 28, 9, 0)),
+          false);
+    });
+
+    test('Monday stays in the week when read on Friday afternoon', () {
+      // The old rule put the boundary at Monday 15:00 and cut everything
+      // earlier on the Monday.
+      final entry = DateTime(2026, 9, 28, 8, 0);
+      expect(inWeek(entry, DateTime(2026, 10, 2, 15, 0)), true);
+    });
+
+    test('the old rule is what dropped them', () {
+      // Reproduces the bug, so the fix cannot be quietly reverted.
+      final now = DateTime(2026, 9, 28, 18, 24);
+      final oldStart = now.subtract(Duration(days: now.weekday - 1));
+      final entry = DateTime(2026, 9, 28, 14, 58);
+      expect(entry.isAfter(oldStart), false);
+      expect(inWeek(entry, now), true);
+    });
+  });
 }

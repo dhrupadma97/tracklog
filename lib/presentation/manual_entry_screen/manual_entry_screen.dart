@@ -13,6 +13,7 @@ import '../../services/offline_queue_service.dart';
 import '../../services/track_cost_rules.dart';
 import '../../services/project_catalog.dart';
 import '../../services/project_manager.dart';
+import '../../services/session_log_service.dart';
 import '../../services/supabase_service.dart';
 import '../../services/track_venue_catalog.dart';
 import '../../services/venue_manager.dart';
@@ -323,10 +324,19 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
   Future<void> _loadRecentEntries() async {
     setState(() => _loadingEntries = true);
     try {
+      // Other Services containers belong here too.
+      //
+      // They were reachable from nowhere: this list matched on notes starting
+      // "Manual entry" and a container's notes read "Other Services Log —
+      // Manual Entry", while Today's Entries drops MISC outright. So a service
+      // logged against the wrong programme, or for the wrong amount, could not
+      // be removed in the app at all — it took a hand-written DELETE against
+      // the database. Listing them here gives them the same delete every other
+      // entry has.
       final data = await SupabaseService.instance.client
           .from('engineer_sessions')
           .select()
-          .ilike('notes', 'Manual entry%')
+          .or('notes.ilike.Manual entry%,track_code.eq.MISC')
           .order('started_at', ascending: false)
           .limit(10);
       if (mounted) setState(() {
@@ -357,11 +367,20 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     final started = DateTime.tryParse(entry['started_at'] as String? ?? '');
     final slot = started == null ? '' : DateFormat('HH:mm').format(started);
 
+    // An Other Services container carries no track time, so none of the
+    // day-recosting below applies to it: there is no rate to look up, and
+    // firstWhere would fall through to whatever track happens to be first and
+    // quote its rate at the user. Its service lines go with it on the database's
+    // own cascade, so deleting the container is the whole job.
+    final isServices = code == 'MISC';
+
     // What the day looks like once this one is gone.
-    final track = _tracks.firstWhere((t) => t['code'] == code,
-        orElse: () => _tracks.first);
+    final track = isServices
+        ? const <String, dynamic>{'rate': 0.0}
+        : _tracks.firstWhere((t) => t['code'] == code,
+            orElse: () => _tracks.first);
     final rate = track['rate'] as double;
-    final remainingMins = _sameDayMinutes - mins;
+    final remainingMins = isServices ? 0 : _sameDayMinutes - mins;
     final remainingDue = _ceilHours(remainingMins) * rate;
     final remainingBilled = _sameDayCost - cost;
 
@@ -373,17 +392,32 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
         scrollable: true,
         backgroundColor: const Color(0xFF0A1025),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Delete this session?',
+        title: Text(
+            isServices ? 'Delete this services entry?' : 'Delete this session?',
             style: GoogleFonts.spaceGrotesk(
                 color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800)),
         content: Column(mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('$code  ·  $slot  ·  ${mins ~/ 60}h ${mins % 60}m  ·  '
-              '${_inr.format(cost)}',
+          Text(
+              isServices
+                  // No cost quoted: the container carries 0 and the money sits
+                  // on its service lines, so printing its total_cost would show
+                  // a confident Rs 0 for an entry that is worth something.
+                  ? 'Other Services  ·  '
+                      '${started == null ? '' : DateFormat('d MMM yyyy').format(started)}'
+                  : '$code  ·  $slot  ·  ${mins ~/ 60}h ${mins % 60}m  ·  '
+                      '${_inr.format(cost)}',
               style: GoogleFonts.spaceGrotesk(
                   color: Colors.white70, fontSize: 12)),
           const SizedBox(height: 12),
-          if (remainingMins > 0)
+          if (isServices)
+            Text(
+                'Every service line on this entry goes with it. Nothing else '
+                'is affected — services carry no track time, so no other '
+                'entry is recosted.',
+                style: GoogleFonts.spaceGrotesk(
+                    color: const Color(0xFF6B7490), fontSize: 11, height: 1.4))
+          else if (remainingMins > 0)
             Text(
                 '${_todayEntries.length - 1} session'
                 '${_todayEntries.length - 1 == 1 ? '' : 's'} left on $code that '
@@ -428,9 +462,11 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
           .delete()
           .eq('id', id);
       _snack('Session deleted');
+      SessionLogService.instance.changed();
       // Refetch the day so the next entry's cost is computed against what is
       // actually left, not against the row just removed.
       await _fetchSameDayMinutes();
+      _loadRecentEntries();
       _backUpAfterEntry();
     } catch (e) {
       _snack('Could not delete: $e', error: true);
@@ -686,6 +722,9 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
       if (_isOnline) {
         await SupabaseService.instance.client.from('engineer_sessions').insert(payload);
         _snack('Track session saved to $_trackProject ✓');
+        // History holds whatever it read when it opened, so tell it to look
+        // again. Fired after the insert returns, never before.
+        SessionLogService.instance.changed();
         _backUpAfterEntry();
         _loadRecentEntries();
         _resetTrackForm();
@@ -898,6 +937,8 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
         rethrow;
       }
       _snack('${_selectedServices.length} services saved ✓ · ${_inr.format(_svcGrandTotal)}');
+      SessionLogService.instance.changed();
+      _loadRecentEntries();
       _backUpAfterEntry();
       setState(() {
         _svcQty.clear(); _svcInDate.clear(); _svcOutDate.clear();

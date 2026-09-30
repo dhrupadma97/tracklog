@@ -10,6 +10,7 @@ import '../../services/engineer_auth_service.dart';
 import '../../services/muster_service.dart';
 import '../../services/project_catalog.dart';
 import '../../services/project_manager.dart';
+import '../../services/session_log_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import './widgets/hero_metric_widget.dart';
@@ -80,12 +81,18 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
     super.initState();
     _activeProject = ProjectManager.instance.activeProject;
     ProjectManager.instance.addListener(_onProjectChanged);
+    // An entry saved in Manual Entry has to reach this screen without a
+    // browser reload. The shell keeps this branch alive, so initState runs
+    // once per sign-in and leaving the tab does not refetch — a session logged
+    // at 14:58 was still absent at 18:24, which reads as data lost.
+    SessionLogService.instance.addListener(_loadSessions);
     _loadSessions();
   }
 
   @override
   void dispose() {
     ProjectManager.instance.removeListener(_onProjectChanged);
+    SessionLogService.instance.removeListener(_loadSessions);
     super.dispose();
   }
 
@@ -181,16 +188,24 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
       if (sessionIds.isNotEmpty) {
         svcsRaw = await client
             .from('session_additional_services')
-            .select('session_id, total_cost')
+            .select('session_id, service_name, total_cost')
             .inFilter('session_id', sessionIds);
       }
 
       final Map<String, double> svcMap = {};
+      // EV charging is metered and billed per kWh rather than bought as an
+      // accessory, and is watched on its own, so it gets its own line in
+      // Project Charges instead of disappearing into the accessories total.
+      // Kept alongside rather than deducted from svcMap: a session's own cost
+      // in the list below is still everything that session cost.
+      var evTotal = 0.0;
       for (final svc in svcsRaw) {
         final sid = svc['session_id'] as String;
         final c = (svc['total_cost'] as num?)?.toDouble() ?? 0.0;
         svcMap[sid] = (svcMap[sid] ?? 0) + c;
+        if (_isEvCharging(svc['service_name'] as String?)) evTotal += c;
       }
+      if (mounted) _lifetimeEvCost = evTotal;
 
       // The muster for the same scope, so the full history below can show
       // track time, manpower and workshop as one chronology. The sessions
@@ -257,11 +272,23 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
       case 'Completed':
         return _sessionMaps.where((s) => s['status'] == 'completed').toList();
       case 'This Week':
+        // Midnight on Monday, not this moment on Monday.
+        //
+        // Subtracting whole days off DateTime.now() keeps the time of day, so
+        // the window opened at the current clock time on Monday and everything
+        // logged earlier in the week was cut. On a Monday that is the whole
+        // day: nothing starts later than "now", so the filter read empty
+        // however much was logged. Service entries are stamped 08:00, so
+        // Monday's vanished every week.
         final now = DateTime.now();
-        final weekStart = now.subtract(Duration(days: now.weekday - 1));
+        final weekStart = DateTime(now.year, now.month, now.day)
+            .subtract(Duration(days: now.weekday - 1));
         return _sessionMaps.where((s) {
-          final start = DateTime.parse(s['startTime'] as String);
-          return start.isAfter(weekStart);
+          final start = DateTime.tryParse(s['startTime'] as String? ?? '');
+          if (start == null) return false;
+          // Not isAfter: a session starting exactly at midnight on Monday is
+          // in this week.
+          return !start.isBefore(weekStart);
         }).toList();
       case 'High Cost':
         return _sessionMaps
@@ -358,6 +385,22 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
       );
 
   int get _currentSessionCount => _currentPeriodSessions.length;
+
+  /// EV charging across the whole history in scope, already counted inside
+  /// [_lifetimeTrackCost]. Project Charges subtracts it so the two rows do not
+  /// double up.
+  double _lifetimeEvCost = 0;
+
+  /// Whether a service line is EV charging.
+  ///
+  /// Matched on the name because that is what the row carries — there is no
+  /// service code column. `S10 Universal EV Charger` is the catalogue entry;
+  /// the contains-check keeps a renamed or re-cased variant from silently
+  /// falling back into the accessories total.
+  static bool _isEvCharging(String? name) {
+    final n = (name ?? '').toLowerCase();
+    return n.contains('ev charger') || n.contains('ev charging');
+  }
 
   /// Track spend across the whole history in scope, not just this month.
   /// What Project Charges needs, so its three rows cover the same period.
@@ -969,6 +1012,7 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
             // Tata Harrier showed Rs 0 track against Rs 67,600 of August
             // muster, under one heading.
             lifetimeTrackCost: _lifetimeTrackCost,
+            lifetimeEvCost: _lifetimeEvCost,
             lifetimeSessionCount: _sessionMaps.length,
             // Null means every programme — the charges panel then totals the
             // whole muster rather than one project's slice.
@@ -1167,6 +1211,9 @@ class _RightPanel extends StatefulWidget {
   /// Track spend over the whole history in scope. Project Charges uses this
   /// rather than [totalCost], which is one month.
   final double lifetimeTrackCost;
+
+  /// EV charging, already inside [lifetimeTrackCost] and shown on its own row.
+  final double lifetimeEvCost;
   final int lifetimeSessionCount;
   final double totalHours;
   final int sessionCount;
@@ -1177,6 +1224,7 @@ class _RightPanel extends StatefulWidget {
   const _RightPanel({
     required this.totalCost,
     this.lifetimeTrackCost = 0,
+    this.lifetimeEvCost = 0,
     this.lifetimeSessionCount = 0,
     required this.totalHours,
     required this.sessionCount,
@@ -1376,10 +1424,14 @@ class _RightPanelState extends State<_RightPanel> {
   /// different figures for one project.
   Widget _chargesCard() {
     final c = _charges;
-    final track = widget.lifetimeTrackCost;
+    // EV charging is metered per kWh and is followed separately, so it is
+    // lifted out of accessories rather than left inside them. The total is
+    // unchanged: ev is a slice of lifetimeTrackCost, not an addition to it.
+    final ev = widget.lifetimeEvCost;
+    final track = widget.lifetimeTrackCost - ev;
     final manpower = c?.manpowerCost ?? 0;
     final workshop = c?.workshopCost ?? 0;
-    final total = track + manpower + workshop;
+    final total = track + ev + manpower + workshop;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
@@ -1414,6 +1466,12 @@ class _RightPanelState extends State<_RightPanel> {
         _chargeRow('Track + Accessories', track, total, AppTheme.primary,
             '${widget.lifetimeSessionCount} session'
             '${widget.lifetimeSessionCount == 1 ? '' : 's'}'),
+        // Only when there is some. A nil row on every programme that has never
+        // plugged anything in is noise on the one card that has to stay
+        // readable at a glance.
+        if (ev > 0)
+          _chargeRow('EV Charging', ev, total, const Color(0xFF4ADE80),
+              'metered per kWh'),
         _chargeRow('Manpower', manpower, total, const Color(0xFFB794F6),
             c == null
                 ? ''
