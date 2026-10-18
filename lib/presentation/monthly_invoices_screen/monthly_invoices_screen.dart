@@ -971,6 +971,216 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
     );
   }
 
+  /// Whether the month table is grouped by day rather than by track.
+  ///
+  /// Two views of one month because the two questions are different. By track
+  /// answers "what does T3 Wet cost us this month"; by day answers "does
+  /// 21 September match their sheet", which is how a utilisation sheet is
+  /// actually checked — NATRAX write theirs a day at a time.
+  bool _tableByDate = false;
+
+  /// One row per day: which tracks ran, and what the day bills.
+  ///
+  /// The day is the unit NATRAX round on, so a day is also the unit a dispute
+  /// lands on. Billable hours here are the sum of each track's own rounding
+  /// for that day, with the braking surfaces sharing one floor.
+  Widget _buildDateTableCard(List<_Session> sessions) {
+    const twoHourTracks = {'T1', 'T2', 'T3W', 'T3D', 'T12'};
+    String groupOf(String c) =>
+        (c == 'T3W' || c == 'T3D') ? 'T3' : c;
+    double ceilHrs(int m) => m <= 0 ? 0 : (m / 60.0).ceilToDouble();
+
+    // Minutes per day per track, then rolled up to the day.
+    final perDayTrack = <String, Map<String, int>>{};
+    final costPerDay = <String, double>{};
+    final runsPerDay = <String, int>{};
+    final dateOf = <String, DateTime>{};
+    for (final s in sessions) {
+      final code =
+          (s.trackCode.isNotEmpty ? s.trackCode : s.trackName).toUpperCase();
+      if (code == 'MISC' || code.isEmpty) continue;
+      final day = DateFormat('yyyy-MM-dd').format(s.date);
+      dateOf[day] = DateTime(s.date.year, s.date.month, s.date.day);
+      (perDayTrack[day] ??= {})
+          .update(code, (v) => v + s.durationMinutes, ifAbsent: () => s.durationMinutes);
+      costPerDay[day] = (costPerDay[day] ?? 0) + s.trackCostExcl;
+      runsPerDay[day] = (runsPerDay[day] ?? 0) + 1;
+    }
+    if (perDayTrack.isEmpty) return const SizedBox.shrink();
+
+    final billPerDay = <String, double>{};
+    final minsPerDay = <String, int>{};
+    perDayTrack.forEach((day, tracks) {
+      // Each track rounds up on its own; a shared floor is then topped up
+      // once for the group, not once per surface.
+      final ceilByGroup = <String, double>{};
+      final floorByGroup = <String, double>{};
+      var total = 0.0, mins = 0;
+      tracks.forEach((code, m) {
+        mins += m;
+        total += ceilHrs(m);
+        final g = groupOf(code);
+        ceilByGroup[g] = (ceilByGroup[g] ?? 0) + ceilHrs(m);
+        final f = twoHourTracks.contains(code) ? 2.0 : 1.0;
+        floorByGroup[g] = (floorByGroup[g] ?? 0) > f ? floorByGroup[g]! : f;
+      });
+      floorByGroup.forEach((g, floor) {
+        final short = floor - (ceilByGroup[g] ?? 0);
+        if (short > 0) total += short;
+      });
+      billPerDay[day] = total;
+      minsPerDay[day] = mins;
+    });
+
+    final days = perDayTrack.keys.toList()..sort();
+    final inr =
+        NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+
+    TextStyle head() => GoogleFonts.spaceGrotesk(
+        fontSize: 9,
+        fontWeight: FontWeight.w800,
+        color: const Color(0xFF6B7490),
+        letterSpacing: 0.8);
+    TextStyle cell({bool bold = false, Color? c}) => GoogleFonts.spaceGrotesk(
+        fontSize: 11.5,
+        fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
+        color: c ?? Colors.white);
+    Widget pad(Widget w, {Alignment a = Alignment.centerLeft}) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 8),
+        child: Align(alignment: a, child: w));
+
+    return Table(
+      columnWidths: const {
+        0: FlexColumnWidth(1.6),
+        1: FlexColumnWidth(2.4),
+        2: FlexColumnWidth(1),
+        3: FlexColumnWidth(1.2),
+        4: FlexColumnWidth(1.4),
+        5: FlexColumnWidth(1.9),
+      },
+      children: [
+        TableRow(
+          decoration: const BoxDecoration(
+              border: Border(
+                  bottom: BorderSide(color: Color(0xFF1E293B), width: 1))),
+          children: [
+            pad(Text('DATE', style: head())),
+            pad(Text('TRACKS', style: head())),
+            pad(Text('RUNS', style: head()), a: Alignment.centerRight),
+            pad(Text('HOURS', style: head()), a: Alignment.centerRight),
+            pad(Text('BILLABLE', style: head()), a: Alignment.centerRight),
+            pad(Text('COST', style: head()), a: Alignment.centerRight),
+          ],
+        ),
+        for (final d in days)
+          TableRow(children: [
+            pad(Text(DateFormat('d MMM').format(dateOf[d]!),
+                style: cell(bold: true))),
+            pad(Wrap(
+              spacing: 4,
+              runSpacing: 3,
+              children: [
+                for (final c in (perDayTrack[d]!.keys.toList()..sort()))
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: _getTrackColor(c).withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                          color: _getTrackColor(c).withOpacity(0.35)),
+                    ),
+                    child: Text(c,
+                        style: GoogleFonts.spaceGrotesk(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w700,
+                            color: _getTrackColor(c))),
+                  ),
+              ],
+            )),
+            pad(Text('${runsPerDay[d]}',
+                    style: cell(c: const Color(0xFF94A3B8))),
+                a: Alignment.centerRight),
+            pad(Text((minsPerDay[d]! / 60.0).toStringAsFixed(1), style: cell()),
+                a: Alignment.centerRight),
+            pad(
+                Text(billPerDay[d]!.toStringAsFixed(0),
+                    style: cell(bold: true, c: const Color(0xFF00F3FF))),
+                a: Alignment.centerRight),
+            pad(Text(inr.format(costPerDay[d] ?? 0), style: cell()),
+                a: Alignment.centerRight),
+          ]),
+        TableRow(
+          decoration: const BoxDecoration(
+              border:
+                  Border(top: BorderSide(color: Color(0xFF1E293B), width: 1))),
+          children: [
+            pad(Text('Total', style: cell(bold: true))),
+            pad(Text('${days.length} day${days.length == 1 ? '' : 's'}',
+                style: cell(c: const Color(0xFF6B7490)))),
+            pad(
+                Text('${runsPerDay.values.fold(0, (a, b) => a + b)}',
+                    style: cell(bold: true, c: const Color(0xFF94A3B8))),
+                a: Alignment.centerRight),
+            pad(
+                Text(
+                    (minsPerDay.values.fold(0, (a, b) => a + b) / 60.0)
+                        .toStringAsFixed(1),
+                    style: cell(bold: true)),
+                a: Alignment.centerRight),
+            pad(
+                Text(
+                    billPerDay.values
+                        .fold(0.0, (a, b) => a + b)
+                        .toStringAsFixed(0),
+                    style: cell(bold: true, c: const Color(0xFF00F3FF))),
+                a: Alignment.centerRight),
+            pad(
+                Text(
+                    inr.format(costPerDay.values.fold(0.0, (a, b) => a + b)),
+                    style: cell(bold: true)),
+                a: Alignment.centerRight),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// A two-way switch between the by-track and by-day tables.
+  Widget _tableModeToggle() {
+    Widget tab(String label, bool byDate) {
+      final on = _tableByDate == byDate;
+      return GestureDetector(
+        onTap: () => setState(() => _tableByDate = byDate),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: on
+                ? const Color(0xFF00F3FF).withOpacity(0.15)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(7),
+            border: Border.all(
+                color: on
+                    ? const Color(0xFF00F3FF).withOpacity(0.5)
+                    : const Color(0xFF1E293B)),
+          ),
+          child: Text(label,
+              style: GoogleFonts.spaceGrotesk(
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w700,
+                  color:
+                      on ? const Color(0xFF00F3FF) : const Color(0xFF6B7490))),
+        ),
+      );
+    }
+
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      tab('BY TRACK', false),
+      const SizedBox(width: 6),
+      tab('BY DATE', true),
+    ]);
+  }
+
   /// The month as a table, per track, in the shape NATRAX bills.
   ///
   /// The doughnut answers "what did we mostly use" and nothing else. Checking
@@ -1081,12 +1291,15 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
           const Icon(Icons.table_rows_rounded,
               color: Color(0xFF00F3FF), size: 18),
           const SizedBox(width: 8),
-          Text('MONTH BY TRACK',
-              style: GoogleFonts.spaceGrotesk(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  color: const Color(0xFF94A3B8),
-                  letterSpacing: 1.5)),
+          Expanded(
+            child: Text(_tableByDate ? 'MONTH BY DATE' : 'MONTH BY TRACK',
+                style: GoogleFonts.spaceGrotesk(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF94A3B8),
+                    letterSpacing: 1.5)),
+          ),
+          _tableModeToggle(),
         ]),
         const SizedBox(height: 4),
         Text('Billable hours are whole hours per track per day, '
@@ -1094,6 +1307,9 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
             style: GoogleFonts.spaceGrotesk(
                 fontSize: 9.5, color: const Color(0xFF6B7490), height: 1.4)),
         const SizedBox(height: 14),
+        if (_tableByDate)
+          _buildDateTableCard(sessions)
+        else
         Table(
           columnWidths: const {
             0: FlexColumnWidth(2.2),

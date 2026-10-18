@@ -54,6 +54,7 @@ class MonthUtilisationExport {
   const MonthUtilisationExport._();
 
   static const _sheetUtilisation = 'Utilisation';
+  static const _sheetByDate = 'By Date';
   static const _sheetSessions = 'Sessions';
   static const _sheetServices = 'Other Services';
   static const _sheetSummary = 'Summary';
@@ -265,6 +266,48 @@ class MonthUtilisationExport {
       IntCellValue(rows.fold<int>(0, (t, r) => t + r.minutes)),
       DoubleCellValue(rows.fold<double>(0, (t, r) => t + r.billableHours)),
       DoubleCellValue(rows.fold<double>(0, (t, r) => t + r.cost)),
+    ]);
+
+    // By Date: the day rollup, because a utilisation sheet is checked a day at
+    // a time and a dispute lands on a date, not on a track.
+    final byDate = <DateTime, ({double hrs, double cost, int mins, int runs, Set<String> tracks})>{};
+    for (final r in rows) {
+      final p = byDate[r.date] ??
+          (hrs: 0.0, cost: 0.0, mins: 0, runs: 0, tracks: <String>{});
+      byDate[r.date] = (
+        hrs: p.hrs + r.billableHours,
+        cost: p.cost + r.cost,
+        mins: p.mins + r.minutes,
+        runs: p.runs + r.sessions,
+        tracks: p.tracks..add(r.trackCode),
+      );
+    }
+    final dt = book[_sheetByDate];
+    dt.appendRow([TextCellValue('By date — $label')]);
+    dt.appendRow([TextCellValue(project ?? 'All programmes')]);
+    dt.appendRow([]);
+    dt.appendRow(const [
+      'Date', 'Tracks', 'Sessions', 'Minutes', 'Billable Hrs', 'Cost (excl GST)',
+    ].map(TextCellValue.new).toList());
+    for (final d in byDate.keys.toList()..sort()) {
+      final v = byDate[d]!;
+      dt.appendRow([
+        TextCellValue(DateFormat('dd-MMM-yyyy').format(d)),
+        TextCellValue((v.tracks.toList()..sort()).join(', ')),
+        IntCellValue(v.runs),
+        IntCellValue(v.mins),
+        DoubleCellValue(v.hrs),
+        DoubleCellValue(v.cost),
+      ]);
+    }
+    dt.appendRow([]);
+    dt.appendRow([
+      TextCellValue('Total'),
+      TextCellValue('${byDate.length} day${byDate.length == 1 ? '' : 's'}'),
+      IntCellValue(byDate.values.fold<int>(0, (t, v) => t + v.runs)),
+      IntCellValue(byDate.values.fold<int>(0, (t, v) => t + v.mins)),
+      DoubleCellValue(byDate.values.fold<double>(0, (t, v) => t + v.hrs)),
+      DoubleCellValue(byDate.values.fold<double>(0, (t, v) => t + v.cost)),
     ]);
 
     // Summary: per track, the same shape as NATRAX's "Track Code & Total Hours".
