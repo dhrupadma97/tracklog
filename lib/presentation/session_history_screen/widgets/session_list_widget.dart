@@ -28,6 +28,152 @@ class SessionListWidget extends StatelessWidget {
   }
 }
 
+/// Everything held about one session, on tap.
+///
+/// A read-only sheet on purpose. There is no edit anywhere in the app for a
+/// logged session, because changing one entry's duration changes how the
+/// whole day rounds and therefore what every other entry that day should
+/// carry — delete and re-enter lets the app recompute all of them. Showing an
+/// edit button here would promise something the billing rules do not allow.
+void _showDetail(BuildContext context, Map<String, dynamic> s) {
+  final started = DateTime.tryParse(s['startTime'] as String? ?? '');
+  final mins = (s['durationMinutes'] as num?)?.toInt() ?? 0;
+  final cost = (s['costINR'] as num?)?.toDouble() ?? 0;
+  final rate = (s['hourlyRate'] as num?)?.toDouble() ?? 0;
+  final notes = (s['notes'] as String? ?? '').trim();
+  final inr =
+      NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+
+  Widget line(String k, String v, {Color? colour, bool wrap = false}) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 7),
+        child: Row(
+          crossAxisAlignment:
+              wrap ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 104,
+              child: Text(k,
+                  style: const TextStyle(
+                      fontFamily: 'Space Grotesk',
+                      fontSize: 11,
+                      color: Color(0xFF6B7490))),
+            ),
+            Expanded(
+              child: Text(v,
+                  style: TextStyle(
+                      fontFamily: 'Space Grotesk',
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: colour ?? Colors.white)),
+            ),
+          ],
+        ),
+      );
+
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (_) => Container(
+      margin: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 22),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0A1025),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.primary.withAlpha(60)),
+      ),
+      child: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 38,
+            height: 4,
+            decoration: BoxDecoration(
+                color: const Color(0xFF2A3550),
+                borderRadius: BorderRadius.circular(2)),
+          ),
+          const SizedBox(height: 14),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(s['gate'] as String? ?? 'Session',
+                style: const TextStyle(
+                    fontFamily: 'Space Grotesk',
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white)),
+          ),
+          const SizedBox(height: 10),
+          const Divider(color: Color(0xFF1E293B), height: 1),
+          const SizedBox(height: 6),
+          line('Track', (s['trackType'] as String? ?? '').toString()),
+          line(
+              'Date',
+              started == null
+                  ? '—'
+                  : DateFormat('EEE, d MMM yyyy').format(started)),
+          line(
+              'Started',
+              started == null ? '—' : DateFormat('HH:mm').format(started)),
+          line(
+              'Ended',
+              started == null
+                  ? '—'
+                  : DateFormat('HH:mm')
+                      .format(started.add(Duration(minutes: mins)))),
+          line('Duration', '${mins ~/ 60}h ${mins % 60}m  ·  $mins min'),
+          if (rate > 0) line('Rate', '${inr.format(rate)} / hr'),
+          line('Cost', inr.format(cost),
+              colour: cost > 0 ? AppTheme.primary : const Color(0xFF6B7490)),
+          line('Status', (s['status'] as String? ?? '').toString()),
+          if (notes.isNotEmpty) line('Notes', notes, wrap: true),
+          const SizedBox(height: 6),
+          const Divider(color: Color(0xFF1E293B), height: 1),
+          const SizedBox(height: 6),
+          line('Entry ID', (s['id'] as String? ?? '').toString(),
+              colour: const Color(0xFF6B7490), wrap: true),
+          // A session can legitimately cost nothing: the day had already
+          // rounded up to its whole hours before this one started. Said here
+          // so a zero does not read as a failed save.
+          if (cost == 0) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFB547).withAlpha(20),
+                borderRadius: BorderRadius.circular(10),
+                border:
+                    Border.all(color: const Color(0xFFFFB547).withAlpha(70)),
+              ),
+              child: const Text(
+                'This entry bills nothing. The day had already rounded up to '
+                'its whole hours on this track before it started, so the cost '
+                'sits on the earlier entry. The day total is what NATRAX '
+                'invoices.',
+                style: TextStyle(
+                    fontFamily: 'Space Grotesk',
+                    fontSize: 10.5,
+                    height: 1.45,
+                    color: Color(0xFFFFB547)),
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close',
+                  style: TextStyle(
+                      fontFamily: 'Space Grotesk',
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF6B7490))),
+            ),
+          ),
+        ]),
+      ),
+    ),
+  );
+}
+
 class _SessionListItem extends StatefulWidget {
   final Map<String, dynamic> session;
   final int index;
@@ -114,9 +260,11 @@ class _SessionListItemState extends State<_SessionListItem>
               borderRadius: BorderRadius.circular(16),
               splashColor: AppTheme.primary.withAlpha(13),
               highlightColor: AppTheme.primary.withAlpha(8),
-              onTap: () {
-                // TODO: Navigate to session detail
-              },
+              // The row carried a ripple and an empty TODO, so it looked
+              // tappable, responded to the touch, and then did nothing —
+              // which reads as the app being broken rather than the detail
+              // never having been built.
+              onTap: () => _showDetail(context, s),
               child: Padding(
                 padding: const EdgeInsets.all(14),
                 child: Column(
