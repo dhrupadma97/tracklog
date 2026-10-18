@@ -9,6 +9,7 @@ import '../../services/day_note_service.dart';
 import '../../services/engineer_auth_service.dart';
 import '../../services/muster_service.dart';
 import '../../services/project_catalog.dart';
+import '../../services/month_utilisation_export.dart';
 import '../../services/project_manager.dart';
 import '../../services/session_log_service.dart';
 import '../../services/supabase_service.dart';
@@ -409,6 +410,45 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
         (sum, s) => sum + ((s['costINR'] as num?)?.toDouble() ?? 0),
       );
 
+  bool _exporting = false;
+
+  /// Downloads the month currently on screen, in the shape NATRAX bills.
+  ///
+  /// Scoped to whatever the header says — one programme or all of them — so
+  /// what downloads is what is being read, rather than a second definition of
+  /// the period that could quietly disagree with it.
+  Future<void> _exportMonth() async {
+    final month = monthFor(_selectedPeriod);
+    setState(() => _exporting = true);
+    try {
+      final name = await MonthUtilisationExport.run(
+        month: month,
+        project: _allProjects ? null : _activeProject,
+      );
+      if (mounted) _snackMsg('Downloaded $name');
+    } catch (e) {
+      // Named, not swallowed: a failed export that looks like a success is
+      // what the old snackbar did.
+      if (mounted) _snackMsg('Could not export: $e', error: true);
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  void _snackMsg(String text, {bool error = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(text,
+            style: const TextStyle(fontFamily: 'Space Grotesk')),
+        backgroundColor:
+            error ? const Color(0xFF5A1A1A) : const Color(0xFF0A1025),
+        behavior: SnackBarBehavior.floating,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
   int get _currentAvgDuration {
     if (_currentPeriodSessions.isEmpty) return 0;
     final totalMinutes = _currentPeriodSessions.fold<int>(
@@ -435,29 +475,30 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
     return Scaffold(
       backgroundColor: AppTheme.backgroundDark,
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Exporting $_currentSessionCount sessions...',
-                style: const TextStyle(fontFamily: 'Space Grotesk'),
+        // Downloads the month on screen. This said "Exporting N sessions..."
+        // and did nothing else — no file, no error, just a snackbar that read
+        // like success. Checking a NATRAX utilisation sheet meant taking a
+        // full backup and filtering it by hand.
+        onPressed: _exporting ? null : _exportMonth,
+        icon: _exporting
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Color(0xFF001A10)))
+            : CustomIconWidget(
+                iconName: 'share',
+                color: const Color(0xFF001A10),
+                size: 18,
               ),
-              backgroundColor: const Color(0xFF0A1025),
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          );
-        },
-        icon: CustomIconWidget(
-          iconName: 'share',
-          color: const Color(0xFF001A10),
-          size: 18,
-        ),
-        label: const Text(
-          'Export Report',
-          style: TextStyle(fontFamily: 'Space Grotesk', fontWeight: FontWeight.w700),
+        // Names the month, because the button exports what is on screen and
+        // the screen can be showing a month that is not this one.
+        label: Text(
+          _exporting
+              ? 'Exporting...'
+              : 'Export ${DateFormat('MMM yyyy').format(monthFor(_selectedPeriod))}',
+          style: const TextStyle(
+              fontFamily: 'Space Grotesk', fontWeight: FontWeight.w700),
         ),
         backgroundColor: AppTheme.primary,
         foregroundColor: const Color(0xFF001A10),

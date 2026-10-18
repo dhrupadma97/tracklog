@@ -590,6 +590,9 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
                 if (_tallies.isNotEmpty) const SizedBox(height: 16),
                 if (sortedTracks.isNotEmpty)
                   _buildLargeDoughnutCard(sortedTracks, totalHrs, isWide: false),
+                if (activeSessions.isNotEmpty) const SizedBox(height: 16),
+                if (activeSessions.isNotEmpty)
+                  _buildTrackTableCard(activeSessions),
                 const SizedBox(height: 16),
                 _buildTrendChartCardOnly(),
                 const SizedBox(height: 16),
@@ -640,6 +643,10 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
                         if (_tallies.isNotEmpty) const SizedBox(height: 16),
                         if (sortedTracks.isNotEmpty)
                           _buildLargeDoughnutCard(sortedTracks, totalHrs, isWide: true),
+                        if (activeSessions.isNotEmpty)
+                          const SizedBox(height: 16),
+                        if (activeSessions.isNotEmpty)
+                          _buildTrackTableCard(activeSessions),
                         const SizedBox(height: 16),
                         _buildTrendChartCardOnly(),
                       ],
@@ -961,6 +968,192 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
       child: Text(label,
           style: GoogleFonts.spaceGrotesk(
               fontSize: 9, fontWeight: FontWeight.w600, color: color)),
+    );
+  }
+
+  /// The month as a table, per track, in the shape NATRAX bills.
+  ///
+  /// The doughnut answers "what did we mostly use" and nothing else. Checking
+  /// a NATRAX utilisation sheet needs the number they charge on — whole hours
+  /// per track per day — against the rupees we hold. Reading that off a
+  /// doughnut is impossible, so September was reconciled by exporting a backup
+  /// and grouping it by hand, which found 16 hours billed to us that belonged
+  /// to another customer's booking.
+  ///
+  /// Billable hours are not session hours. NATRAX rounds each track up to the
+  /// whole hour once a day and applies a floor — two hours on T1, T2 and both
+  /// braking surfaces, one elsewhere — so 54 minutes on T1 bills as 2. The
+  /// braking surfaces share one floor between them, which is why the shortfall
+  /// is worked out per group rather than per track.
+  Widget _buildTrackTableCard(List<_Session> sessions) {
+    const twoHourTracks = {'T1', 'T2', 'T3W', 'T3D', 'T12'};
+    String groupOf(String code) {
+      final c = code.toUpperCase();
+      return (c == 'T3W' || c == 'T3D') ? 'T3' : c;
+    }
+
+    // Minutes per track per day, and per group per day, so the floor can be
+    // applied to the braking track once rather than to each surface.
+    final perTrackDay = <String, int>{};
+    final perGroupDayCeil = <String, double>{};
+    final hrs = <String, double>{};
+    final cost = <String, double>{};
+    final count = <String, int>{};
+
+    for (final s in sessions) {
+      final code = (s.trackCode.isNotEmpty ? s.trackCode : s.trackName)
+          .toUpperCase();
+      if (code == 'MISC' || code.isEmpty) continue;
+      final day = DateFormat('yyyy-MM-dd').format(s.date);
+      perTrackDay['$day|$code'] = (perTrackDay['$day|$code'] ?? 0) + s.durationMinutes;
+      hrs[code] = (hrs[code] ?? 0) + s.durationMinutes / 60.0;
+      cost[code] = (cost[code] ?? 0) + s.trackCostExcl;
+      count[code] = (count[code] ?? 0) + 1;
+    }
+    if (hrs.isEmpty) return const SizedBox.shrink();
+
+    double ceilHrs(int m) => m <= 0 ? 0 : (m / 60.0).ceilToDouble();
+    for (final e in perTrackDay.entries) {
+      final p = e.key.split('|');
+      final gk = '${p[0]}|${groupOf(p[1])}';
+      perGroupDayCeil[gk] = (perGroupDayCeil[gk] ?? 0) + ceilHrs(e.value);
+    }
+
+    final billable = <String, double>{};
+    final shortfallDone = <String>{};
+    // Largest first inside a day, so a group's shortfall lands on the surface
+    // that actually ran rather than on whichever code sorts first.
+    final dayKeys = perTrackDay.keys.toList()
+      ..sort((a, b) {
+        final da = a.split('|')[0], db = b.split('|')[0];
+        return da == db
+            ? perTrackDay[b]!.compareTo(perTrackDay[a]!)
+            : da.compareTo(db);
+      });
+    for (final key in dayKeys) {
+      final p = key.split('|');
+      final code = p[1];
+      final gk = '${p[0]}|${groupOf(code)}';
+      var h = ceilHrs(perTrackDay[key]!);
+      if (!shortfallDone.contains(gk)) {
+        final floor = twoHourTracks.contains(code) ? 2.0 : 1.0;
+        final short = floor - (perGroupDayCeil[gk] ?? 0);
+        if (short > 0) {
+          h += short;
+          shortfallDone.add(gk);
+        }
+      }
+      billable[code] = (billable[code] ?? 0) + h;
+    }
+
+    final codes = hrs.keys.toList()
+      ..sort((a, b) => (cost[b] ?? 0).compareTo(cost[a] ?? 0));
+    final totHrs = hrs.values.fold(0.0, (a, b) => a + b);
+    final totBill = billable.values.fold(0.0, (a, b) => a + b);
+    final totCost = cost.values.fold(0.0, (a, b) => a + b);
+    final inr = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+
+    TextStyle head() => GoogleFonts.spaceGrotesk(
+        fontSize: 9,
+        fontWeight: FontWeight.w800,
+        color: const Color(0xFF6B7490),
+        letterSpacing: 0.8);
+    TextStyle cell({bool bold = false, Color? c}) => GoogleFonts.spaceGrotesk(
+        fontSize: 11.5,
+        fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
+        color: c ?? Colors.white);
+
+    TableRow row(List<Widget> cells, {BoxDecoration? d}) =>
+        TableRow(decoration: d, children: cells);
+    Widget pad(Widget w, {Alignment a = Alignment.centerLeft}) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 8),
+        child: Align(alignment: a, child: w));
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D1520).withOpacity(0.9),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF00F3FF).withOpacity(0.2)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.table_rows_rounded,
+              color: Color(0xFF00F3FF), size: 18),
+          const SizedBox(width: 8),
+          Text('MONTH BY TRACK',
+              style: GoogleFonts.spaceGrotesk(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF94A3B8),
+                  letterSpacing: 1.5)),
+        ]),
+        const SizedBox(height: 4),
+        Text('Billable hours are whole hours per track per day, '
+            'with the day minimum applied — what NATRAX charges on.',
+            style: GoogleFonts.spaceGrotesk(
+                fontSize: 9.5, color: const Color(0xFF6B7490), height: 1.4)),
+        const SizedBox(height: 14),
+        Table(
+          columnWidths: const {
+            0: FlexColumnWidth(2.2),
+            1: FlexColumnWidth(1.2),
+            2: FlexColumnWidth(1.3),
+            3: FlexColumnWidth(1.6),
+            4: FlexColumnWidth(2),
+          },
+          children: [
+            row([
+              pad(Text('TRACK', style: head())),
+              pad(Text('RUNS', style: head()), a: Alignment.centerRight),
+              pad(Text('HOURS', style: head()), a: Alignment.centerRight),
+              pad(Text('BILLABLE', style: head()), a: Alignment.centerRight),
+              pad(Text('COST', style: head()), a: Alignment.centerRight),
+            ], d: const BoxDecoration(
+                border: Border(
+                    bottom: BorderSide(color: Color(0xFF1E293B), width: 1)))),
+            for (final c in codes)
+              row([
+                pad(Row(children: [
+                  Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                          color: _getTrackColor(c), shape: BoxShape.circle)),
+                  const SizedBox(width: 8),
+                  Text(c, style: cell(bold: true)),
+                ])),
+                pad(Text('${count[c]}', style: cell(c: const Color(0xFF94A3B8))),
+                    a: Alignment.centerRight),
+                pad(Text(hrs[c]!.toStringAsFixed(1), style: cell()),
+                    a: Alignment.centerRight),
+                pad(
+                    Text((billable[c] ?? 0).toStringAsFixed(0),
+                        style: cell(bold: true, c: const Color(0xFF00F3FF))),
+                    a: Alignment.centerRight),
+                pad(Text(inr.format(cost[c] ?? 0), style: cell()),
+                    a: Alignment.centerRight),
+              ]),
+            row([
+              pad(Text('Total', style: cell(bold: true))),
+              pad(
+                  Text('${count.values.fold(0, (a, b) => a + b)}',
+                      style: cell(bold: true, c: const Color(0xFF94A3B8))),
+                  a: Alignment.centerRight),
+              pad(Text(totHrs.toStringAsFixed(1), style: cell(bold: true)),
+                  a: Alignment.centerRight),
+              pad(
+                  Text(totBill.toStringAsFixed(0),
+                      style: cell(bold: true, c: const Color(0xFF00F3FF))),
+                  a: Alignment.centerRight),
+              pad(Text(inr.format(totCost), style: cell(bold: true)),
+                  a: Alignment.centerRight),
+            ], d: const BoxDecoration(
+                border: Border(
+                    top: BorderSide(color: Color(0xFF1E293B), width: 1)))),
+          ],
+        ),
+      ]),
     );
   }
 
