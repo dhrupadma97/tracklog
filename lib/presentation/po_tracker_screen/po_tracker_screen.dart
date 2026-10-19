@@ -1334,6 +1334,7 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                       label: 'Tax (GST)',
                       amount: (po['tax_amount'] as num?)?.toDouble() ?? 0,
                       color: const Color(0xFFFFB74D),
+                      pending: po['tax_pending'] == true,
                     ),
                   ),
                   Container(
@@ -1347,6 +1348,10 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                       amount: ((po['total_po_value'] as num?)?.toDouble() ?? 0) + ((po['tax_amount'] as num?)?.toDouble() ?? 0),
                       color: AppTheme.primary,
                       bold: true,
+                      // The total is tax plus value, so an unconfirmed tax
+                      // makes the total unconfirmed too. Marking only the tax
+                      // would leave the bigger number looking settled.
+                      pending: po['tax_pending'] == true,
                     ),
                   ),
                 ],
@@ -1616,6 +1621,14 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
     required double amount,
     required Color color,
     bool bold = false,
+    /// The figure is a working assumption, not a confirmed one.
+    ///
+    /// 8242390552 is a GTCI PO supplying an SEZ, where GST may not be
+    /// chargeable at all, and the treatment has been guessed twice already —
+    /// set to nil in one migration and back to 18% in the next. The amount is
+    /// still shown, because a blank would be worse, but it is marked so the
+    /// total built on it is not read as settled.
+    bool pending = false,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -1635,13 +1648,26 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
           Text(
             '₹${_formatAmount(amount)}',
             style: GoogleFonts.spaceGrotesk(
-              color: color,
+              color: pending ? const Color(0xFF6B7490) : color,
               fontSize: bold ? 13 : 12,
               fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
+              decoration: pending ? TextDecoration.underline : null,
+              decorationStyle: TextDecorationStyle.dotted,
+              decorationColor: const Color(0xFFFFB74D),
             ),
             textAlign: TextAlign.center,
             overflow: TextOverflow.ellipsis,
           ),
+          if (pending)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text('not confirmed',
+                  style: GoogleFonts.spaceGrotesk(
+                      color: const Color(0xFFFFB74D),
+                      fontSize: 8,
+                      fontWeight: FontWeight.w700),
+                  textAlign: TextAlign.center),
+            ),
         ],
       ),
     );
