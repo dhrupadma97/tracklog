@@ -7,7 +7,9 @@ import 'dart:async';
 import 'dart:ui';
 import 'dart:math' as math;
 
+import '../../services/project_catalog.dart';
 import '../../services/project_manager.dart';
+import '../../services/project_status_service.dart';
 import '../../services/session_keepalive.dart';
 import '../../services/session_status.dart';
 
@@ -197,6 +199,229 @@ class _ProjectCard {
     required this.displayName,
     required this.meta,
   });
+
+  /// The status to show: what has been recorded against this programme, or
+  /// the value compiled into [meta] if nothing has.
+  ///
+  /// [meta.status] stays as the fallback rather than being deleted, so the
+  /// screen reads correctly before the override table exists and keeps
+  /// reading correctly if it is ever unavailable.
+  ProjectStatus get status {
+    switch (ProjectStatusService.instance.statusFor(projectKey)) {
+      case ProgrammeStatus.active:
+        return ProjectStatus.active;
+      case ProgrammeStatus.upcoming:
+        return ProjectStatus.upcoming;
+      case ProgrammeStatus.completed:
+        return ProjectStatus.completed;
+    }
+  }
+
+  String get statusNotes => ProjectStatusService.instance.notesFor(projectKey);
+  DateTime? get completedOn =>
+      ProjectStatusService.instance.completedOnFor(projectKey);
+}
+
+/// Records where a PoC stands, and why.
+///
+/// Reachable from the status badge on the card. Marking a demo finished was
+/// previously a `const` edit in two files, a web build and a deploy, so in
+/// practice a programme's status was whatever it had been when the bundle was
+/// last cut.
+///
+/// Editable afterwards on purpose, including back to Active: a PoC that is
+/// signed off and then reopened for a follow-up is ordinary, and a one-way
+/// switch would have people avoid the control rather than correct it.
+Future<void> _editStatus(BuildContext context, _ProjectCard p) async {
+  var status = switch (p.status) {
+    ProjectStatus.active => ProgrammeStatus.active,
+    ProjectStatus.upcoming => ProgrammeStatus.upcoming,
+    ProjectStatus.completed => ProgrammeStatus.completed,
+  };
+  final notes = TextEditingController(text: p.statusNotes);
+  var completedOn = p.completedOn ?? DateTime.now();
+  var saving = false;
+  String? error;
+
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(builder: (ctx, setD) {
+      Widget option(ProgrammeStatus s, String label, String hint, Color c) {
+        final on = status == s;
+        return GestureDetector(
+          onTap: saving ? null : () => setD(() => status = s),
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: on ? c.withOpacity(0.12) : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                  color: on ? c.withOpacity(0.6) : const Color(0xFF1E293B)),
+            ),
+            child: Row(children: [
+              Icon(on ? Icons.radio_button_checked : Icons.radio_button_off,
+                  size: 16, color: on ? c : const Color(0xFF6B7490)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(label,
+                          style: GoogleFonts.spaceGrotesk(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: on ? c : Colors.white)),
+                      Text(hint,
+                          style: GoogleFonts.spaceGrotesk(
+                              fontSize: 10, color: const Color(0xFF6B7490))),
+                    ]),
+              ),
+            ]),
+          ),
+        );
+      }
+
+      return AlertDialog(
+        scrollable: true,
+        backgroundColor: const Color(0xFF0A1025),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(p.displayName,
+            style: GoogleFonts.spaceGrotesk(
+                color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800)),
+        content: SizedBox(
+          width: 360,
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                option(ProgrammeStatus.active, 'Active',
+                    'Testing is running', const Color(0xFF00F3FF)),
+                option(ProgrammeStatus.upcoming, 'Upcoming',
+                    'Agreed, not started', const Color(0xFFFFB547)),
+                option(ProgrammeStatus.completed, 'Completed',
+                    'Demo done, nothing further planned',
+                    const Color(0xFF22C55E)),
+                if (status == ProgrammeStatus.completed) ...[
+                  const SizedBox(height: 4),
+                  GestureDetector(
+                    onTap: saving
+                        ? null
+                        : () async {
+                            final picked = await showDatePicker(
+                              context: ctx,
+                              initialDate: completedOn,
+                              firstDate: DateTime(2026, 1, 1),
+                              lastDate: DateTime.now()
+                                  .add(const Duration(days: 1)),
+                              helpText: 'Date the PoC finished',
+                            );
+                            if (picked != null) {
+                              setD(() => completedOn = picked);
+                            }
+                          },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFF1E293B)),
+                      ),
+                      child: Row(children: [
+                        const Icon(Icons.event,
+                            size: 15, color: Color(0xFF6B7490)),
+                        const SizedBox(width: 10),
+                        Text(
+                            'Finished ${DateFormat('d MMM yyyy').format(completedOn)}',
+                            style: GoogleFonts.spaceGrotesk(
+                                fontSize: 12, color: Colors.white70)),
+                      ]),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                TextField(
+                  controller: notes,
+                  enabled: !saving,
+                  maxLines: 4,
+                  minLines: 2,
+                  style: GoogleFonts.spaceGrotesk(
+                      fontSize: 12.5, color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'What was demonstrated, what is outstanding...',
+                    hintStyle: GoogleFonts.spaceGrotesk(
+                        fontSize: 11.5, color: const Color(0xFF4A5470)),
+                    filled: true,
+                    fillColor: const Color(0xFF050811),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide:
+                            const BorderSide(color: Color(0xFF1E293B))),
+                    enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide:
+                            const BorderSide(color: Color(0xFF1E293B))),
+                  ),
+                ),
+                if (error != null) ...[
+                  const SizedBox(height: 10),
+                  Text(error!,
+                      style: GoogleFonts.spaceGrotesk(
+                          fontSize: 11, color: const Color(0xFFFF6B6B))),
+                ],
+                const SizedBox(height: 6),
+                Text(
+                    'Status and notes can be changed again at any time, '
+                    'including back to Active.',
+                    style: GoogleFonts.spaceGrotesk(
+                        fontSize: 9.5,
+                        color: const Color(0xFF4A5470),
+                        height: 1.4)),
+              ]),
+        ),
+        actions: [
+          TextButton(
+            onPressed: saving ? null : () => Navigator.pop(ctx),
+            child: Text('Cancel',
+                style:
+                    GoogleFonts.spaceGrotesk(color: const Color(0xFF6B7490))),
+          ),
+          TextButton(
+            onPressed: saving
+                ? null
+                : () async {
+                    setD(() {
+                      saving = true;
+                      error = null;
+                    });
+                    try {
+                      await ProjectStatusService.instance.set(
+                        rawKey: p.projectKey,
+                        status: status,
+                        notes: notes.text,
+                        completedOn: completedOn,
+                      );
+                      if (ctx.mounted) Navigator.pop(ctx);
+                    } catch (e) {
+                      // Named rather than swallowed: the usual cause is the
+                      // project_status table not existing yet, and a silent
+                      // failure here looks like the save worked.
+                      setD(() {
+                        saving = false;
+                        error = 'Could not save: $e';
+                      });
+                    }
+                  },
+            child: Text(saving ? 'Saving...' : 'Save',
+                style: GoogleFonts.spaceGrotesk(
+                    color: const Color(0xFF00F3FF),
+                    fontWeight: FontWeight.w700)),
+          ),
+        ],
+      );
+    }),
+  );
+  notes.dispose();
 }
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -275,16 +500,27 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
     _keepaliveSub = SessionKeepalive.instance.onSessionRefreshed.listen((_) {
       if (mounted) _loadProjects();
     });
+    // The recorded statuses decide which tab a card sits under, so the rail
+    // has to rebuild when one is edited rather than waiting for a reload.
+    ProjectStatusService.instance.addListener(_onStatusChanged);
+    ProjectStatusService.instance.load();
     _loadProjects();
   }
 
   @override
   void dispose() {
+    ProjectStatusService.instance.removeListener(_onStatusChanged);
     _keepaliveSub?.cancel();
     _railCtrl.dispose();
     _fadeCtrl.dispose();
     _pulseCtrl.dispose();
     super.dispose();
+  }
+
+  /// Re-partitions the rail after a status is edited. Cheap: the cards are
+  /// already loaded and only their grouping changes.
+  void _onStatusChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadProjects() async {
@@ -411,7 +647,7 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
       // is not stable, so a comparator on status alone could shuffle two
       // active programmes past each other between loads.
       List<_ProjectCard> withStatus(ProjectStatus s) =>
-          ordered.where((p) => p.meta.status == s).toList();
+          ordered.where((p) => p.status == s).toList();
       final live = [
         ...withStatus(ProjectStatus.active),
         ...withStatus(ProjectStatus.upcoming),
@@ -702,7 +938,7 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
     final totalSessions = all.fold(0, (s, p) => s + p.sessions);
     final totalSpendInclGst = all.fold(0.0, (s, p) => s + p.totalInclGst);
     final activeCount =
-        all.where((p) => p.meta.status == ProjectStatus.active).length;
+        all.where((p) => p.status == ProjectStatus.active).length;
 
     final title = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1409,38 +1645,58 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
             ),
           ),
 
-          // Status badge — driven by the project's explicit lifecycle status.
+          // Status badge — recorded against the programme, or the compiled
+          // fallback. Tappable, because marking a PoC finished used to mean a
+          // code change, a web build and a deploy.
           Builder(builder: (_) {
-            final statusColor = meta.status.color(accent);
+            final st = p.status;
+            final statusColor = st.color(accent);
+            final hasNote = p.statusNotes.isNotEmpty;
             return Positioned(
               left: 18, top: 14,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: statusColor.withOpacity(0.4)),
+              child: GestureDetector(
+                onTap: () => _editStatus(context, p),
+                behavior: HitTestBehavior.opaque,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: statusColor.withOpacity(0.4)),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      st == ProjectStatus.completed
+                          ? Icon(Icons.check_circle, size: 9, color: statusColor)
+                          : Container(
+                              width: 5, height: 5,
+                              decoration: BoxDecoration(
+                                color: statusColor, shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(color: statusColor, blurRadius: 4)
+                                ],
+                              ),
+                            ),
+                      const SizedBox(width: 6),
+                      Text(st.label,
+                          style: GoogleFonts.spaceGrotesk(
+                              fontSize: 8, fontWeight: FontWeight.w700,
+                              color: statusColor, letterSpacing: 1.5)),
+                      // Says a note exists without spending card space on it:
+                      // the card is a fixed height and the note is free text.
+                      if (hasNote) ...[
+                        const SizedBox(width: 5),
+                        Icon(Icons.sticky_note_2_outlined,
+                            size: 9, color: statusColor.withOpacity(0.8)),
+                      ],
+                      const SizedBox(width: 4),
+                      Icon(Icons.edit_outlined,
+                          size: 8, color: statusColor.withOpacity(0.55)),
+                    ]),
+                  ),
                 ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  meta.status == ProjectStatus.completed
-                      ? Icon(Icons.check_circle,
-                          size: 9, color: statusColor)
-                      : Container(
-                          width: 5, height: 5,
-                          decoration: BoxDecoration(
-                            color: statusColor, shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(color: statusColor, blurRadius: 4)
-                            ],
-                          ),
-                        ),
-                  const SizedBox(width: 6),
-                  Text(meta.status.label,
-                      style: GoogleFonts.spaceGrotesk(
-                          fontSize: 8, fontWeight: FontWeight.w700,
-                          color: statusColor, letterSpacing: 1.5)),
-                ]),
               ),
             );
           }),
