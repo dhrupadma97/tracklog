@@ -50,6 +50,11 @@ class _MonthGroup {
   final double manpowerCost;      // sum of head_count × rate from manpower_muster (kind=manpower)
   final double workshopMusterCost; // sum of workshop days × ₹5,000 from manpower_muster (kind=workshop)
 
+  /// Track + accessories split by the programme each session is filed under.
+  /// Only filled on the all-programmes groups the invoice panel shows; the
+  /// vehicle-scoped groups behind the charts leave it empty.
+  final Map<String, double> programmeSplit;
+
   double get trackAcc =>
       trackAccOverride ?? sessions.fold(0.0, (s, e) => s + e.subtotalExcl);
 
@@ -71,6 +76,26 @@ class _MonthGroup {
     this.trackAccOverride,
     this.manpowerCost = 0.0,
     this.workshopMusterCost = 0.0,
+    this.programmeSplit = const {},
+  });
+}
+
+/// A hand-entered correction putting a month onto the invoice that actually
+/// arrived.
+///
+/// What the sessions compute and what NATRAX bills can differ by a few hundred
+/// rupees — a part-hour rounded their way, a support line priced on the day, a
+/// round-off at the foot of the invoice. The figure of record is the invoice,
+/// so the month can be nudged onto it; [reason] is required so the nudge is
+/// never an unexplained number.
+class _MonthAdjustment {
+  final String month; // 'YYYY-MM'
+  final double amount; // signed — negative brings the total down
+  final String reason;
+  const _MonthAdjustment({
+    required this.month,
+    required this.amount,
+    required this.reason,
   });
 }
 
@@ -109,6 +134,11 @@ class MonthlyInvoicesScreen extends StatefulWidget {
 class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
   bool _isLoading = true;
   List<_MonthGroup> _months = [];
+  /// The same months totalled across every programme, keyed by 'YYYY-MM'.
+  /// The invoice panel reads these; the charts read [_months].
+  Map<String, _MonthGroup> _monthsAll = {};
+  /// Hand-entered corrections onto the real invoice, keyed by 'YYYY-MM'.
+  Map<String, _MonthAdjustment> _adjustments = {};
   int _selectedMonthIdx = 0;
   String _activeProject = '';
 
@@ -351,23 +381,19 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
         ..sort((a, b) => b.count.compareTo(a.count));
 
       final allSessions = <_Session>[];
+      // Every session, whatever programme it is filed under. NATRAX invoices
+      // the account, not one programme, so the invoice panel has to total them
+      // all or it can never match the bill that arrives. The charts stay on
+      // `allSessions`, which is still scoped to the vehicle being analysed.
+      final everySession = <_Session>[];
       for (final s in sessionsRaw) {
         final rawProj = (s['project_name'] as String?)?.trim() ?? '';
         final projName = (rawProj.isEmpty || rawProj.toLowerCase() == 'general')
             ? 'Mahindra EV PoC'
             : rawProj;
 
-        // Scoped to the vehicle the Analyser is showing, NOT to the globally
-        // selected project. They are two independent selections by design —
-        // _pickVehicle deliberately never calls ProjectManager.setProject —
-        // and consulting the global one here put another programme's sessions
-        // under this heading, while the muster below was correctly scoped to
-        // _activeProject. The screen reported one project's track time over
-        // another's manpower.
-        if (!ProjectManager.sessionBelongsTo(rawProj, _activeProject)) continue;
-
         final date = DateTime.tryParse(s['started_at'] as String? ?? '') ?? DateTime.now();
-        allSessions.add(_Session(
+        final session = _Session(
           id: s['id'] as String,
           trackName: s['track_name'] as String? ?? '—',
           trackCode: s['track_code'] as String? ?? '',
@@ -377,7 +403,18 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
           svcCostExcl: svcMap[s['id'] as String] ?? 0.0,
           projectName: projName,
           notes: s['notes'] as String?,
-        ));
+        );
+        everySession.add(session);
+
+        // Scoped to the vehicle the Analyser is showing, NOT to the globally
+        // selected project. They are two independent selections by design —
+        // _pickVehicle deliberately never calls ProjectManager.setProject —
+        // and consulting the global one here put another programme's sessions
+        // under this heading, while the muster below was correctly scoped to
+        // _activeProject. The screen reported one project's track time over
+        // another's manpower.
+        if (!ProjectManager.sessionBelongsTo(rawProj, _activeProject)) continue;
+        allSessions.add(session);
       }
 
       // ── Muster data: manpower + workshop charges ─────────────────────────
@@ -452,9 +489,102 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
       }
       monthGroups.sort((a, b) => b.monthKey.compareTo(a.monthKey));
 
+      // ── All-programmes months, for the invoice panel ─────────────────────
+      // One NATRAX invoice covers every programme on the account, so the panel
+      // that is meant to read like that invoice totals every programme too.
+      // Passing null here totals them in one call instead of asking per
+      // programme and adding the answers up.
+      final chargesAll = await MusterService.instance.chargesForProject(null);
+
+      const evLabel = 'Mahindra EV PoC';
+      final evBaseline = BillingBaseline.forProject(evLabel);
+      final evTrackByMonth = <String, double>{
+        for (final b in evBaseline)
+          if (b.trackAndAccessories != null) b.month: b.trackAndAccessories!,
+      };
+      final evRentalByMonth = <String, double>{
+        for (final b in evBaseline) b.month: b.workshopRental,
+      };
+      // Only needed to keep a pinned month honest: the rental already carries
+      // Mahindra EV's workshop, so that programme's mustered workshop has to
+      // come back out while every other programme's stays in.
+      final evCharges = evRentalByMonth.values.any((v) => v > 0)
+          ? await MusterService.instance.chargesForProject(evLabel)
+          : null;
+
+      final Map<String, List<_Session>> everyByMonth = {};
+      for (final s in everySession) {
+        everyByMonth
+            .putIfAbsent(s.date.toIso8601String().substring(0, 7), () => [])
+            .add(s);
+      }
+
+      final monthsAll = <String, _MonthGroup>{};
+      final everyKey = <String>{
+        ...everyByMonth.keys,
+        ...chargesAll.manpowerByMonth.keys,
+        ...chargesAll.workshopByMonth.keys,
+      };
+      for (final mk in everyKey) {
+        final rows = (everyByMonth[mk] ?? const <_Session>[]).toList()
+          ..sort((a, b) => a.date.compareTo(b.date));
+        final split = <String, double>{};
+        for (final s in rows) {
+          final p = s.projectName ?? evLabel;
+          split[p] = (split[p] ?? 0) + s.subtotalExcl;
+        }
+        // A pinned Mahindra EV month is invoice-backed. It replaces that
+        // programme's own sessions for the month; it is never added on top.
+        final evPinned = evTrackByMonth[mk];
+        if (evPinned != null) split[evLabel] = evPinned;
+
+        final rental = evRentalByMonth[mk] ?? 0.0;
+        final musterWorkshop = chargesAll.workshopByMonth[mk] ?? 0.0;
+        final double workshopMuster;
+        if (rental > 0) {
+          final rest = musterWorkshop - (evCharges?.workshopByMonth[mk] ?? 0.0);
+          workshopMuster = rest > 0 ? rest : 0.0;
+        } else {
+          workshopMuster = musterWorkshop;
+        }
+
+        monthsAll[mk] = _MonthGroup(
+          monthKey: mk,
+          label: DateFormat('MMMM yyyy').format(DateTime.parse('$mk-01')),
+          sessions: rows,
+          workshopRental: rental,
+          trackAccOverride: split.values.fold<double>(0.0, (a, b) => a + b),
+          manpowerCost: chargesAll.manpowerByMonth[mk] ?? 0.0,
+          workshopMusterCost: workshopMuster,
+          programmeSplit: split,
+        );
+      }
+
+      // Adjustments are optional. An older database has no `month_adjustments`
+      // table and the Analyser still has to open, so a failure here means "no
+      // adjustments recorded", never a broken screen.
+      final adjustments = <String, _MonthAdjustment>{};
+      try {
+        final adjRaw =
+            await client.from('month_adjustments').select('month, amount, reason');
+        for (final a in adjRaw) {
+          final mk = (a['month'] as String?)?.trim();
+          if (mk == null || mk.isEmpty) continue;
+          adjustments[mk] = _MonthAdjustment(
+            month: mk,
+            amount: (a['amount'] as num?)?.toDouble() ?? 0.0,
+            reason: (a['reason'] as String?)?.trim() ?? '',
+          );
+        }
+      } catch (_) {
+        // Table not there yet — leave the map empty.
+      }
+
       if (mounted) {
         setState(() {
           _months = monthGroups;
+          _monthsAll = monthsAll;
+          _adjustments = adjustments;
           _tallies = tallies;
           _selectedMonthIdx = 0;
           _isLoading = false;
@@ -494,6 +624,43 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
       return _allMonthsGroup;
     }
     return _months[_selectedMonthIdx];
+  }
+
+  /// What the invoice panel shows for the selected month: every programme on
+  /// the account, because that is what one NATRAX invoice covers. Falls back
+  /// to the vehicle-scoped group if a month somehow has no all-programmes
+  /// twin, so the panel shows a real figure rather than nothing.
+  _MonthGroup? get _selectedAllProgrammes {
+    final sel = _selected;
+    if (sel == null) return null;
+    if (sel.monthKey == 'all') return _allProgrammesAllMonths ?? sel;
+    return _monthsAll[sel.monthKey] ?? sel;
+  }
+
+  _MonthGroup? get _allProgrammesAllMonths {
+    if (_monthsAll.isEmpty) return null;
+    final split = <String, double>{};
+    final sessions = <_Session>[];
+    double rental = 0, manpower = 0, workshopMuster = 0, track = 0;
+    for (final g in _monthsAll.values) {
+      sessions.addAll(g.sessions);
+      rental += g.workshopRental;
+      manpower += g.manpowerCost;
+      workshopMuster += g.workshopMusterCost;
+      track += g.trackAcc;
+      g.programmeSplit.forEach((k, v) => split[k] = (split[k] ?? 0) + v);
+    }
+    sessions.sort((a, b) => a.date.compareTo(b.date));
+    return _MonthGroup(
+      monthKey: 'all',
+      label: 'All Months',
+      sessions: sessions,
+      workshopRental: rental,
+      trackAccOverride: track,
+      manpowerCost: manpower,
+      workshopMusterCost: workshopMuster,
+      programmeSplit: split,
+    );
   }
 
   // ─── Build ─────────────────────────────────────────────────────────────────
@@ -597,7 +764,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
                 _buildTrendChartCardOnly(),
                 const SizedBox(height: 16),
                 if (m != null)
-                  _buildInvoiceSummaryCard(m),
+                  _buildInvoiceSummaryCard(_selectedAllProgrammes ?? m),
                 const SizedBox(height: 16),
                 if (m != null && m.sessions.isNotEmpty)
                   _buildSessionHistoryCardOnly(m),
@@ -662,7 +829,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
                     child: Column(
                       children: [
                         if (m != null)
-                          _buildInvoiceSummaryCard(m),
+                          _buildInvoiceSummaryCard(_selectedAllProgrammes ?? m),
                         const SizedBox(height: 16),
                         if (m != null && m.sessions.isNotEmpty)
                           _buildSessionHistoryCardOnly(m),
@@ -1634,7 +1801,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
   Widget _buildTrendChartCardOnly() {
     if (_months.isEmpty) return const SizedBox.shrink();
     final chartMonths = _months.reversed.toList();
-    final maxVal = chartMonths.fold(0.0, (m, g) => g.totalIncl > m ? g.totalIncl : m);
+    final maxVal = chartMonths.fold(0.0, (m, g) => g.subtotalExcl > m ? g.subtotalExcl : m);
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -1694,7 +1861,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
                     x: e.key,
                     barRods: [
                       BarChartRodData(
-                        toY: e.value.totalIncl,
+                        toY: e.value.subtotalExcl,
                         width: 28,
                         borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
                         gradient: LinearGradient(
@@ -1779,8 +1946,14 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
 
   Widget _buildInvoiceSummaryCard(_MonthGroup m) {
     final subtotal = m.subtotalExcl;
-    final gst = subtotal * 0.18;
-    final total = m.totalIncl;
+    final adj = _adjustments[m.monthKey];
+    final adjAmount = adj?.amount ?? 0.0;
+    // No GST is added here. NATRAX bill Goodyear's SEZ unit under a Letter of
+    // Undertaking, "WITHOUT PAYMENT OF IGST": the amount chargeable on the
+    // invoice is the ex-GST figure, and the IGST line appears in the tax
+    // analysis for information only. Adding 18% read about 18% high against
+    // every invoice that actually arrives.
+    final total = subtotal + adjAmount;
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -1836,7 +2009,17 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 4),
+          Text(
+            'ALL PROGRAMMES ON THE NATRAX ACCOUNT',
+            style: GoogleFonts.spaceGrotesk(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w700,
+              color: primaryColor.withOpacity(0.8),
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 16),
           Container(height: 1, color: Colors.white.withOpacity(0.08)),
           const SizedBox(height: 20),
           _invoiceRow('Track Access + Accessories', _inr.format(m.trackAcc)),
@@ -1855,9 +2038,16 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
             _invoiceRow('Workshop Rental', _inr.format(m.workshopRental),
                 accent: const Color(0xFFF59E0B)),
           ],
-          _invoiceRow('Subtotal (Excl. GST)', _inr.format(subtotal)),
           const SizedBox(height: 10),
-          _invoiceRow('GST (18%)', _inr.format(gst)),
+          _invoiceRow('Subtotal', _inr.format(subtotal)),
+          if (adjAmount != 0) ...[
+            const SizedBox(height: 10),
+            _invoiceRow(
+              'Invoice adjustment',
+              '${adjAmount > 0 ? '+' : '-'}${_inr.format(adjAmount.abs())}',
+              accent: const Color(0xFF38BDF8),
+            ),
+          ],
           const SizedBox(height: 20),
           Container(height: 1, color: Colors.white.withOpacity(0.08)),
           const SizedBox(height: 20),
@@ -1895,6 +2085,99 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
               ),
             ],
           ),
+          const SizedBox(height: 10),
+          Text(
+            'SEZ supply under LUT - billed without payment of IGST.',
+            style: GoogleFonts.spaceGrotesk(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF6B7490),
+            ),
+          ),
+          if (adj != null && adj.reason.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF38BDF8).withOpacity(0.06),
+                borderRadius: BorderRadius.circular(10),
+                border:
+                    Border.all(color: const Color(0xFF38BDF8).withOpacity(0.2)),
+              ),
+              child: Text(
+                adj.reason,
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 10.5,
+                  height: 1.4,
+                  color: const Color(0xFFBAE6FD),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => _editAdjustment(m),
+              icon: const Icon(Icons.tune_rounded, size: 15),
+              label: Text(
+                  adjAmount == 0 ? 'Adjust to invoice' : 'Edit adjustment'),
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF38BDF8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                textStyle: GoogleFonts.spaceGrotesk(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+          if (m.programmeSplit.length > 1) ...[
+            const SizedBox(height: 16),
+            Container(height: 1, color: Colors.white.withOpacity(0.08)),
+            const SizedBox(height: 16),
+            Text(
+              'BY PROGRAMME',
+              style: GoogleFonts.spaceGrotesk(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF94A3B8),
+                letterSpacing: 1.5,
+              ),
+            ),
+            const SizedBox(height: 10),
+            ...(m.programmeSplit.entries.toList()
+                  ..sort((a, b) => b.value.compareTo(a.value)))
+                .map((e) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              e.key,
+                              style: GoogleFonts.spaceGrotesk(
+                                fontSize: 11,
+                                color: const Color(0xFFDFE2F0).withOpacity(0.8),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            _inr.format(e.value),
+                            style: GoogleFonts.spaceGrotesk(
+                              fontSize: 11,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )),
+          ],
           const SizedBox(height: 24),
           Container(height: 1, color: Colors.white.withOpacity(0.08)),
           const SizedBox(height: 20),
@@ -1902,6 +2185,153 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
         ],
       ),
     );
+  }
+
+  /// Put a month onto the invoice that actually arrived.
+  ///
+  /// The amount is signed and the reason is required. An unexplained
+  /// correction on a billing screen is worse than none at all: months later
+  /// nobody can tell a real invoice difference from a typo, and this figure
+  /// reaches the manager's report. Saved per month and shared by every
+  /// programme, because one NATRAX invoice covers them all.
+  Future<void> _editAdjustment(_MonthGroup m) async {
+    if (m.monthKey == 'all') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pick a single month to adjust it.')),
+      );
+      return;
+    }
+    final existing = _adjustments[m.monthKey];
+    final amountCtl = TextEditingController(
+      text: existing == null || existing.amount == 0
+          ? ''
+          : existing.amount.toStringAsFixed(2),
+    );
+    final reasonCtl = TextEditingController(text: existing?.reason ?? '');
+    final formKey = GlobalKey<FormState>();
+
+    final action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0D1520),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Adjust ${m.label}',
+          style: GoogleFonts.spaceGrotesk(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+            fontSize: 16,
+          ),
+        ),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Computed total ${_inr.format(m.subtotalExcl)}. Enter the '
+                'difference to the invoice - negative brings it down.',
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 11,
+                  height: 1.4,
+                  color: const Color(0xFF94A3B8),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: amountCtl,
+                autofocus: true,
+                keyboardType:
+                    const TextInputType.numberWithOptions(signed: true, decimal: true),
+                style: GoogleFonts.spaceGrotesk(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Adjustment (Rs)',
+                  hintText: '-1000',
+                ),
+                validator: (v) {
+                  final t = (v ?? '').trim();
+                  if (t.isEmpty) return 'Enter an amount';
+                  if (double.tryParse(t) == null) return 'Numbers only';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: reasonCtl,
+                minLines: 2,
+                maxLines: 3,
+                style: GoogleFonts.spaceGrotesk(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Why',
+                  hintText: 'Round-off on INV/26-27/802',
+                ),
+                validator: (v) =>
+                    (v ?? '').trim().isEmpty ? 'Say why - this is a billing figure' : null,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          if (existing != null)
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'remove'),
+              child: const Text('Remove'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'cancel'),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (formKey.currentState?.validate() ?? false) {
+                Navigator.pop(ctx, 'save');
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || action == null || action == 'cancel') return;
+
+    final client = Supabase.instance.client;
+    try {
+      if (action == 'remove') {
+        await client
+            .from('month_adjustments')
+            .delete()
+            .eq('month', m.monthKey);
+        if (!mounted) return;
+        setState(() => _adjustments.remove(m.monthKey));
+      } else {
+        final amount = double.parse(amountCtl.text.trim());
+        final reason = reasonCtl.text.trim();
+        await client.from('month_adjustments').upsert({
+          'month': m.monthKey,
+          'amount': amount,
+          'reason': reason,
+        }, onConflict: 'month');
+        if (!mounted) return;
+        setState(() => _adjustments[m.monthKey] = _MonthAdjustment(
+              month: m.monthKey,
+              amount: amount,
+              reason: reason,
+            ));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not save the adjustment. If this is the first one, the '
+            'month_adjustments table may not exist yet. ($e)',
+          ),
+        ),
+      );
+    }
   }
 
   Widget _invoiceRow(String label, String value, {Color? accent}) {
@@ -2182,7 +2612,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
                                   ),
                                 ),
                                 Text(
-                                  _inr.format(s.totalIncl),
+                                  _inr.format(s.subtotalExcl),
                                   style: GoogleFonts.spaceGrotesk(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w700,
