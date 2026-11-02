@@ -41,6 +41,40 @@ class _Session {
   });
 }
 
+/// One `session_additional_services` row, kept whole.
+///
+/// Summing these into the session cost was enough while the panel showed a
+/// single "Track Access + Accessories" line. An invoice names them one by one
+/// — EV charger, weighment pad, refreshment, water — so the quantity and the
+/// name have to survive the journey.
+class _ServiceRow {
+  final String name;
+  final double quantity;
+  final double cost;
+  const _ServiceRow({
+    required this.name,
+    required this.quantity,
+    required this.cost,
+  });
+}
+
+/// A service summed across a month, as it would appear on an invoice line.
+class _ServiceLine {
+  final String name;
+  double quantity;
+  double cost;
+  _ServiceLine({required this.name, this.quantity = 0, this.cost = 0});
+}
+
+/// One track, summed across a month for a single programme.
+class _TrackLine {
+  final String code;
+  final String name;
+  int minutes;
+  double cost;
+  _TrackLine({required this.code, required this.name, this.minutes = 0, this.cost = 0});
+}
+
 class _MonthGroup {
   final String monthKey; // 'YYYY-MM'
   final String label;    // 'April 2026'
@@ -54,6 +88,10 @@ class _MonthGroup {
   /// Only filled on the all-programmes groups the invoice panel shows; the
   /// vehicle-scoped groups behind the charts leave it empty.
   final Map<String, double> programmeSplit;
+
+  /// Every additional service in the month, summed by name, so each one gets
+  /// its own invoice line.
+  final List<_ServiceLine> serviceLines;
 
   double get trackAcc =>
       trackAccOverride ?? sessions.fold(0.0, (s, e) => s + e.subtotalExcl);
@@ -77,7 +115,32 @@ class _MonthGroup {
     this.manpowerCost = 0.0,
     this.workshopMusterCost = 0.0,
     this.programmeSplit = const {},
+    this.serviceLines = const [],
   });
+
+  /// Track time only — the services are listed separately on the invoice
+  /// panel, so showing them inside the track figure would count them twice.
+  double get trackOnly =>
+      trackAcc - serviceLines.fold<double>(0.0, (s, e) => s + e.cost);
+
+  /// Each programme's track lines for the month, summed per track.
+  Map<String, List<_TrackLine>> get trackLinesByProgramme {
+    final out = <String, Map<String, _TrackLine>>{};
+    for (final s in sessions) {
+      final p = s.projectName ?? 'Mahindra EV PoC';
+      final key = s.trackCode.isEmpty ? s.trackName : s.trackCode;
+      final line = out
+          .putIfAbsent(p, () => {})
+          .putIfAbsent(key, () => _TrackLine(code: s.trackCode, name: s.trackName));
+      line.minutes += s.durationMinutes;
+      line.cost += s.trackCostExcl;
+    }
+    return {
+      for (final e in out.entries)
+        e.key: e.value.values.toList()
+          ..sort((a, b) => b.cost.compareTo(a.cost)),
+    };
+  }
 }
 
 /// A hand-entered correction putting a month onto the invoice that actually
@@ -347,15 +410,24 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
       if (sessionIds.isNotEmpty) {
         svcsRaw = await client
             .from('session_additional_services')
-            .select('session_id, total_cost')
+            .select('session_id, service_name, quantity, total_cost')
             .inFilter('session_id', sessionIds);
       }
 
       final Map<String, double> svcMap = {};
+      // The same rows again, kept whole rather than summed, so the invoice
+      // panel can show "EV charger 181 units" and "Refreshment 46 Nos" as
+      // their own lines instead of one lump called Accessories.
+      final Map<String, List<_ServiceRow>> svcRowsBySession = {};
       for (final svc in svcsRaw) {
         final sid = svc['session_id'] as String;
         final c = (svc['total_cost'] as num?)?.toDouble() ?? 0.0;
         svcMap[sid] = (svcMap[sid] ?? 0) + c;
+        svcRowsBySession.putIfAbsent(sid, () => []).add(_ServiceRow(
+              name: (svc['service_name'] as String?)?.trim() ?? 'Other service',
+              quantity: (svc['quantity'] as num?)?.toDouble() ?? 0.0,
+              cost: c,
+            ));
       }
 
       // Tally every session by the programme it is filed under, BEFORE the
@@ -548,6 +620,17 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
           workshopMuster = musterWorkshop;
         }
 
+        // Services for the month, summed by name so each gets its own line.
+        final svcByName = <String, _ServiceLine>{};
+        for (final s in rows) {
+          for (final r in (svcRowsBySession[s.id] ?? const <_ServiceRow>[])) {
+            final line =
+                svcByName.putIfAbsent(r.name, () => _ServiceLine(name: r.name));
+            line.quantity += r.quantity;
+            line.cost += r.cost;
+          }
+        }
+
         monthsAll[mk] = _MonthGroup(
           monthKey: mk,
           label: DateFormat('MMMM yyyy').format(DateTime.parse('$mk-01')),
@@ -557,6 +640,8 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
           manpowerCost: chargesAll.manpowerByMonth[mk] ?? 0.0,
           workshopMusterCost: workshopMuster,
           programmeSplit: split,
+          serviceLines: svcByName.values.toList()
+            ..sort((a, b) => b.cost.compareTo(a.cost)),
         );
       }
 
@@ -641,6 +726,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
     if (_monthsAll.isEmpty) return null;
     final split = <String, double>{};
     final sessions = <_Session>[];
+    final svc = <String, _ServiceLine>{};
     double rental = 0, manpower = 0, workshopMuster = 0, track = 0;
     for (final g in _monthsAll.values) {
       sessions.addAll(g.sessions);
@@ -649,6 +735,11 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
       workshopMuster += g.workshopMusterCost;
       track += g.trackAcc;
       g.programmeSplit.forEach((k, v) => split[k] = (split[k] ?? 0) + v);
+      for (final l in g.serviceLines) {
+        final line = svc.putIfAbsent(l.name, () => _ServiceLine(name: l.name));
+        line.quantity += l.quantity;
+        line.cost += l.cost;
+      }
     }
     sessions.sort((a, b) => a.date.compareTo(b.date));
     return _MonthGroup(
@@ -660,6 +751,8 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
       manpowerCost: manpower,
       workshopMusterCost: workshopMuster,
       programmeSplit: split,
+      serviceLines: svc.values.toList()
+        ..sort((a, b) => b.cost.compareTo(a.cost)),
     );
   }
 
@@ -1692,6 +1785,35 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
             ],
           ),
           const SizedBox(height: 24),
+          // The charts are scoped to the vehicle picker while the invoice
+          // panel beside them covers the whole account, so a month with no
+          // sessions for THIS vehicle draws an empty ring next to a populated
+          // invoice. Say which vehicle is being shown rather than leaving a
+          // zero to be read as "nothing happened".
+          if (totalHrs <= 0) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFB547).withOpacity(0.07),
+                borderRadius: BorderRadius.circular(10),
+                border:
+                    Border.all(color: const Color(0xFFFFB547).withOpacity(0.25)),
+              ),
+              child: Text(
+                'No track time for $_activeProject this month. The charts follow '
+                'the vehicle you picked; the invoice panel covers every '
+                'programme on the account.',
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 11,
+                  height: 1.45,
+                  color: const Color(0xFFFFD79A),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
           if (isWide)
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -2022,22 +2144,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
           const SizedBox(height: 16),
           Container(height: 1, color: Colors.white.withOpacity(0.08)),
           const SizedBox(height: 20),
-          _invoiceRow('Track Access + Accessories', _inr.format(m.trackAcc)),
-          if (m.manpowerCost > 0) ...[
-            const SizedBox(height: 10),
-            _invoiceRow('Manpower', _inr.format(m.manpowerCost),
-                accent: const Color(0xFFA855F7)),
-          ],
-          if (m.workshopMusterCost > 0) ...[
-            const SizedBox(height: 10),
-            _invoiceRow('Workshop Charges', _inr.format(m.workshopMusterCost),
-                accent: const Color(0xFFF59E0B)),
-          ],
-          if (m.workshopRental > 0) ...[
-            const SizedBox(height: 10),
-            _invoiceRow('Workshop Rental', _inr.format(m.workshopRental),
-                accent: const Color(0xFFF59E0B)),
-          ],
+          ..._buildItemisedLines(m),
           const SizedBox(height: 10),
           _invoiceRow('Subtotal', _inr.format(subtotal)),
           if (adjAmount != 0) ...[
@@ -2134,50 +2241,6 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
               ),
             ),
           ),
-          if (m.programmeSplit.length > 1) ...[
-            const SizedBox(height: 16),
-            Container(height: 1, color: Colors.white.withOpacity(0.08)),
-            const SizedBox(height: 16),
-            Text(
-              'BY PROGRAMME',
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFF94A3B8),
-                letterSpacing: 1.5,
-              ),
-            ),
-            const SizedBox(height: 10),
-            ...(m.programmeSplit.entries.toList()
-                  ..sort((a, b) => b.value.compareTo(a.value)))
-                .map((e) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              e.key,
-                              style: GoogleFonts.spaceGrotesk(
-                                fontSize: 11,
-                                color: const Color(0xFFDFE2F0).withOpacity(0.8),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            _inr.format(e.value),
-                            style: GoogleFonts.spaceGrotesk(
-                              fontSize: 11,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )),
-          ],
           const SizedBox(height: 24),
           Container(height: 1, color: Colors.white.withOpacity(0.08)),
           const SizedBox(height: 20),
@@ -2332,6 +2395,179 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
         ),
       );
     }
+  }
+
+  /// The month written out the way the invoice writes it: each programme with
+  /// its own track lines, then the charges that belong to the account rather
+  /// than to one programme — workshop, manpower, and every additional service
+  /// by name.
+  ///
+  /// Track lines carry `trackCostExcl` only. The services are listed on their
+  /// own below, so folding them into the track figure would count them twice.
+  List<Widget> _buildItemisedLines(_MonthGroup m) {
+    const manpowerColor = Color(0xFFA855F7);
+    const workshopColor = Color(0xFFF59E0B);
+    final out = <Widget>[];
+
+    final byProgramme = m.trackLinesByProgramme;
+    final programmes = byProgramme.keys.toList()
+      ..sort((a, b) {
+        final ta = byProgramme[a]!.fold<double>(0, (s, e) => s + e.cost);
+        final tb = byProgramme[b]!.fold<double>(0, (s, e) => s + e.cost);
+        return tb.compareTo(ta);
+      });
+
+    double listed = 0;
+
+    for (final p in programmes) {
+      final lines = byProgramme[p]!;
+      final total = lines.fold<double>(0, (s, e) => s + e.cost);
+      listed += total;
+      if (out.isNotEmpty) out.add(const SizedBox(height: 14));
+      out.add(_groupHeader(p, _inr.format(total)));
+      for (final l in lines) {
+        out.add(_lineItem(
+          l.name.isEmpty ? l.code : l.name,
+          _hrs(l.minutes),
+          _inr.format(l.cost),
+        ));
+      }
+    }
+
+    final otherLines = <Widget>[];
+    for (final s in m.serviceLines) {
+      listed += s.cost;
+      otherLines.add(_lineItem(
+        s.name,
+        s.quantity > 0 ? _qty(s.quantity) : '',
+        _inr.format(s.cost),
+      ));
+    }
+    if (m.workshopMusterCost > 0) {
+      listed += m.workshopMusterCost;
+      otherLines.add(_lineItem(
+        'Workshop',
+        '${(m.workshopMusterCost / BillingBaseline.workshopDayRate).round()} days',
+        _inr.format(m.workshopMusterCost),
+        accent: workshopColor,
+      ));
+    }
+    if (m.workshopRental > 0) {
+      listed += m.workshopRental;
+      otherLines.add(_lineItem('Workshop rental', '',
+          _inr.format(m.workshopRental), accent: workshopColor));
+    }
+    if (m.manpowerCost > 0) {
+      listed += m.manpowerCost;
+      otherLines.add(_lineItem(
+          'Manpower', '', _inr.format(m.manpowerCost), accent: manpowerColor));
+    }
+
+    if (otherLines.isNotEmpty) {
+      if (out.isNotEmpty) out.add(const SizedBox(height: 14));
+      out.add(_groupHeader('OTHER CHARGES', ''));
+      out.addAll(otherLines);
+    }
+
+    // A pinned Mahindra EV month replaces that programme's sessions with an
+    // invoice-backed figure, so the lines above cannot add up to it. Show the
+    // difference rather than letting the subtotal disagree with its own lines.
+    final gap = m.subtotalExcl - listed;
+    if (gap.abs() >= 1) {
+      out.add(const SizedBox(height: 14));
+      out.add(_groupHeader('PINNED TO INVOICE', _inr.format(gap)));
+      out.add(_lineItem(
+          'Figure taken from the invoice, not from sessions', '', ''));
+    }
+
+    return out;
+  }
+
+  String _hrs(int minutes) {
+    if (minutes <= 0) return '';
+    final h = minutes / 60.0;
+    return '${h.toStringAsFixed(h % 1 == 0 ? 0 : 1)} h';
+  }
+
+  String _qty(double q) =>
+      q % 1 == 0 ? q.toStringAsFixed(0) : q.toStringAsFixed(2);
+
+  Widget _groupHeader(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label.toUpperCase(),
+              style: GoogleFonts.spaceGrotesk(
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                color: primaryColor,
+                letterSpacing: 1.1,
+              ),
+            ),
+          ),
+          if (value.isNotEmpty)
+            Text(
+              value,
+              style: GoogleFonts.spaceGrotesk(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _lineItem(String label, String qty, String value, {Color? accent}) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 10, bottom: 6),
+      child: Row(
+        children: [
+          if (accent != null) ...[
+            Container(
+              width: 5,
+              height: 5,
+              decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 6),
+          ],
+          Expanded(
+            child: Text(
+              label,
+              style: GoogleFonts.spaceGrotesk(
+                fontSize: 10.5,
+                color: const Color(0xFFDFE2F0).withOpacity(0.8),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          if (qty.isNotEmpty) ...[
+            Text(
+              qty,
+              style: GoogleFonts.spaceGrotesk(
+                fontSize: 10,
+                color: const Color(0xFF8A93AD),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 14),
+          ],
+          if (value.isNotEmpty)
+            Text(
+              value,
+              style: GoogleFonts.spaceGrotesk(
+                fontSize: 11,
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   Widget _invoiceRow(String label, String value, {Color? accent}) {
