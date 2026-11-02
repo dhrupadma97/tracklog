@@ -9,6 +9,48 @@ Money on screen is reconciled against real NATRAX and MOICARS invoices. A figure
 that is wrong here is wrong on an invoice. Read this before changing any
 calculation.
 
+## No GST — NATRAX bill an SEZ unit under LUT
+
+**Nothing in this app adds tax any more.** NATRAX invoice Goodyear Technology
+Center India, Hyderabad (GSTIN 36AALCG9866C1Z6), which is an SEZ unit, and the
+invoices carry: *"SUPPLY MEANT FOR EXPORT/SUPPLY TO SEZ UNIT OR SEZ DEVELOPER
+FOR AUTHORISED OPERATIONS UNDER BOND OR LETTER OF UNDERTAKING WITHOUT PAYMENT
+OF IGST."*
+
+On INV/26-27/802 (29 Oct 2026, testing period 1–30 Sep 2026) the **Amount
+Chargeable is ₹7,72,350** — the ex-GST figure. The ₹1,39,022.93 of IGST appears
+only in the Tax Analysis block, for information, and the Bill Details line
+debits ₹7,72,350. Confirmed by Dhrupad, 2 Nov 2026: *"no gst this is SEZ"*.
+
+### There are TWO rates, and mixing them breaks reconciliation
+
+**`BillingBaseline.gstRate` = 0.18 — history.** The earliest invoices genuinely
+carried tax: INV/25-26/1869 at 18% IGST in March, INV/26-27/205 at 18%
+CGST+SGST in April. The pinned months store **ex-GST** figures, so setting one
+against the invoice that settled it means grossing it up at the rate that
+invoice charged. `MonthBaseline.inclGst` and the PO tracker's baseline variance
+use this. Zeroing it opens a ₹2 lakh variance against April alone, for money
+that was billed and paid — `billing_maths_test.dart` fails loudly if you try.
+
+**`BillingBaseline.currentGstRate` = 0.0 — everything still to be billed.**
+Receipts, live session totals, unbilled extras, spend not yet invoiced, the
+Analyser, and the default on a newly entered invoice. That default stays
+editable, so a taxed invoice can still be entered if NATRAX raise one again.
+Tax rows are written `if (rate > 0)`, so they return by themselves.
+
+The test for whether a figure is historical or current is simple: **has an
+invoice already been raised for it?** If yes it keeps the rate that invoice
+charged; if no it is nil-rated.
+
+Also deliberately not undone: the tax-inclusive EV total **₹20,44,608.42 is
+retired, not recomputed.** There is no inclusive figure to show any more, so
+`project_selection_screen.dart` carries the ex-GST ₹17,32,719 in both places.
+The old number stays in a comment because it appears on reports issued before
+2 Nov 2026.
+
+This also settles the `pending` marker on PO 8242390552, whose GST treatment had
+been guessed twice — nil in one migration, 18% in the next.
+
 ## The three things NATRAX bills
 
 They are counted differently and funded differently. Never collapse them.

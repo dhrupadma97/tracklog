@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/app_export.dart';
+import '../../services/billing_baseline.dart';
 import '../../services/engineer_auth_service.dart';
 import '../../services/excel_backup_downloader.dart';
 import '../../services/offline_queue_service.dart';
@@ -2409,8 +2410,10 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
         entryMins > 0 && dayTotalMins % 60 != 0 && _sameDayMinutes == 0;
 
     final baseCost = _trackBaseCost;
-    final gst = baseCost * 0.18;
-    final totalCost = baseCost * 1.18;
+    // Nil-rated: NATRAX bill this SEZ unit under Bond / LUT without IGST, so
+    // the total a session carries is its ex-GST cost.
+    final gst = baseCost * BillingBaseline.currentGstRate;
+    final totalCost = baseCost * (1 + BillingBaseline.currentGstRate);
 
     return _card(
       accentColor: const Color(0xFFFF9500),
@@ -2560,9 +2563,13 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
           const DottedLine(color: Colors.white24, height: 1),
           const SizedBox(height: 16),
           
-          _receiptRow('Subtotal (Excl. GST)', _inr.format(baseCost)),
-          const SizedBox(height: 8),
-          _receiptRow('GST (18%)', _inr.format(gst)),
+          _receiptRow('Subtotal', _inr.format(baseCost)),
+          if (BillingBaseline.currentGstRate > 0) ...[
+            const SizedBox(height: 8),
+            _receiptRow(
+                'GST (${(BillingBaseline.currentGstRate * 100).toStringAsFixed(0)}%)',
+                _inr.format(gst)),
+          ],
           const SizedBox(height: 14),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -2784,8 +2791,9 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
 
   Widget _buildServicesCheckoutCard() {
     final grandTotal = _svcGrandTotal;
-    final gst = grandTotal * 0.18;
-    final totalCost = grandTotal * 1.18;
+    // Nil-rated — see the note on the single-entry receipt above.
+    final gst = grandTotal * BillingBaseline.currentGstRate;
+    final totalCost = grandTotal * (1 + BillingBaseline.currentGstRate);
     final selected = _selectedServices;
 
     return _card(
@@ -2924,9 +2932,13 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
           const DottedLine(color: Colors.white24, height: 1),
           const SizedBox(height: 12),
           
-          _receiptRow('Subtotal (Excl. GST)', _inr.format(grandTotal)),
-          const SizedBox(height: 8),
-          _receiptRow('GST (18%)', _inr.format(gst)),
+          _receiptRow('Subtotal', _inr.format(grandTotal)),
+          if (BillingBaseline.currentGstRate > 0) ...[
+            const SizedBox(height: 8),
+            _receiptRow(
+                'GST (${(BillingBaseline.currentGstRate * 100).toStringAsFixed(0)}%)',
+                _inr.format(gst)),
+          ],
           const SizedBox(height: 14),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),

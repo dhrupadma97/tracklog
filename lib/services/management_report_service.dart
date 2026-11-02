@@ -213,7 +213,7 @@ class ManagementReportService {
           final cost = live[month] ?? 0;
           if (cost <= 0) continue;
           unbilledByProgramme[prog.key] = (unbilledByProgramme[prog.key] ?? 0) +
-              cost * (1 + BillingBaseline.gstRate);
+              cost * (1 + BillingBaseline.currentGstRate);
         }
         continue;
       }
@@ -240,7 +240,7 @@ class ManagementReportService {
     final balance = poTotal - invoicedTotal - unbilledTotal;
     final balanceExcl = poTotalExcl -
         invoicedTotalExcl -
-        (unbilledTotal / (1 + BillingBaseline.gstRate));
+        (unbilledTotal / (1 + BillingBaseline.currentGstRate));
     final projected = balance;
     final utilisationPct = poTotal <= 0 ? 0.0 : invoicedTotal / poTotal;
     final projectedPct =

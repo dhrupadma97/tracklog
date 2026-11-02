@@ -5,6 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/app_export.dart';
+import '../../services/billing_baseline.dart';
 import '../../services/engineer_auth_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/rental_service.dart';
@@ -37,8 +38,9 @@ const double _sandBagDailyRate = 150.0; // per bag per day
 // Workshop is a continuous monthly cost (₹50,000/month for April billing)
 const double _workshopMonthlyRate = 50000.0;
 
-// GST rate applied on final invoice total
-const double _gstRate = 0.18;
+/// Nil — NATRAX bill this SEZ unit under Bond / LUT without payment of IGST.
+/// [BillingBaseline.currentGstRate] carries the invoice evidence.
+const double _gstRate = BillingBaseline.currentGstRate;
 
 // TODO: Replace with Riverpod/Bloc for production — session state management
 class ActiveSessionScreen extends StatefulWidget {
@@ -1950,17 +1952,22 @@ class _SessionSummarySheet extends StatelessWidget {
                   child: Divider(color: Color(0xFF3a494b), height: 1),
                 ),
                 _InvoiceRow(
-                  label: 'Subtotal (Excl. GST)',
+                  label: 'Subtotal',
                   value: '₹${subtotalExclGst.toStringAsFixed(0)}',
                   color: const Color(0xFFdfe2f0),
                   bold: true,
                 ),
-                const SizedBox(height: 6),
-                _InvoiceRow(
-                  label: 'GST @ ${(gstRate * 100).toStringAsFixed(0)}%',
-                  value: '₹${gstAmount.toStringAsFixed(2)}',
-                  color: const Color(0xFFA8B0C8),
-                ),
+                // Nil-rated under SEZ Bond / LUT, so there is no tax line to
+                // show. Kept conditional rather than deleted: if NATRAX ever
+                // raise a taxed invoice the rate goes back and this returns.
+                if (gstRate > 0) ...[
+                  const SizedBox(height: 6),
+                  _InvoiceRow(
+                    label: 'GST @ ${(gstRate * 100).toStringAsFixed(0)}%',
+                    value: '₹${gstAmount.toStringAsFixed(2)}',
+                    color: const Color(0xFFA8B0C8),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1979,7 +1986,7 @@ class _SessionSummarySheet extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Total Invoice (incl. GST)',
+                  gstRate > 0 ? 'Total Invoice (incl. GST)' : 'Total Invoice',
                   style: theme.textTheme.titleMedium?.copyWith(
                     color: const Color(0xFFdfe2f0),
                     fontWeight: FontWeight.w700,

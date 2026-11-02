@@ -69,10 +69,18 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
   /// sessions rather than a fixed figure.
   Map<String, double> _liveCostByMonth = {};
 
-  /// GST rate the computed spend is grossed up at. Session costs and the
-  /// hardcoded overrides are all stored ex-GST, while PO values carry tax
-  /// separately — the two must be compared on the same basis.
-  static const double _gstRate = 0.18;
+  /// The rate on the months that WERE invoiced with tax — March at IGST, April
+  /// at CGST+SGST. Used only to set a pinned ex-GST baseline against the taxed
+  /// invoice that settled it, so the variance comes out at zero.
+  ///
+  /// Not the rate for anything still to be billed. NATRAX now bill this SEZ
+  /// unit under Bond / LUT without payment of IGST, so unbilled spend is
+  /// grossed up at [BillingBaseline.currentGstRate], which is nil. That
+  /// settles the `pending` marker further down this file, raised because the
+  /// treatment on 8242390552 had been guessed twice — nil in one migration,
+  /// 18% in the next. Dhrupad settled it on 2 Nov 2026: SEZ, no GST going
+  /// forward.
+  static const double _gstRate = BillingBaseline.gstRate;
 
   /// Originals for the active project — used against the monthly baseline.
   List<NatraxInvoice> _invoices = [];
@@ -232,8 +240,13 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
       _vehicleValidationSpend +
       _instrumentationSpend;
 
-  /// The same spend grossed up, so it can be set against a tax-inclusive PO.
-  double get _totalSpendInclGst => _totalSpend * (1 + _gstRate);
+  /// The fallback drawdown when nothing has been invoiced yet.
+  ///
+  /// Nil-rated: this is money still to be billed, and NATRAX now bill this SEZ
+  /// unit without IGST. The historical [_gstRate] above is for months that
+  /// were invoiced WITH tax, and must not be used here.
+  double get _totalSpendInclGst =>
+      _totalSpend * (1 + BillingBaseline.currentGstRate);
 
   /// Every PO is a funding pool, not a programme allocation.
   ///

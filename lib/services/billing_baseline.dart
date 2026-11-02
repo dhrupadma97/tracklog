@@ -35,6 +35,12 @@ class MonthBaseline {
   /// The part of the month this record accounts for. For a computed month
   /// that is the workshop rental alone — callers must add the session cost.
   double get exclGst => (trackAndAccessories ?? 0) + workshopRental;
+  /// Grossed up at the HISTORICAL rate, because these pinned months are
+  /// reconciled against invoices that genuinely carried tax — March 1,93,605
+  /// ex-GST against INV/25-26/1869 at ₹2,28,454, April against INV/26-27/205
+  /// at ₹13,71,691. Nil-rating them would open a variance against money that
+  /// was billed and paid. Anything still to be billed uses
+  /// [BillingBaseline.currentGstRate] instead.
   double get gst => exclGst * BillingBaseline.gstRate;
   double get inclGst => exclGst * (1 + BillingBaseline.gstRate);
 
@@ -64,19 +70,34 @@ class UnbilledExtra {
 class BillingBaseline {
   const BillingBaseline._();
 
-  /// The rate that applied to the billed months below, evidenced by the
-  /// invoices on file: 18% IGST in March, 18% CGST+SGST in April.
+  /// The rate that applied to the months **already invoiced with tax on them**:
+  /// 18% IGST in March (INV/25-26/1869), 18% CGST+SGST in April
+  /// (INV/26-27/205).
+  ///
+  /// This is history and stays 18%. The pinned months below hold ex-GST
+  /// figures, and reconciling them against those invoices means grossing them
+  /// up at the rate the invoice actually charged. Zeroing this would make the
+  /// PO tracker read a variance of ₹2 lakh against April alone, for money that
+  /// was genuinely billed and genuinely paid.
+  ///
+  /// It is NOT the rate for anything still to be billed — see
+  /// [currentGstRate].
   static const double gstRate = 0.18;
 
-  /// The rate assumed when a new invoice is entered.
+  /// Nil. NATRAX now bill Goodyear's SEZ unit without IGST.
   ///
-  /// GST treatment is a finance decision, so this is only a starting value —
-  /// the field stays editable and whatever the invoice prints always wins.
-  /// 18% is the default because every invoice received has carried it
-  /// (INV/25-26/1869 at IGST, INV/26-27/205 at CGST+SGST). Nil rating under
-  /// SEZ Bond / LUT is handled per invoice and per PO rather than by changing
-  /// this, since the treatment can differ between them.
-  static const double currentGstRate = 0.18;
+  /// The invoices carry "SUPPLY MEANT FOR EXPORT/SUPPLY TO SEZ UNIT OR SEZ
+  /// DEVELOPER FOR AUTHORISED OPERATIONS UNDER BOND OR LETTER OF UNDERTAKING
+  /// WITHOUT PAYMENT OF IGST". On INV/26-27/802 the Amount Chargeable is
+  /// ₹7,72,350 — the ex-GST figure — while the ₹1,39,022.93 of IGST appears
+  /// only in the Tax Analysis block, for information, and the Bill Details
+  /// line debits ₹7,72,350. Confirmed by Dhrupad, 2 Nov 2026.
+  ///
+  /// Everything forward-looking reads this: receipts, live session totals,
+  /// unbilled extras, the spend not yet invoiced, and the default on a newly
+  /// entered invoice. That default stays editable, so a taxed invoice can
+  /// still be entered if NATRAX ever raise one again.
+  static const double currentGstRate = 0.0;
 
   /// Mahindra EV PoC — from the V15 workbook, corrected against the invoices
   /// actually raised.

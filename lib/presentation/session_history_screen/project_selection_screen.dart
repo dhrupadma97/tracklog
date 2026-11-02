@@ -565,9 +565,15 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
       }
 
       // ── Canonical totals, corrected 15 Sep 2026 ──────────────────────────
-      // Grand Total Incl 18% GST = Rs 20,44,608.42
       // Track+Acc (excl) = Rs 14,87,719 | Workshop (excl) = Rs 2,45,000
-      // Subtotal excl = Rs 17,32,719 | GST = Rs 3,11,889.42
+      // Subtotal excl = Rs 17,32,719
+      //
+      // The tax-inclusive twin, Rs 20,44,608.42, is RETIRED as of 2 Nov 2026,
+      // not recomputed. NATRAX bill this SEZ unit under Bond / LUT without
+      // payment of IGST, so there is no inclusive figure to show any more:
+      // the card now carries the ex-GST subtotal in both places. The old
+      // number is left written here because it appears on reports issued
+      // before that date and somebody will come looking for it.
       //
       // WAS Rs 17,23,719 / Rs 20,33,988.42. Rs 9,000 light, and the gap is
       // one specific session: 18-May-2026, T16, 24 min, 1 billable hour at
@@ -589,7 +595,6 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
       // Changed with Dhrupad's explicit agreement. Pinned figures do not move
       // on their own; this one moved because the invoice says so.
       const double mahindraEvSubtotalExcl = 1732719.0;
-      const double mahindraEvTotalInclGst = 2044608.42;
 
       // For non-EV projects, still compute from Supabase (future PoCs)
       for (final s in sessionsRaw) {
@@ -633,7 +638,9 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
       final evCard = cardMap['mahindra ev poc'];
       if (evCard != null) {
         evCard.subtotalExcl = mahindraEvSubtotalExcl;
-        evCard.totalInclGst = mahindraEvTotalInclGst;
+        // Nil-rated, so the "total" is the subtotal. Same number twice is the
+        // honest answer here, not a copy-paste slip.
+        evCard.totalInclGst = mahindraEvSubtotalExcl;
       }
 
       // Maintain fixed order — cardMap was filled from _knownProjects in
