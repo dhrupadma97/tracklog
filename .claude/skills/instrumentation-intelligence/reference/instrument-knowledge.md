@@ -23,10 +23,18 @@ U100, VBOX Touch, dSPACE MicroAutoBox, GeneSys ADMA, RT3000, CANalyzer).
 
 > **CANape was dropped entirely** (2026-08-12, Dhrupad: "don't use any CANape and all, make it
 > simple"). Do not reintroduce it.
+>
+> ⚠ **Conflict, 2026-10-29.** Dhrupad said "we use canoe and canape as well", so CANape *is* in
+> real use on the bench even though it was cut from the app's instrument picker in August. Both
+> statements stand: the August one is about app scope, this one about reality. Do **not** add
+> CANape back to the UI on the strength of this note — ask Dhrupad which he meant — but do not
+> assume CANape is unused either.
 | imu | Racelogic **IMU** (integrated w/ VBOX 3i) | Inertial sensor | accel/gyro | n/a | Kalman-fused with VBOX 3i for better slip/attitude + dropout bridging. ⚠ confirm model (IMU04?). |
+| huf | **HUF receiver** | Tire-sensor receiver | **CAN, on a bus of its own** | ⚠ confirm | Reads the **tire-mounted sensors** and puts their data onto its own CAN bus. Confirmed by Dhrupad 2026-10-29: this is the path tire-mounted sensor data takes, so it sits **in the live signal path**, not among the accessories. Costs a CAN channel on every logger/controller that must see it (R5). |
 
-**Setup components (confirm if in scope):** HUF Receiver (TPMS → tire pressure/temp, CAN), custom
-Display, Power Breakout Bar. Vehicle-specific accessories, not core instruments.
+**Setup components (confirm if in scope):** custom Display, Power Breakout Bar. Vehicle-specific
+accessories, not core instruments. (The HUF receiver moved up into the table above on 2026-10-29 —
+it carries signal, so it is not an accessory.)
 
 **Open hardware gap:** Kvaser is used to **flash the Raptor** (not for bus capture), so CANoe/CANape
 still need a Vector **VN** interface to touch the bus. ⚠ Confirm what interface CANoe/CANape use.
@@ -44,8 +52,10 @@ Display**). Current plan of models:
 3. **Dynamic Friction Estimate** — real-time road–tire friction.
 4. **Dynamic Load Estimation** — per-tire load via a **tire-mounted sensor**.
 
-⚠ Open: is the "tire-mounted sensor" the HUF/TPMS sensor or a separate SightLine sensor? What does
-**AQD** stand for?
+**Answered 2026-10-29 (Dhrupad):** the tire-mounted sensor data reaches the rest of the setup
+through the **HUF receiver**, which puts it on a **CAN bus of its own** — it is not separately
+wired into the controller. So "tire-mounted sensor" in the Load model means the HUF path.
+**AQD** = Aquaplaning Detection (already confirmed 2026-07-18, above).
 
 ## Physics & compatibility rules (the engine's logic)
 
@@ -74,8 +84,14 @@ Pairing CANoe with a classic-only interface on an FD bus ⇒ **ERROR**. (This is
   selected ⇒ **ERROR/WARNING**: "need dual-antenna (VBOX 3i dual or RT3000)."
 
 ### R5 — CAN channel budget
-Σ(CAN channels of selected loggers/interfaces) must ≥ number of vehicle CAN buses to log.
+Σ(CAN channels of selected loggers/interfaces) must ≥ number of CAN buses to log.
 Shortfall ⇒ **WARNING** with recommendation to add an interface/logger.
+
+**Count the buses properly** (Dhrupad 2026-10-29): a single vehicle can present **2–3 separate CAN
+buses**, and the **HUF receiver adds one more of its own**. Add a GNSS/INS input on CAN and the
+frame out to the Display and a real setup reaches **5–6 channels**. Treat **four CAN channels as
+the working floor** for any controller that replaces the Raptor — that is the figure put to dSPACE
+for the MicroAutoBox III, on DB9 connectors. Do not size a config off "one vehicle bus".
 
 ### R6 — Sample-rate adequacy (vehicle dynamics / tire)
 GNSS/INS **≥ 100 Hz** recommended for dynamics/tire work. VBOX 3i = 100 Hz ✓, RT3000 = up to 250 Hz ✓.
