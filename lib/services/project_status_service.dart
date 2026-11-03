@@ -76,6 +76,7 @@ class ProjectStatusService extends ChangeNotifier {
 
   static ProgrammeStatus? _parse(String? raw) => switch ((raw ?? '').trim()) {
         'active' => ProgrammeStatus.active,
+        'paused' => ProgrammeStatus.paused,
         'upcoming' => ProgrammeStatus.upcoming,
         'completed' => ProgrammeStatus.completed,
         _ => null,
@@ -83,6 +84,7 @@ class ProjectStatusService extends ChangeNotifier {
 
   static String wireName(ProgrammeStatus s) => switch (s) {
         ProgrammeStatus.active => 'active',
+        ProgrammeStatus.paused => 'paused',
         ProgrammeStatus.upcoming => 'upcoming',
         ProgrammeStatus.completed => 'completed',
       };

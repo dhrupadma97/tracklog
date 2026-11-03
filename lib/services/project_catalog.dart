@@ -10,11 +10,19 @@
 /// should be pointed at this catalogue rather than keeping its own copy.
 library;
 
-enum ProgrammeStatus { active, upcoming, completed }
+/// Where a programme stands.
+///
+/// [paused] is a running programme that has stopped for now — waiting on a
+/// vehicle, on tyres, on the customer. It is deliberately not [completed]: the
+/// work is coming back, the kit is still committed to it, and closing it would
+/// take it out of the running rail and off the open-commitment figures as
+/// though it were finished.
+enum ProgrammeStatus { active, paused, upcoming, completed }
 
 extension ProgrammeStatusLabel on ProgrammeStatus {
   String get label => switch (this) {
         ProgrammeStatus.active => 'Active',
+        ProgrammeStatus.paused => 'Paused',
         ProgrammeStatus.upcoming => 'Upcoming',
         ProgrammeStatus.completed => 'Closed',
       };
@@ -22,6 +30,11 @@ extension ProgrammeStatusLabel on ProgrammeStatus {
   /// Closed programmes still carry spend and still draw on the shared PO pool,
   /// so they are reported — just not counted as ongoing commitment.
   bool get isClosed => this == ProgrammeStatus.completed;
+
+  /// Still on the books: running now, or stopped but coming back. Drives the
+  /// running rail on the selection screen.
+  bool get isLive =>
+      this == ProgrammeStatus.active || this == ProgrammeStatus.paused;
 }
 
 /// Whether the test vehicle is battery-electric or combustion.

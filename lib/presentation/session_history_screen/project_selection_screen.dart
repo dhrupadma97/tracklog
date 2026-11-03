@@ -23,21 +23,25 @@ class _CarDetail {
 /// Explicit lifecycle state for a PoC. Set per project below rather than
 /// inferred from session count, so a finished project (Mahindra EV) can read
 /// "Completed" while keeping its billing history.
-enum ProjectStatus { active, upcoming, completed }
+enum ProjectStatus { active, paused, upcoming, completed }
 
 extension ProjectStatusExt on ProjectStatus {
   String get label {
     switch (this) {
       case ProjectStatus.active: return 'ACTIVE';
+      case ProjectStatus.paused: return 'PAUSED';
       case ProjectStatus.upcoming: return 'UPCOMING';
       case ProjectStatus.completed: return 'COMPLETED';
     }
   }
 
-  /// Badge colour. Active/Upcoming follow the card accent; Completed is green.
+  /// Badge colour. Active/Upcoming follow the card accent; Paused is amber so
+  /// a stopped programme is visibly different from a running one at a glance;
+  /// Completed is green.
   Color color(Color accent) {
     switch (this) {
       case ProjectStatus.active: return accent;
+      case ProjectStatus.paused: return const Color(0xFFFFB547);
       case ProjectStatus.upcoming: return accent;
       case ProjectStatus.completed: return const Color(0xFF22C55E);
     }
@@ -210,6 +214,8 @@ class _ProjectCard {
     switch (ProjectStatusService.instance.statusFor(projectKey)) {
       case ProgrammeStatus.active:
         return ProjectStatus.active;
+      case ProgrammeStatus.paused:
+        return ProjectStatus.paused;
       case ProgrammeStatus.upcoming:
         return ProjectStatus.upcoming;
       case ProgrammeStatus.completed:
@@ -235,6 +241,7 @@ class _ProjectCard {
 Future<void> _editStatus(BuildContext context, _ProjectCard p) async {
   var status = switch (p.status) {
     ProjectStatus.active => ProgrammeStatus.active,
+    ProjectStatus.paused => ProgrammeStatus.paused,
     ProjectStatus.upcoming => ProgrammeStatus.upcoming,
     ProjectStatus.completed => ProgrammeStatus.completed,
   };
@@ -297,8 +304,10 @@ Future<void> _editStatus(BuildContext context, _ProjectCard p) async {
               children: [
                 option(ProgrammeStatus.active, 'Active',
                     'Testing is running', const Color(0xFF00F3FF)),
+                option(ProgrammeStatus.paused, 'Paused',
+                    'Stopped for now, coming back', const Color(0xFFFFB547)),
                 option(ProgrammeStatus.upcoming, 'Upcoming',
-                    'Agreed, not started', const Color(0xFFFFB547)),
+                    'Agreed, not started', const Color(0xFF8A93AD)),
                 option(ProgrammeStatus.completed, 'Completed',
                     'Demo done, nothing further planned',
                     const Color(0xFF22C55E)),
@@ -655,8 +664,12 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
       // active programmes past each other between loads.
       List<_ProjectCard> withStatus(ProjectStatus s) =>
           ordered.where((p) => p.status == s).toList();
+      // Paused sits with the running programmes, between active and upcoming:
+      // the work is coming back and the kit is still committed to it, so
+      // filing it with the finished ones would read as closed.
       final live = [
         ...withStatus(ProjectStatus.active),
+        ...withStatus(ProjectStatus.paused),
         ...withStatus(ProjectStatus.upcoming),
       ];
       final done = withStatus(ProjectStatus.completed);
