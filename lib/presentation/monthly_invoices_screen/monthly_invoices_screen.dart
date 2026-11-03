@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -7,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../services/billing_baseline.dart';
 import '../../services/muster_service.dart';
+import '../../services/natrax_invoice_parser.dart';
 import '../../services/project_catalog.dart';
 import '../../services/project_manager.dart';
 import '../../theme/app_theme.dart';
@@ -55,6 +57,24 @@ class _ServiceRow {
     required this.name,
     required this.quantity,
     required this.cost,
+  });
+}
+
+/// One row of the invoice-versus-us comparison.
+///
+/// [saveKey] is null when the line cannot be filled in without guessing —
+/// nothing of ours matches it, or it covers a track that more than one
+/// programme used and the invoice does not say how to split it.
+class _CompareRow {
+  final ParsedInvoiceLine line;
+  final double ours;
+  final String? saveKey;
+  final String note;
+  const _CompareRow({
+    required this.line,
+    required this.ours,
+    this.saveKey,
+    this.note = '',
   });
 }
 
@@ -2347,6 +2367,23 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
+              onPressed: () => _compareWithInvoice(m),
+              icon: const Icon(Icons.description_outlined, size: 15),
+              label: const Text('Attach NATRAX invoice'),
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF38BDF8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                textStyle: GoogleFonts.spaceGrotesk(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
               onPressed: () => _editAdjustment(m),
               icon: const Icon(Icons.tune_rounded, size: 15),
               label: Text(
@@ -2987,6 +3024,284 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
           ),
         ),
       );
+    }
+  }
+
+  /// Read a NATRAX invoice and set it against the month, line by line.
+  ///
+  /// The invoice does not say which programme a line belongs to — one 28-hour
+  /// wet braking line can cover two vehicles — so a track used by more than
+  /// one programme is shown and NOT saved. Apportioning it would invent a
+  /// split NATRAX never made. Those lines are entered by hand, which is the
+  /// only honest way to do it.
+  Future<void> _compareWithInvoice(_MonthGroup m) async {
+    if (m.monthKey == 'all') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pick a single month to compare it.')),
+      );
+      return;
+    }
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf'],
+      withData: true,
+    );
+    if (picked == null || picked.files.isEmpty) return;
+    final file = picked.files.first;
+    if (file.bytes == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not read that file')));
+      return;
+    }
+
+    final parsed = NatraxInvoiceParser.parse(file.bytes!);
+    if (!mounted) return;
+    if (parsed.lines.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(parsed.isUnreadable
+            ? 'That PDF has no text layer — it is a scan, so nothing can be read from it.'
+            : 'No charged lines could be read from that invoice.'),
+      ));
+      return;
+    }
+
+    // Our side, gathered the way the invoice groups things: by track across
+    // every programme, and by service name.
+    final byCode = <String, List<MapEntry<String, _TrackLine>>>{};
+    m.trackLinesByProgramme.forEach((p, lines) {
+      for (final l in lines) {
+        final code = (l.code.isEmpty ? l.name : l.code).toUpperCase();
+        byCode.putIfAbsent(code, () => []).add(MapEntry(p, l));
+      }
+    });
+
+    _ServiceLine? serviceMatching(List<String> words) {
+      for (final s in m.serviceLines) {
+        final n = s.name.toLowerCase();
+        if (words.any(n.contains)) return s;
+      }
+      return null;
+    }
+
+    final rows = <_CompareRow>[];
+    for (final l in parsed.lines) {
+      final key = l.matchKey;
+      double ours = 0;
+      String? saveKey;
+      String note = '';
+
+      if (key == null) {
+        note = 'not recognised';
+      } else if (key.startsWith('SVC_') || key == 'WORKSHOP') {
+        if (key == 'WORKSHOP') {
+          ours = m.workshopMusterCost + m.workshopRental;
+          saveKey = m.workshopRental > 0 ? 'workshop_rental' : 'workshop';
+        } else {
+          final svc = serviceMatching(switch (key) {
+            'SVC_EV' => ['charger', 'charging', 'ev '],
+            'SVC_WEIGH' => ['weigh'],
+            'SVC_FOOD' => ['refreshment', 'lunch', 'food'],
+            _ => ['water', 'bisleri', 'jar'],
+          });
+          if (svc == null) {
+            note = 'nothing of ours matches';
+          } else {
+            ours = svc.cost;
+            saveKey = 'service:${svc.name}';
+          }
+        }
+      } else {
+        final hits = byCode[key] ?? const [];
+        ours = hits.fold<double>(0, (s, e) => s + e.value.cost);
+        if (hits.isEmpty) {
+          note = 'nothing of ours matches';
+        } else if (hits.length == 1) {
+          final h = hits.first;
+          saveKey =
+              'track:${h.key}:${h.value.code.isEmpty ? h.value.name : h.value.code}';
+        } else {
+          note = 'split across ${hits.length} programmes — enter per line';
+        }
+      }
+      rows.add(_CompareRow(
+          line: l, ours: ours, saveKey: saveKey, note: note));
+    }
+
+    final invTotal = rows.fold<double>(0, (s, r) => s + r.line.amount);
+    final oursTotal = rows.fold<double>(0, (s, r) => s + r.ours);
+    final savable = rows.where((r) => r.saveKey != null).length;
+
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0D1520),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          '${parsed.invoiceNumber ?? 'Invoice'} against ${m.label}',
+          style: GoogleFonts.spaceGrotesk(
+              color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15),
+        ),
+        content: SizedBox(
+          width: 560,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final r in rows) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 7),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(r.line.description,
+                                  style: GoogleFonts.spaceGrotesk(
+                                      fontSize: 10.5,
+                                      color: const Color(0xFFDFE2F0))),
+                              if (r.note.isNotEmpty)
+                                Text(r.note,
+                                    style: GoogleFonts.spaceGrotesk(
+                                        fontSize: 9,
+                                        color: const Color(0xFFFFB547))),
+                            ],
+                          ),
+                        ),
+                        SizedBox(
+                          width: 78,
+                          child: Text(_inr.format(r.ours),
+                              textAlign: TextAlign.right,
+                              style: GoogleFonts.spaceGrotesk(
+                                  fontSize: 10.5, color: Colors.white)),
+                        ),
+                        SizedBox(
+                          width: 78,
+                          child: Text(_inr.format(r.line.amount),
+                              textAlign: TextAlign.right,
+                              style: GoogleFonts.spaceGrotesk(
+                                  fontSize: 10.5,
+                                  color: const Color(0xFFBAE6FD))),
+                        ),
+                        SizedBox(
+                          width: 72,
+                          child: Text(
+                            (r.ours - r.line.amount).abs() < 0.01
+                                ? 'match'
+                                : '${r.ours - r.line.amount > 0 ? '+' : '-'}'
+                                    '${_inr.format((r.ours - r.line.amount).abs())}',
+                            textAlign: TextAlign.right,
+                            style: GoogleFonts.spaceGrotesk(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: (r.ours - r.line.amount).abs() < 0.01
+                                  ? const Color(0xFF22C55E)
+                                  : const Color(0xFFFF6B6B),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                const Divider(color: Color(0xFF2A3C6C)),
+                Row(children: [
+                  Expanded(
+                      child: Text('Totals on these lines',
+                          style: GoogleFonts.spaceGrotesk(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white))),
+                  SizedBox(
+                      width: 78,
+                      child: Text(_inr.format(oursTotal),
+                          textAlign: TextAlign.right,
+                          style: GoogleFonts.spaceGrotesk(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white))),
+                  SizedBox(
+                      width: 78,
+                      child: Text(_inr.format(invTotal),
+                          textAlign: TextAlign.right,
+                          style: GoogleFonts.spaceGrotesk(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: const Color(0xFFBAE6FD)))),
+                  SizedBox(
+                      width: 72,
+                      child: Text(
+                          '${oursTotal - invTotal > 0 ? '+' : '-'}${_inr.format((oursTotal - invTotal).abs())}',
+                          textAlign: TextAlign.right,
+                          style: GoogleFonts.spaceGrotesk(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: const Color(0xFFFF6B6B)))),
+                ]),
+                const SizedBox(height: 10),
+                Text(
+                  '$savable of ${rows.length} lines can be filled in '
+                  'automatically. The rest are left for you — a track used by '
+                  'more than one programme has to be split by hand, because '
+                  'the invoice does not say how.',
+                  style: GoogleFonts.spaceGrotesk(
+                      fontSize: 10, height: 1.4, color: const Color(0xFF94A3B8)),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Close')),
+          ElevatedButton(
+            onPressed:
+                savable == 0 ? null : () => Navigator.pop(ctx, true),
+            child: Text('Fill in $savable'),
+          ),
+        ],
+      ),
+    );
+
+    if (go != true || !mounted) return;
+
+    final client = Supabase.instance.client;
+    try {
+      final payload = [
+        for (final r in rows)
+          if (r.saveKey != null)
+            {
+              'month': m.monthKey,
+              'line_key': r.saveKey,
+              'invoiced': r.line.amount,
+              'note':
+                  'From ${parsed.invoiceNumber ?? 'invoice'}: ${r.line.description}',
+            }
+      ];
+      await client
+          .from('invoice_lines')
+          .upsert(payload, onConflict: 'month,line_key');
+      if (!mounted) return;
+      setState(() {
+        for (final r in rows) {
+          if (r.saveKey == null) continue;
+          _invoiced[_lineKey(m.monthKey, r.saveKey!)] = _InvoicedLine(
+            invoiced: r.line.amount,
+            note:
+                'From ${parsed.invoiceNumber ?? 'invoice'}: ${r.line.description}',
+          );
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Filled in $savable lines from the invoice')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Could not save: $e')));
     }
   }
 

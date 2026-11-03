@@ -7,6 +7,57 @@ import 'pdf_text_extractor.dart';
 /// [missingFields] names anything the parser could not find, so the UI can
 /// point at exactly what needs a human eye instead of presenting a confident
 /// but half-empty form.
+/// One charged line off the invoice.
+///
+/// NATRAX print a serial number, a description, an HSN code, the GST rate, a
+/// quantity with its unit, a rate and an amount. Only the description, the
+/// quantity and the amount are worth keeping: the amount is what draws down
+/// the PO, and the description is what has to be matched to our own records.
+///
+/// The invoice does NOT say which programme a line belongs to — one 28-hour
+/// wet braking line can cover two vehicles — so a line cannot be attributed
+/// here. That split is ours to make, not the parser's to guess.
+class ParsedInvoiceLine {
+  final String description;
+  final double? quantity;
+  final String unit;
+  final double amount;
+
+  const ParsedInvoiceLine({
+    required this.description,
+    required this.amount,
+    this.quantity,
+    this.unit = '',
+  });
+
+  /// A coarse kind, so a caller can line this up with its own records without
+  /// matching on NATRAX's exact wording, which varies between invoices.
+  /// Null when nothing is recognised — better than a wrong guess.
+  String? get matchKey {
+    final d = description.toLowerCase();
+    if (d.contains('braking')) {
+      if (d.contains('wet')) return 'T3W';
+      if (d.contains('dry')) return 'T3D';
+      return null; // braking with no surface stated — ambiguous, say so
+    }
+    if (d.contains('high speed')) return 'T1';
+    if (d.contains('general road')) return 'T16';
+    if (d.contains('dynamic platform')) return 'T2';
+    if (d.contains('comfort')) return 'T8';
+    if (d.contains('handling')) return d.contains('2w') ? 'T9' : 'T7';
+    if (d.contains('wet skid')) return 'T11';
+    if (d.contains('noise')) return 'T13';
+    if (d.contains('charger') || d.contains('charging')) return 'SVC_EV';
+    if (d.contains('weighment') || d.contains('weighing')) return 'SVC_WEIGH';
+    if (d.contains('refreshment') || d.contains('lunch')) return 'SVC_FOOD';
+    if (d.contains('water') || d.contains('bisleri') || d.contains('risleri')) {
+      return 'SVC_WATER';
+    }
+    if (d.contains('workshop')) return 'WORKSHOP';
+    return null;
+  }
+}
+
 class ParsedInvoice {
   final String? invoiceNumber;
   final DateTime? invoiceDate;
@@ -19,7 +70,12 @@ class ParsedInvoice {
   final List<String> missingFields;
   final String rawText;
 
+  /// The charged lines, in the order they are printed. Empty when none could
+  /// be read, which is not the same as an invoice having none.
+  final List<ParsedInvoiceLine> lines;
+
   const ParsedInvoice({
+    this.lines = const [],
     this.invoiceNumber,
     this.invoiceDate,
     this.periodMonth,
@@ -191,7 +247,56 @@ class NatraxInvoiceParser {
       testingPeriod: testingPeriod?.trim(),
       missingFields: missing,
       rawText: text,
+      lines: _chargedLines(body),
     );
+  }
+
+  /// The charged lines, read off the body above the total.
+  ///
+  /// A line is recognised by its shape rather than its wording: a serial
+  /// number, then a description, then the HSN code NATRAX print against every
+  /// service (99xxxx), and an amount at the end. Anchoring on the HSN is what
+  /// keeps a stray wrapped description or an address line out of the list.
+  ///
+  /// Anything that does not look like a charged line is skipped in silence.
+  /// A missing line shows up as a difference the user can see; an invented one
+  /// would quietly move a figure.
+  static List<ParsedInvoiceLine> _chargedLines(List<String> body) {
+    final out = <ParsedInvoiceLine>[];
+    final hsn = RegExp(r'\b9{2}\d{4}\b');
+    final qty = RegExp(
+        r'(\d+(?:[.,]\d+)?)\s*(Hrs?\.?|Nos?\.?|Unt\.?|Units?|Days?)\b',
+        caseSensitive: false);
+
+    for (final raw in body) {
+      final line = raw.trim();
+      if (line.isEmpty) continue;
+      final h = hsn.firstMatch(line);
+      if (h == null) continue;
+
+      // The amount is the last money-looking figure on the line.
+      final money = RegExp(r'\d[\d,]*\.\d{2}').allMatches(line).toList();
+      if (money.isEmpty) continue;
+      final amount =
+          double.tryParse(money.last.group(0)!.replaceAll(',', ''));
+      if (amount == null || amount <= 0) continue;
+
+      // The description is whatever sits before the HSN, minus the serial.
+      var desc = line.substring(0, h.start).trim();
+      desc = desc.replaceFirst(RegExp(r'^\d+\s+'), '').trim();
+      if (desc.isEmpty) continue;
+
+      final q = qty.firstMatch(line);
+      out.add(ParsedInvoiceLine(
+        description: desc,
+        amount: amount,
+        quantity: q == null
+            ? null
+            : double.tryParse(q.group(1)!.replaceAll(',', '')),
+        unit: q?.group(2)?.replaceAll('.', '').trim() ?? '',
+      ));
+    }
+    return out;
   }
 
   // ── Field readers ──────────────────────────────────────────────────────────
