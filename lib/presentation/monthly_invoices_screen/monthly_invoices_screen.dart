@@ -71,11 +71,27 @@ class _InvoicedLine {
   const _InvoicedLine({required this.invoiced, this.note = ''});
 }
 
+/// One entry behind a line, so a figure can be opened up and accounted for.
+///
+/// "278 units" is not a number anybody can check. The six dated entries that
+/// add up to it are.
+class _LineEntry {
+  final DateTime date;
+  final String detail;
+  final double cost;
+  const _LineEntry({
+    required this.date,
+    required this.detail,
+    required this.cost,
+  });
+}
+
 /// A service summed across a month, as it would appear on an invoice line.
 class _ServiceLine {
   final String name;
   double quantity;
   double cost;
+  final List<_LineEntry> entries = [];
   _ServiceLine({required this.name, this.quantity = 0, this.cost = 0});
 }
 
@@ -649,6 +665,13 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
                 svcByName.putIfAbsent(r.name, () => _ServiceLine(name: r.name));
             line.quantity += r.quantity;
             line.cost += r.cost;
+            line.entries.add(_LineEntry(
+              date: s.date,
+              detail: r.quantity > 0
+                  ? '${r.quantity % 1 == 0 ? r.quantity.toStringAsFixed(0) : r.quantity.toStringAsFixed(2)} x ${s.trackName}'
+                  : s.trackName,
+              cost: r.cost,
+            ));
           }
         }
 
@@ -781,6 +804,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
         final line = svc.putIfAbsent(l.name, () => _ServiceLine(name: l.name));
         line.quantity += l.quantity;
         line.cost += l.cost;
+        line.entries.addAll(l.entries);
       }
     }
     sessions.sort((a, b) => a.date.compareTo(b.date));
@@ -2552,12 +2576,24 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
       out.add(_groupHeader(p, _inr.format(total)));
       for (final l in lines) {
         final key = 'track:$p:${l.code.isEmpty ? l.name : l.code}';
+        final entries = m.sessions
+            .where((s) =>
+                (s.projectName ?? 'Mahindra EV PoC') == p &&
+                (s.trackCode.isEmpty ? s.trackName : s.trackCode) ==
+                    (l.code.isEmpty ? l.name : l.code))
+            .map((s) => _LineEntry(
+                  date: s.date,
+                  detail: '${s.durationMinutes} min',
+                  cost: s.trackCostExcl,
+                ))
+            .toList();
         out.add(_lineItem(
           l.name.isEmpty ? l.code : l.name,
           _hrs(l.minutes),
           l.cost,
           m,
           key,
+          entries: entries,
         ));
       }
     }
@@ -2571,6 +2607,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
         s.cost,
         m,
         'service:${s.name}',
+        entries: s.entries,
       ));
     }
     if (m.workshopMusterCost > 0) {
@@ -2673,6 +2710,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
     _MonthGroup m,
     String lineKey, {
     Color? accent,
+    List<_LineEntry> entries = const [],
   }) {
     final inv = _invoicedFor(m.monthKey, lineKey);
     final diff = inv == null ? 0.0 : ours - inv.invoiced;
@@ -2681,7 +2719,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
         : (diff > 0 ? const Color(0xFFFF6B6B) : const Color(0xFFFFB547));
 
     return InkWell(
-      onTap: () => _editInvoicedLine(m, lineKey, label, ours),
+      onTap: () => _editInvoicedLine(m, lineKey, label, ours, entries),
       borderRadius: BorderRadius.circular(6),
       child: Padding(
         padding: const EdgeInsets.only(left: 10, bottom: 6, top: 2),
@@ -2770,8 +2808,8 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
   /// Deliberately NOT a correction to our own entry. Dhrupad's rule is that
   /// both records are kept and the difference is the thing worth looking at —
   /// editing the sessions to match the bill would lose which side was wrong.
-  Future<void> _editInvoicedLine(
-      _MonthGroup m, String lineKey, String label, double ours) async {
+  Future<void> _editInvoicedLine(_MonthGroup m, String lineKey, String label,
+      double ours, List<_LineEntry> entries) async {
     if (m.monthKey == 'all') {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Pick a single month to reconcile it.')),
@@ -2806,6 +2844,65 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
                 style: GoogleFonts.spaceGrotesk(
                     fontSize: 11, height: 1.4, color: const Color(0xFF94A3B8)),
               ),
+              // The entries behind the figure. A total nobody can open up is a
+              // total nobody can check — this is where "278 units" becomes six
+              // dated rows that either add up or do not.
+              if (entries.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Text(
+                  'MADE UP OF ${entries.length} ENTR${entries.length == 1 ? 'Y' : 'IES'}',
+                  style: GoogleFonts.spaceGrotesk(
+                    fontSize: 9,
+                    letterSpacing: 1.1,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF8A93AD),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 170),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        for (final e in entries
+                          ..sort((a, b) => a.date.compareTo(b.date)))
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  width: 62,
+                                  child: Text(
+                                    DateFormat('d MMM').format(e.date),
+                                    style: GoogleFonts.spaceGrotesk(
+                                        fontSize: 10.5,
+                                        color: const Color(0xFF94A3B8)),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    e.detail,
+                                    style: GoogleFonts.spaceGrotesk(
+                                        fontSize: 10.5,
+                                        color: const Color(0xFFDFE2F0)),
+                                  ),
+                                ),
+                                Text(
+                                  _inr.format(e.cost),
+                                  style: GoogleFonts.spaceGrotesk(
+                                    fontSize: 10.5,
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
               TextFormField(
                 controller: amount,
