@@ -58,6 +58,19 @@ class _ServiceRow {
   });
 }
 
+/// What NATRAX invoiced for one line, beside what we recorded.
+///
+/// Neither side is edited into the other. Our register and the invoice
+/// disagree in both directions — NATRAX under-billed High Speed in September
+/// while our own record carried nearly 100 extra EV units and somebody else's
+/// weighing pad — and correcting one to match the other destroys the evidence
+/// of both.
+class _InvoicedLine {
+  final double invoiced;
+  final String note;
+  const _InvoicedLine({required this.invoiced, this.note = ''});
+}
+
 /// A service summed across a month, as it would appear on an invoice line.
 class _ServiceLine {
   final String name;
@@ -202,6 +215,14 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
   Map<String, _MonthGroup> _monthsAll = {};
   /// Hand-entered corrections onto the real invoice, keyed by 'YYYY-MM'.
   Map<String, _MonthAdjustment> _adjustments = {};
+
+  /// What NATRAX invoiced, per line, keyed 'YYYY-MM|line_key'. A line with no
+  /// entry has not been checked against the invoice yet.
+  Map<String, _InvoicedLine> _invoiced = {};
+
+  String _lineKey(String month, String key) => '$month|$key';
+  _InvoicedLine? _invoicedFor(String month, String key) =>
+      _invoiced[_lineKey(month, key)];
   int _selectedMonthIdx = 0;
   String _activeProject = '';
 
@@ -665,11 +686,32 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
         // Table not there yet — leave the map empty.
       }
 
+      // Same posture for the per-line invoiced figures: optional, and a
+      // database without the table must still open the screen.
+      final invoiced = <String, _InvoicedLine>{};
+      try {
+        final rows = await client
+            .from('invoice_lines')
+            .select('month, line_key, invoiced, note');
+        for (final r in rows) {
+          final mk = (r['month'] as String?)?.trim();
+          final lk = (r['line_key'] as String?)?.trim();
+          if (mk == null || lk == null || mk.isEmpty || lk.isEmpty) continue;
+          invoiced['$mk|$lk'] = _InvoicedLine(
+            invoiced: (r['invoiced'] as num?)?.toDouble() ?? 0.0,
+            note: (r['note'] as String?)?.trim() ?? '',
+          );
+        }
+      } catch (_) {
+        // No table yet — every line simply shows our figure alone.
+      }
+
       if (mounted) {
         setState(() {
           _months = monthGroups;
           _monthsAll = monthsAll;
           _adjustments = adjustments;
+          _invoiced = invoiced;
           _tallies = tallies;
           _selectedMonthIdx = 0;
           _isLoading = false;
@@ -2068,6 +2110,7 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
 
   Widget _buildInvoiceSummaryCard(_MonthGroup m) {
     final subtotal = m.subtotalExcl;
+    final invTotal = _invoicedTotal(m);
     final adj = _adjustments[m.monthKey];
     final adjAmount = adj?.amount ?? 0.0;
     // No GST is added here. NATRAX bill Goodyear's SEZ unit under a Letter of
@@ -2144,9 +2187,63 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
           const SizedBox(height: 16),
           Container(height: 1, color: Colors.white.withOpacity(0.08)),
           const SizedBox(height: 20),
+          Padding(
+            padding: const EdgeInsets.only(left: 10, bottom: 8),
+            child: Row(
+              children: [
+                const Spacer(),
+                SizedBox(
+                  width: 76,
+                  child: Text('OURS',
+                      textAlign: TextAlign.right,
+                      style: GoogleFonts.spaceGrotesk(
+                          fontSize: 8.5,
+                          letterSpacing: 0.8,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF8A93AD))),
+                ),
+                SizedBox(
+                  width: 76,
+                  child: Text('NATRAX',
+                      textAlign: TextAlign.right,
+                      style: GoogleFonts.spaceGrotesk(
+                          fontSize: 8.5,
+                          letterSpacing: 0.8,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF8A93AD))),
+                ),
+                SizedBox(
+                  width: 72,
+                  child: Text('DIFF',
+                      textAlign: TextAlign.right,
+                      style: GoogleFonts.spaceGrotesk(
+                          fontSize: 8.5,
+                          letterSpacing: 0.8,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF8A93AD))),
+                ),
+              ],
+            ),
+          ),
           ..._buildItemisedLines(m),
           const SizedBox(height: 10),
-          _invoiceRow('Subtotal', _inr.format(subtotal)),
+          _invoiceRow('Subtotal (our record)', _inr.format(subtotal)),
+          if (invTotal != null) ...[
+            const SizedBox(height: 10),
+            _invoiceRow('Invoiced by NATRAX', _inr.format(invTotal),
+                accent: const Color(0xFF38BDF8)),
+            const SizedBox(height: 10),
+            _invoiceRow(
+              'Difference',
+              (subtotal - invTotal).abs() < 0.01
+                  ? 'match'
+                  : '${subtotal - invTotal > 0 ? '+' : '-'}'
+                      '${_inr.format((subtotal - invTotal).abs())}',
+              accent: (subtotal - invTotal).abs() < 0.01
+                  ? const Color(0xFF22C55E)
+                  : const Color(0xFFFF6B6B),
+            ),
+          ],
           if (adjAmount != 0) ...[
             const SizedBox(height: 10),
             _invoiceRow(
@@ -2397,6 +2494,34 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
     }
   }
 
+  /// What the invoice comes to across the month's lines, with our own figure
+  /// standing in for any line not yet checked against it.
+  ///
+  /// Null when nothing in the month has been reconciled, so the panel stays
+  /// quiet rather than claiming an invoice total it does not have.
+  double? _invoicedTotal(_MonthGroup m) {
+    var any = false;
+    double total = 0;
+    void add(String key, double ours) {
+      final inv = _invoicedFor(m.monthKey, key);
+      if (inv != null) any = true;
+      total += inv?.invoiced ?? ours;
+    }
+
+    m.trackLinesByProgramme.forEach((p, lines) {
+      for (final l in lines) {
+        add('track:$p:${l.code.isEmpty ? l.name : l.code}', l.cost);
+      }
+    });
+    for (final s in m.serviceLines) {
+      add('service:${s.name}', s.cost);
+    }
+    if (m.workshopMusterCost > 0) add('workshop', m.workshopMusterCost);
+    if (m.workshopRental > 0) add('workshop_rental', m.workshopRental);
+    if (m.manpowerCost > 0) add('manpower', m.manpowerCost);
+    return any ? total : null;
+  }
+
   /// The month written out the way the invoice writes it: each programme with
   /// its own track lines, then the charges that belong to the account rather
   /// than to one programme — workshop, manpower, and every additional service
@@ -2426,10 +2551,13 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
       if (out.isNotEmpty) out.add(const SizedBox(height: 14));
       out.add(_groupHeader(p, _inr.format(total)));
       for (final l in lines) {
+        final key = 'track:$p:${l.code.isEmpty ? l.name : l.code}';
         out.add(_lineItem(
           l.name.isEmpty ? l.code : l.name,
           _hrs(l.minutes),
-          _inr.format(l.cost),
+          l.cost,
+          m,
+          key,
         ));
       }
     }
@@ -2440,7 +2568,9 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
       otherLines.add(_lineItem(
         s.name,
         s.quantity > 0 ? _qty(s.quantity) : '',
-        _inr.format(s.cost),
+        s.cost,
+        m,
+        'service:${s.name}',
       ));
     }
     if (m.workshopMusterCost > 0) {
@@ -2448,19 +2578,21 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
       otherLines.add(_lineItem(
         'Workshop',
         '${(m.workshopMusterCost / BillingBaseline.workshopDayRate).round()} days',
-        _inr.format(m.workshopMusterCost),
+        m.workshopMusterCost,
+        m,
+        'workshop',
         accent: workshopColor,
       ));
     }
     if (m.workshopRental > 0) {
       listed += m.workshopRental;
-      otherLines.add(_lineItem('Workshop rental', '',
-          _inr.format(m.workshopRental), accent: workshopColor));
+      otherLines.add(_lineItem('Workshop rental', '', m.workshopRental, m,
+          'workshop_rental', accent: workshopColor));
     }
     if (m.manpowerCost > 0) {
       listed += m.manpowerCost;
-      otherLines.add(_lineItem(
-          'Manpower', '', _inr.format(m.manpowerCost), accent: manpowerColor));
+      otherLines.add(_lineItem('Manpower', '', m.manpowerCost, m, 'manpower',
+          accent: manpowerColor));
     }
 
     if (otherLines.isNotEmpty) {
@@ -2476,8 +2608,17 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
     if (gap.abs() >= 1) {
       out.add(const SizedBox(height: 14));
       out.add(_groupHeader('PINNED TO INVOICE', _inr.format(gap)));
-      out.add(_lineItem(
-          'Figure taken from the invoice, not from sessions', '', ''));
+      out.add(Padding(
+        padding: const EdgeInsets.only(left: 10, bottom: 6),
+        child: Text(
+          'Figure taken from the invoice, not from sessions',
+          style: GoogleFonts.spaceGrotesk(
+            fontSize: 10.5,
+            color: const Color(0xFFDFE2F0).withOpacity(0.8),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ));
     }
 
     return out;
@@ -2522,52 +2663,234 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
     );
   }
 
-  Widget _lineItem(String label, String qty, String value, {Color? accent}) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 10, bottom: 6),
-      child: Row(
-        children: [
-          if (accent != null) ...[
-            Container(
-              width: 5,
-              height: 5,
-              decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
-            ),
-            const SizedBox(width: 6),
-          ],
-          Expanded(
-            child: Text(
-              label,
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 10.5,
-                color: const Color(0xFFDFE2F0).withOpacity(0.8),
-                fontWeight: FontWeight.w600,
+  /// One line, with our figure and — once it has been checked — what NATRAX
+  /// invoiced for it and the difference between the two. Tapping the line sets
+  /// the invoiced figure; nothing here ever edits the recorded sessions.
+  Widget _lineItem(
+    String label,
+    String qty,
+    double ours,
+    _MonthGroup m,
+    String lineKey, {
+    Color? accent,
+  }) {
+    final inv = _invoicedFor(m.monthKey, lineKey);
+    final diff = inv == null ? 0.0 : ours - inv.invoiced;
+    final diffColor = diff.abs() < 0.01
+        ? const Color(0xFF22C55E)
+        : (diff > 0 ? const Color(0xFFFF6B6B) : const Color(0xFFFFB547));
+
+    return InkWell(
+      onTap: () => _editInvoicedLine(m, lineKey, label, ours),
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.only(left: 10, bottom: 6, top: 2),
+        child: Row(
+          children: [
+            if (accent != null) ...[
+              Container(
+                width: 5,
+                height: 5,
+                decoration:
+                    BoxDecoration(color: accent, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 6),
+            ],
+            Expanded(
+              child: Text(
+                label,
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 10.5,
+                  color: const Color(0xFFDFE2F0).withOpacity(0.8),
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
+            if (qty.isNotEmpty) ...[
+              Text(
+                qty,
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 10,
+                  color: const Color(0xFF8A93AD),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 12),
+            ],
+            SizedBox(
+              width: 76,
+              child: Text(
+                _inr.format(ours),
+                textAlign: TextAlign.right,
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 11,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            SizedBox(
+              width: 76,
+              child: Text(
+                inv == null ? '—' : _inr.format(inv.invoiced),
+                textAlign: TextAlign.right,
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 11,
+                  color: inv == null
+                      ? const Color(0xFF4B5563)
+                      : const Color(0xFFBAE6FD),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            SizedBox(
+              width: 72,
+              child: Text(
+                inv == null
+                    ? ''
+                    : (diff.abs() < 0.01
+                        ? 'match'
+                        : '${diff > 0 ? '+' : '-'}${_inr.format(diff.abs())}'),
+                textAlign: TextAlign.right,
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 10,
+                  color: diffColor,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Record what NATRAX invoiced for one line.
+  ///
+  /// Deliberately NOT a correction to our own entry. Dhrupad's rule is that
+  /// both records are kept and the difference is the thing worth looking at —
+  /// editing the sessions to match the bill would lose which side was wrong.
+  Future<void> _editInvoicedLine(
+      _MonthGroup m, String lineKey, String label, double ours) async {
+    if (m.monthKey == 'all') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pick a single month to reconcile it.')),
+      );
+      return;
+    }
+    final existing = _invoicedFor(m.monthKey, lineKey);
+    final amount = TextEditingController(
+        text: existing == null ? '' : existing.invoiced.toStringAsFixed(2));
+    final note = TextEditingController(text: existing?.note ?? '');
+    final formKey = GlobalKey<FormState>();
+
+    final action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0D1520),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          label,
+          style: GoogleFonts.spaceGrotesk(
+              color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15),
+        ),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Our record says ${_inr.format(ours)}. Enter what NATRAX '
+                'invoiced for this line. Our entry is left alone.',
+                style: GoogleFonts.spaceGrotesk(
+                    fontSize: 11, height: 1.4, color: const Color(0xFF94A3B8)),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: amount,
+                autofocus: true,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                style: GoogleFonts.spaceGrotesk(color: Colors.white),
+                decoration: const InputDecoration(labelText: 'Invoiced (Rs)'),
+                validator: (v) {
+                  final t = (v ?? '').trim();
+                  if (t.isEmpty) return 'Enter the invoiced amount';
+                  if (double.tryParse(t) == null) return 'Numbers only';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: note,
+                minLines: 2,
+                maxLines: 3,
+                style: GoogleFonts.spaceGrotesk(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Note (optional)',
+                  hintText: 'Billed 1 h, we logged 2 h minimum',
+                ),
+              ),
+            ],
           ),
-          if (qty.isNotEmpty) ...[
-            Text(
-              qty,
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 10,
-                color: const Color(0xFF8A93AD),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(width: 14),
-          ],
-          if (value.isNotEmpty)
-            Text(
-              value,
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 11,
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+        ),
+        actions: [
+          if (existing != null)
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, 'remove'),
+                child: const Text('Clear')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, 'cancel'),
+              child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              if (formKey.currentState?.validate() ?? false) {
+                Navigator.pop(ctx, 'save');
+              }
+            },
+            child: const Text('Save'),
+          ),
         ],
       ),
     );
+
+    if (!mounted || action == null || action == 'cancel') return;
+    final client = Supabase.instance.client;
+    final key = _lineKey(m.monthKey, lineKey);
+    try {
+      if (action == 'remove') {
+        await client
+            .from('invoice_lines')
+            .delete()
+            .eq('month', m.monthKey)
+            .eq('line_key', lineKey);
+        if (!mounted) return;
+        setState(() => _invoiced.remove(key));
+      } else {
+        final value = double.parse(amount.text.trim());
+        final text = note.text.trim();
+        await client.from('invoice_lines').upsert({
+          'month': m.monthKey,
+          'line_key': lineKey,
+          'invoiced': value,
+          'note': text,
+        }, onConflict: 'month,line_key');
+        if (!mounted) return;
+        setState(() =>
+            _invoiced[key] = _InvoicedLine(invoiced: value, note: text));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not save. If this is the first one, the invoice_lines '
+            'table may not exist yet. ($e)',
+          ),
+        ),
+      );
+    }
   }
 
   Widget _invoiceRow(String label, String value, {Color? accent}) {
