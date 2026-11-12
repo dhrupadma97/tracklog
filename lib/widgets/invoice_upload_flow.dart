@@ -47,11 +47,19 @@ class InvoiceUploadFlow {
       return null;
     }
 
-    final parsed = file.name.toLowerCase().endsWith('.pdf')
+    // Reading is synchronous and Flutter web has no isolates, so for a second
+    // or two nothing can repaint. Put the notice up and let one frame draw it
+    // BEFORE starting, or the click looks ignored — which is how a 2.7 MB
+    // invoice came to be reported as "can't upload".
+    final isPdf = file.name.toLowerCase().endsWith('.pdf');
+    if (isPdf && context.mounted) _showReading(context, file.name);
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    final parsed = isPdf
         ? NatraxInvoiceParser.parse(file.bytes!)
         : const ParsedInvoice(
             missingFields: ['everything — image files cannot be read'],
           );
+    if (isPdf && context.mounted) Navigator.of(context, rootNavigator: true).pop();
 
     if (!context.mounted) return null;
 
@@ -97,6 +105,36 @@ class InvoiceUploadFlow {
       );
       return null;
     }
+  }
+
+  /// "Reading …" while the PDF's text is pulled out. Not dismissible: the
+  /// read cannot be interrupted, so offering a way out would be a lie.
+  static void _showReading(BuildContext context, String fileName) {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      useRootNavigator: true,
+      builder: (_) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          backgroundColor: const Color(0xFF0A1025),
+          content: Row(children: [
+            const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2.4)),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text('Reading $fileName…',
+                  style: const TextStyle(
+                      fontFamily: 'Space Grotesk',
+                      color: Colors.white70,
+                      fontSize: 13)),
+            ),
+          ]),
+        ),
+      ),
+    );
   }
 
   /// Shown when a PDF carries no text layer — almost always a scan.

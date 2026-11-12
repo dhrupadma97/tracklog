@@ -276,4 +276,111 @@ Total 10,000.00''';
     expect(parsed.isUnreadable, isTrue);
     expect(parsed.missingFields, isNotEmpty);
   });
+
+  invoiceRowsAndSez();
+}
+
+/// Line items read off position-grouped rows, and the SEZ declaration.
+///
+/// The rows below are shaped exactly as PdfTextExtractor.extract returns them
+/// for the real invoices — 802 (September 2026, GTCI) and 205 (April 2026) —
+/// so the line logic is pinned without shipping those PDFs into the repo.
+void invoiceRowsAndSez() {
+  group('line items from rows', () {
+    // INV/26-27/802, as grouped by position. Every cell of a row lands on
+    // one line; before rows existed, each cell was its own line and no real
+    // invoice ever had a line item read.
+    const rows802 = [
+      'Sl Description of HSN/SAC GST Quantity Rate per Amount',
+      '1 Braking Track Testing (GVW < 3.5T) - WET 998346 18 % 28 Hrs. 21,000.00 Hrs. 5,88,000.00',
+      '2 High Speed Track Testing ( GVW< 3.5T) 998346 18 % 2 Hrs. 25,000.00 Hrs. 50,000.00',
+      '3 Braking Track Testing (GVW < 3.5T) - DRY 998346 18 % 2 Hrs. 19,000.00 Hrs. 38,000.00',
+      '4 General Road Track Testing(GVW <3.5T) 998346 18 % 5 Hrs. 9,000.00 Hrs. 45,000.00',
+      '5 Dynamic Platform Track Testing ( GVW< 3.5 T) 998346 18 % 2 Hrs. 20,000.00 Hrs. 40,000.00',
+      '6 EV Heavy Duty Charger 998346 18 % 181 Unt 25.00 Unt 4,525.00',
+      '7 Weighment PAD-Passenger Car(PC) 998346 18 % 1 Nos 600.00 Nos 600.00',
+      '8 Other Support Services (Refreshment) 998599 18 % 46 Nos 125.00 Nos 5,750.00',
+      '9 Other Support Services (Bisleri Water 20L) 998599 18 % 7 Unt 67.80 Unt 474.60',
+      '7,72,349.60',
+      'Round Off/ Balance written off 0.40',
+      'Total ₹ 7,72,350.00',
+      // The tax analysis below the total opens with the HSN itself, so it has
+      // no description and must never be read as a line.
+      '998346 7,66,125.00 18% 1,37,902.50 1,37,902.50',
+      '998599 6,224.60 18% 1,120.43 1,120.43',
+    ];
+
+    test('every charged line of 802 is read, and nothing else', () {
+      final lines = NatraxInvoiceParser.linesFromRows(rows802);
+      expect(lines.map((l) => l.matchKey).toList(), [
+        'T3W', 'T1', 'T3D', 'T16', 'T2',
+        'SVC_EV', 'SVC_WEIGH', 'SVC_FOOD', 'SVC_WATER',
+      ]);
+      expect(lines.first.quantity, 28);
+      expect(lines.first.amount, 588000);
+      expect(lines.last.amount, 474.60);
+    });
+
+    test('the lines add up to the taxable value, to the paisa', () {
+      final lines = NatraxInvoiceParser.linesFromRows(rows802);
+      final sum = lines.fold<double>(0, (s, l) => s + l.amount);
+      expect(sum, closeTo(772349.60, 0.001));
+      expect(lines.any((l) => l.amountDerived), isFalse);
+    });
+
+    test('a row whose amount is missing is rebuilt from qty x rate', () {
+      // INV/26-27/205's wet line reaches the text layer without its amount.
+      // The last figure is then the RATE — followed by its unit — and was
+      // being read as a 21,000 line where the invoice charges 7,14,000.
+      final lines = NatraxInvoiceParser.linesFromRows([
+        '2 Braking Track Testing (GVW < 3.5T) - WET 998346 34 Hrs. 21,000.00 Hrs.',
+      ]);
+      expect(lines.single.amount, 714000);
+      expect(lines.single.amountDerived, isTrue);
+    });
+
+    test('a rate with no quantity is left out, never guessed', () {
+      final lines = NatraxInvoiceParser.linesFromRows([
+        '2 Braking Track Testing (GVW < 3.5T) - WET 998346 21,000.00 Hrs.',
+      ]);
+      expect(lines, isEmpty);
+    });
+
+    test('an amount at the end of its row is taken as printed', () {
+      final lines = NatraxInvoiceParser.linesFromRows([
+        '1 Charges for Man Power 998346 27 Nos. 1,800.00 Nos. 48,600.00',
+      ]);
+      expect(lines.single.amount, 48600);
+      expect(lines.single.amountDerived, isFalse);
+    });
+  });
+
+  group('SEZ supply under bond or LUT', () {
+    // The heading reaches the text broken mid-word, "WITH" / "OUT".
+    const sezText = '''
+GST/TAX INVOICE(SUPPLY MEANT FOR EXPORT/SUPPLY TO SEZ UNIT OR SEZ DEVELOPER FOR AUTHORISED OPERATIONS UNDER BOND OR LETTER OF UNDERTAKING WITH
+OUT PAYMENT OF IGST)
+Invoice No.:INV/26-27/802
+Dated:
+29-Oct-26
+Terms of Delivery: Testing Period From 01 to 30-September-2026.
+7,72,349.60
+Round Off/ Balance written off
+0.40
+Total
+7,72,350.00
+HSN/SAC Taxable IGST Total
+998346 7,66,125.00 18% 1,37,902.50 1,37,902.50
+Total 7,72,349.60 1,39,022.93 1,39,022.93
+''';
+
+    test('the declaration means nil GST, not the IGST in the tax box', () {
+      final p = NatraxInvoiceParser.parseText(sezText);
+      expect(p.gstAmount, 0);
+      // Never the 1,39,022.93 printed for information below the total.
+      expect(p.totalAmount, 772350);
+      expect(p.amountExclGst, 772350);
+      expect(p.periodMonth, '2026-09');
+    });
+  });
 }

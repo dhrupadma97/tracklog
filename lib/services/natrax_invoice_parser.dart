@@ -23,11 +23,17 @@ class ParsedInvoiceLine {
   final String unit;
   final double amount;
 
+  /// True when the printed amount was not in the text layer and [amount] was
+  /// rebuilt as quantity × rate. Shown, so a rebuilt figure is never mistaken
+  /// for one read off the page.
+  final bool amountDerived;
+
   const ParsedInvoiceLine({
     required this.description,
     required this.amount,
     this.quantity,
     this.unit = '',
+    this.amountDerived = false,
   });
 
   /// A coarse kind, so a caller can line this up with its own records without
@@ -99,6 +105,21 @@ class ParsedInvoice {
       gstAmount != null &&
       totalAmount != null;
 
+  /// The same invoice with its charged lines replaced.
+  ParsedInvoice withLines(List<ParsedInvoiceLine> newLines) => ParsedInvoice(
+        lines: newLines,
+        invoiceNumber: invoiceNumber,
+        invoiceDate: invoiceDate,
+        periodMonth: periodMonth,
+        poNumber: poNumber,
+        amountExclGst: amountExclGst,
+        gstAmount: gstAmount,
+        totalAmount: totalAmount,
+        testingPeriod: testingPeriod,
+        missingFields: missingFields,
+        rawText: rawText,
+      );
+
   /// The printed total agrees with taxable + tax, allowing for the round-off
   /// line Tally adds.
   bool get addsUp {
@@ -121,7 +142,14 @@ class NatraxInvoiceParser {
 
   static ParsedInvoice parse(Uint8List pdfBytes) {
     try {
-      return parseText(PdfTextExtractor.extractText(pdfBytes));
+      final extracted = PdfTextExtractor.extract(pdfBytes);
+      final parsed = parseText(extracted.text);
+      if (parsed.lines.isNotEmpty || parsed.isUnreadable) return parsed;
+      // The header fields read well off the operator-by-operator text; the
+      // charged lines do not, because each cell of a row arrives on its own
+      // line. Read the lines off the position-grouped rows instead — the
+      // first time a real invoice has had its lines read at all.
+      return parsed.withLines(linesFromRows(extracted.rows));
     } catch (e) {
       // A malformed PDF must never take the upload flow down with it.
       return ParsedInvoice(missingFields: ['everything — could not read ($e)']);
@@ -169,6 +197,31 @@ class NatraxInvoiceParser {
 
     var gstAmount = _tax(body);
     var amountExclGst = _taxableValue(body);
+
+    // An SEZ supply under bond or LUT says so in its heading: "SUPPLY MEANT
+    // FOR EXPORT/SUPPLY TO SEZ UNIT ... WITHOUT PAYMENT OF IGST". No tax is
+    // chargeable — and yet its tax-analysis box still prints an IGST figure,
+    // for information. INV/26-27/802 shows 1,39,022.93 there against a total
+    // of 7,72,350.00 that contains none of it. Read that box as the tax and
+    // the invoice is overstated by eighteen per cent.
+    //
+    // The checks below cannot catch this on their own: the heading itself
+    // contains the word IGST, so "no tax line anywhere" never holds. The
+    // declaration is the deciding fact, so it decides. The taxable value is
+    // taken as the printed total, which carries Tally's round-off (0.40 on
+    // 802) so that taxable + tax still equals what is paid.
+    //
+    // Whitespace is allowed INSIDE "without": 802's heading reaches the text
+    // as "...UNDERTAKING WITH" / "OUT PAYMENT OF IGST)", broken across two
+    // runs mid-word.
+    final underBondOrLut = RegExp(
+      r'WITH\s*OUT\s*PAYMENT\s*OF\s*(?:IGST|INTEGRATED\s*TAX)',
+      caseSensitive: false,
+    ).hasMatch(text);
+    if (underBondOrLut && totalAmount != null) {
+      gstAmount = 0;
+      amountExclGst = totalAmount;
+    }
 
     // Supplies under SEZ Bond / LUT carry no tax, so an invoice with no IGST
     // or CGST/SGST line is legitimate rather than unreadable. Treat it as zero
@@ -261,6 +314,16 @@ class NatraxInvoiceParser {
   /// Anything that does not look like a charged line is skipped in silence.
   /// A missing line shows up as a difference the user can see; an invented one
   /// would quietly move a figure.
+  /// Charged lines read off position-grouped rows.
+  ///
+  /// Public so it can be tested with rows shaped like the real ones, without
+  /// shipping invoice PDFs into the repo. The rows below the grand total — the
+  /// HSN summary and the tax analysis — open with the HSN code itself, so
+  /// they carry no description and are dropped by the same rule that reads
+  /// the lines above.
+  static List<ParsedInvoiceLine> linesFromRows(List<String> rows) =>
+      _chargedLines(rows);
+
   static List<ParsedInvoiceLine> _chargedLines(List<String> body) {
     final out = <ParsedInvoiceLine>[];
     final hsn = RegExp(r'\b9{2}\d{4}\b');
@@ -277,7 +340,7 @@ class NatraxInvoiceParser {
       // The amount is the last money-looking figure on the line.
       final money = RegExp(r'\d[\d,]*\.\d{2}').allMatches(line).toList();
       if (money.isEmpty) continue;
-      final amount =
+      var amount =
           double.tryParse(money.last.group(0)!.replaceAll(',', ''));
       if (amount == null || amount <= 0) continue;
 
@@ -287,13 +350,34 @@ class NatraxInvoiceParser {
       if (desc.isEmpty) continue;
 
       final q = qty.firstMatch(line);
+      final quantity =
+          q == null ? null : double.tryParse(q.group(1)!.replaceAll(',', ''));
+
+      // The amount sits LAST on a row; the rate is followed by its unit —
+      // "21,000.00 Hrs.". So a last figure that still has a unit after it is
+      // the rate, and the row's own amount never reached the text layer.
+      // INV/26-27/205's wet braking row is exactly that: "34 Hrs. 21,000.00
+      // Hrs." and nothing more, so 21,000 was being read as the amount of a
+      // line worth 7,14,000. NATRAX lines are quantity times rate to the
+      // paisa, so the amount is rebuilt from them and marked as such. With no
+      // quantity there is nothing safe to rebuild from, and the line is left
+      // out — a missing line shows as a difference, a wrong one would not.
+      var derived = false;
+      final tail = line.substring(money.last.end);
+      if (RegExp(r'^\s*(?:Hrs?\.?|Nos?\.?|Unt\.?|Units?|Days?)\b',
+              caseSensitive: false)
+          .hasMatch(tail)) {
+        if (quantity == null || quantity <= 0) continue;
+        amount = double.parse((quantity * amount).toStringAsFixed(2));
+        derived = true;
+      }
+
       out.add(ParsedInvoiceLine(
         description: desc,
         amount: amount,
-        quantity: q == null
-            ? null
-            : double.tryParse(q.group(1)!.replaceAll(',', '')),
+        quantity: quantity,
         unit: q?.group(2)?.replaceAll('.', '').trim() ?? '',
+        amountDerived: derived,
       ));
     }
     return out;
