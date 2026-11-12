@@ -214,6 +214,15 @@ class _WideScaffoldState extends State<_WideScaffold> {
       branch: 13,
     ));
 
+    // 11. Reconcile - NATRAX utilisation sheet against our record, then
+    // against the invoice, one month at a time.
+    items.add(const _NavItem(
+      icon: Icons.fact_check_outlined,
+      activeIcon: Icons.fact_check,
+      label: 'Reconcile',
+      branch: 15,
+    ));
+
     return items;
   }
 

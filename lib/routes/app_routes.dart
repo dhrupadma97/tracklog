@@ -26,6 +26,7 @@ import '../presentation/tyre_trends_screen/tyre_trends_screen.dart';
 import '../presentation/instrumentation_screen/instrumentation_screen.dart';
 import '../presentation/muster_screen/muster_screen.dart';
 import '../presentation/test_cases_screen/test_cases_screen.dart';
+import '../presentation/reconcile_screen/reconcile_screen.dart';
 
 class AppRoutes {
   static const String initial = '/';
@@ -52,6 +53,8 @@ class AppRoutes {
   // The daily log of individual track sessions. `sessionHistory` above is a
   // misnomer kept for its URL - that branch renders the Tracks screen.
   static const String dailyLog = '/daily-log-screen';
+  // NATRAX month reconciliation: utilisation sheet -> questions -> invoice.
+  static const String reconcile = '/reconcile-screen';
 }
 
 
@@ -366,6 +369,16 @@ final GoRouter appRouter = GoRouter(
             GoRoute(
               path: AppRoutes.dailyLog,
               builder: (context, state) => const SessionHistoryScreen(),
+            ),
+          ],
+        ),
+        // Branch 15: NATRAX reconciliation - upload the month's utilisation
+        // sheet, answer what does not agree, tally the invoice, settle.
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: AppRoutes.reconcile,
+              builder: (context, state) => const ReconcileScreen(),
             ),
           ],
         ),

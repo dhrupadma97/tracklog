@@ -152,6 +152,14 @@ class _AppNavigationState extends State<AppNavigation>
       branchIndex: 13,
     ));
 
+    // 12. Reconcile — NATRAX utilisation sheet and invoice, month by month.
+    list.add(const _TabSpec(
+      icon: 'fact_check_outlined',
+      selectedIcon: 'fact_check',
+      label: 'Reconcile',
+      branchIndex: 15,
+    ));
+
     return list;
   }
 
