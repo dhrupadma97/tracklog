@@ -30,6 +30,20 @@
 --
 -- Safe to re-run.
 
+-- ── 0. The issuing-company column ──────────────────────────────────────────
+-- issued_by was meant to arrive with 20260814120000_po_issuing_entity.sql,
+-- but that file was never run on the live database: the first paste of
+-- this one failed with 42703, column "issued_by" does not exist (12 Nov
+-- 2026). Its two statements are repeated here so this file stands alone.
+-- Until now the PO Tracker's "via GTCI" tag and the manager report's issuer
+-- split have been reading a column that was not there, and showing nothing.
+ALTER TABLE public.po_trackers
+  ADD COLUMN IF NOT EXISTS issued_by TEXT NOT NULL DEFAULT 'Goodyear SATL';
+
+UPDATE public.po_trackers
+   SET issued_by = 'GTCI'
+ WHERE po_number = '8242390552';
+
 INSERT INTO public.po_trackers (
   po_number, vendor_name, description,
   total_po_value, tax_amount, delivery_date, valid_from,
