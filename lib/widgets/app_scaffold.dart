@@ -129,15 +129,9 @@ class _WideScaffoldState extends State<_WideScaffold> {
       ));
     }
 
-    // 3. Tracks (web only)
-    if (kIsWeb) {
-      items.add(const _NavItem(
-        icon: Icons.map_outlined,
-        activeIcon: Icons.map,
-        label: 'Tracks',
-        branch: 1,
-      ));
-    }
+    // 3. Tracks - hidden from the web rail at the user's request (12 Nov
+    // 2026). The route (branch 1) and the screen stay, and mobile still has
+    // the tab; put this item back to show it on web again.
 
     // 4. Manual Entry - owners only.
     //
