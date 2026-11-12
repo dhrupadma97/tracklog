@@ -278,6 +278,11 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     _NatraxService('S13',  'Sand Bags 20/50kg',                 'Per Nos/Day',  150,  ServiceInputType.perDay),
     _NatraxService('S14',  'Vbox Battery Hiring',               'Per Day',     1000,  ServiceInputType.perDay),
     _NatraxService('S15',  'Vbox 3i Hiring',                    'Per Day',    27000,  ServiceInputType.perDay),
+    // Not on the original S01-S15 quotation. It appeared on the utilisation
+    // sheets as "Bisleri Jar" with no rate against it, so there was nothing to
+    // check the charge with; the invoice line "Other Support Services (Bisleri
+    // Water 20L), 7 Unt at 67.80" settles it. Rounds to about 70 a jar.
+    _NatraxService('S16',  'Bisleri Water 20L',                 'Per Unit',   67.80, ServiceInputType.perQty),
   ];
 
   final _inr = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
