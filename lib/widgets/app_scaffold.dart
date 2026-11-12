@@ -318,22 +318,29 @@ class _WideScaffoldState extends State<_WideScaffold> {
                             ),
                           ),
                           const SizedBox(height: 32),
-                          ...List.generate(items.length, (i) {
-                            final item = items[i];
-                            final state = GoRouterState.of(context);
-                            final isActive = item.branch == current;
-                            return _RailItem(
-                              item: item,
-                              isActive: isActive,
-                              onTap: () {
-                                widget.navigationShell.goBranch(
-                                  item.branch,
-                                  initialLocation: item.branch == current,
-                                );
-                              },
-                            );
-                          }),
-                          const Spacer(),
+                          // Scrolls, so the last tabs are never cut off on a
+                          // shorter window — Reconcile, the twelfth, was out of
+                          // reach below the profile on a laptop screen.
+                          Expanded(
+                            child: SingleChildScrollView(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  for (final item in items)
+                                    _RailItem(
+                                      item: item,
+                                      isActive: item.branch == current,
+                                      onTap: () {
+                                        widget.navigationShell.goBranch(
+                                          item.branch,
+                                          initialLocation: item.branch == current,
+                                        );
+                                      },
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
                           if (_profile != null || EngineerAuthService.instance.currentUser != null)
                             _buildProfileSection(context),
                           const SizedBox(height: 16),

@@ -7,7 +7,10 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../services/billing_baseline.dart';
+import 'day_entries_dialog.dart';
+import '../../services/day_entries_service.dart';
 import '../../services/muster_service.dart';
+import '../../services/natrax_reconciler.dart' show ServiceCategory;
 import '../../services/natrax_invoice_parser.dart';
 import '../../services/project_catalog.dart';
 import '../../services/month_utilisation_export.dart';
@@ -27,6 +30,10 @@ class _Session {
   final String? projectName;
   final String? notes;
 
+  /// EV charging on this session's service lines, if any — units and rupees.
+  final double evUnits;
+  final double evCost;
+
   double get subtotalExcl => trackCostExcl + svcCostExcl;
   double get gst => subtotalExcl * 0.18;
   double get totalIncl => subtotalExcl * 1.18;
@@ -41,6 +48,8 @@ class _Session {
     required this.svcCostExcl,
     this.projectName,
     this.notes,
+    this.evUnits = 0,
+    this.evCost = 0,
   });
 }
 
@@ -621,6 +630,13 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
             : rawProj;
 
         final date = DateTime.tryParse(s['started_at'] as String? ?? '') ?? DateTime.now();
+        var evUnits = 0.0, evCost = 0.0;
+        for (final r in (svcRowsBySession[s['id'] as String] ?? const <_ServiceRow>[])) {
+          if (ServiceCategory.isEv(r.name)) {
+            evUnits += r.quantity;
+            evCost += r.cost;
+          }
+        }
         final session = _Session(
           id: s['id'] as String,
           trackName: s['track_name'] as String? ?? '—',
@@ -631,6 +647,8 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
           svcCostExcl: svcMap[s['id'] as String] ?? 0.0,
           projectName: projName,
           notes: s['notes'] as String?,
+          evUnits: evUnits,
+          evCost: evCost,
         );
         everySession.add(session);
 
@@ -1448,160 +1466,282 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
         (c == 'T3W' || c == 'T3D') ? 'T3' : c;
     double ceilHrs(int m) => m <= 0 ? 0 : (m / 60.0).ceilToDouble();
 
-    // Minutes per day per track, then rolled up to the day.
+    // Per day, per track: minutes, runs and rupees. EV charging is a service
+    // line, usually on an Other Services container rather than a track run,
+    // so it is gathered from every session of the day, MISC included.
     final perDayTrack = <String, Map<String, int>>{};
-    final costPerDay = <String, double>{};
-    final runsPerDay = <String, int>{};
+    final runsPerDayTrack = <String, Map<String, int>>{};
+    final costPerDayTrack = <String, Map<String, double>>{};
+    final evUnitsPerDay = <String, double>{};
+    final evCostPerDay = <String, double>{};
+    final projectsPerDay = <String, Set<String>>{};
+    final commentedDays = <String>{};
     final dateOf = <String, DateTime>{};
     for (final s in sessions) {
+      final day = DateFormat('yyyy-MM-dd').format(s.date);
+      if (s.evUnits > 0 || s.evCost > 0) {
+        dateOf[day] = DateTime(s.date.year, s.date.month, s.date.day);
+        evUnitsPerDay[day] = (evUnitsPerDay[day] ?? 0) + s.evUnits;
+        evCostPerDay[day] = (evCostPerDay[day] ?? 0) + s.evCost;
+        (projectsPerDay[day] ??= {}).add(s.projectName ?? 'Mahindra EV PoC');
+      }
       final code =
           (s.trackCode.isNotEmpty ? s.trackCode : s.trackName).toUpperCase();
       if (code == 'MISC' || code.isEmpty) continue;
-      final day = DateFormat('yyyy-MM-dd').format(s.date);
       dateOf[day] = DateTime(s.date.year, s.date.month, s.date.day);
       (perDayTrack[day] ??= {})
           .update(code, (v) => v + s.durationMinutes, ifAbsent: () => s.durationMinutes);
-      costPerDay[day] = (costPerDay[day] ?? 0) + s.trackCostExcl;
-      runsPerDay[day] = (runsPerDay[day] ?? 0) + 1;
+      (runsPerDayTrack[day] ??= {})
+          .update(code, (v) => v + 1, ifAbsent: () => 1);
+      (costPerDayTrack[day] ??= {})
+          .update(code, (v) => v + s.trackCostExcl, ifAbsent: () => s.trackCostExcl);
+      (projectsPerDay[day] ??= {}).add(s.projectName ?? 'Mahindra EV PoC');
+      if (DayEntriesService.commentOf(s.notes).isNotEmpty) commentedDays.add(day);
     }
-    if (perDayTrack.isEmpty) return const SizedBox.shrink();
+    if (dateOf.isEmpty) return const SizedBox.shrink();
+    final hasEv = evUnitsPerDay.isNotEmpty;
 
-    final billPerDay = <String, double>{};
-    final minsPerDay = <String, int>{};
+    // Billable hours per track per day: each track rounds up on its own, then
+    // a group's floor is topped up once, on the track in it that ran longest
+    // — so a day's tracks add up to the day, and the day to what NATRAX bill.
+    final billPerDayTrack = <String, Map<String, double>>{};
     perDayTrack.forEach((day, tracks) {
-      // Each track rounds up on its own; a shared floor is then topped up
-      // once for the group, not once per surface.
-      final ceilByGroup = <String, double>{};
+      final bill = <String, double>{
+        for (final e in tracks.entries) e.key: ceilHrs(e.value),
+      };
+      final longestInGroup = <String, String>{};
       final floorByGroup = <String, double>{};
-      var total = 0.0, mins = 0;
       tracks.forEach((code, m) {
-        mins += m;
-        total += ceilHrs(m);
         final g = groupOf(code);
-        ceilByGroup[g] = (ceilByGroup[g] ?? 0) + ceilHrs(m);
+        final cur = longestInGroup[g];
+        if (cur == null || m > tracks[cur]!) longestInGroup[g] = code;
         final f = twoHourTracks.contains(code) ? 2.0 : 1.0;
-        floorByGroup[g] = (floorByGroup[g] ?? 0) > f ? floorByGroup[g]! : f;
+        if (f > (floorByGroup[g] ?? 0)) floorByGroup[g] = f;
       });
       floorByGroup.forEach((g, floor) {
-        final short = floor - (ceilByGroup[g] ?? 0);
-        if (short > 0) total += short;
+        final covered = tracks.keys
+            .where((c) => groupOf(c) == g)
+            .fold<double>(0, (s, c) => s + bill[c]!);
+        if (floor > covered) {
+          final c = longestInGroup[g]!;
+          bill[c] = bill[c]! + (floor - covered);
+        }
       });
-      billPerDay[day] = total;
-      minsPerDay[day] = mins;
+      billPerDayTrack[day] = bill;
     });
 
-    final days = perDayTrack.keys.toList()..sort();
+    double sumD(Map<String, double>? m) =>
+        (m ?? const {}).values.fold(0.0, (a, b) => a + b);
+    int sumI(Map<String, int>? m) =>
+        (m ?? const {}).values.fold(0, (a, b) => a + b);
+
+    final days = dateOf.keys.toList()..sort();
     final inr =
         NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+    String units(double u) =>
+        u % 1 == 0 ? u.toStringAsFixed(0) : u.toStringAsFixed(1);
 
     TextStyle head() => GoogleFonts.spaceGrotesk(
         fontSize: 9,
         fontWeight: FontWeight.w800,
         color: const Color(0xFF6B7490),
         letterSpacing: 0.8);
-    TextStyle cell({bool bold = false, Color? c}) => GoogleFonts.spaceGrotesk(
-        fontSize: 11.5,
-        fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
-        color: c ?? Colors.white);
-    Widget pad(Widget w, {Alignment a = Alignment.centerLeft}) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 8),
-        child: Align(alignment: a, child: w));
+    TextStyle cell({bool bold = false, Color? c, double size = 11.5}) =>
+        GoogleFonts.spaceGrotesk(
+            fontSize: size,
+            fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
+            color: c ?? Colors.white);
+    Widget pad(Widget w, {Alignment a = Alignment.centerLeft, double v = 7}) =>
+        Padding(
+            padding: EdgeInsets.symmetric(vertical: v, horizontal: 8),
+            child: Align(alignment: a, child: w));
+    Widget chip(String c, {double size = 9.5}) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: _getTrackColor(c).withOpacity(0.12),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: _getTrackColor(c).withOpacity(0.35)),
+          ),
+          child: Text(c,
+              style: GoogleFonts.spaceGrotesk(
+                  fontSize: size,
+                  fontWeight: FontWeight.w700,
+                  color: _getTrackColor(c))),
+        );
+    // The whole row opens the day, wherever it is clicked.
+    Widget tap(String day, Widget w) => TableRowInkWell(
+          onTap: () => _openDay(dateOf[day]!, projectsPerDay[day] ?? const {}),
+          child: w,
+        );
+    Widget evCell(double u, double c, {bool bold = false}) => u <= 0 && c <= 0
+        ? Text('—', style: cell(c: const Color(0xFF3A4560)))
+        : Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text('${units(u)} u',
+                style: cell(bold: bold, c: const Color(0xFF22C55E))),
+            Text(inr.format(c),
+                style: cell(size: 9.5, c: const Color(0xFF6B7490))),
+          ]);
 
-    return Table(
-      columnWidths: const {
-        0: FlexColumnWidth(1.6),
-        1: FlexColumnWidth(2.4),
-        2: FlexColumnWidth(1),
-        3: FlexColumnWidth(1.2),
-        4: FlexColumnWidth(1.4),
-        5: FlexColumnWidth(1.9),
-      },
+    const sub = Color(0xFF94A3B8);
+    final rows = <TableRow>[
+      TableRow(
+        decoration: const BoxDecoration(
+            border: Border(
+                bottom: BorderSide(color: Color(0xFF1E293B), width: 1))),
+        children: [
+          pad(Text('DATE', style: head())),
+          pad(Text('TRACKS', style: head())),
+          pad(Text('RUNS', style: head()), a: Alignment.centerRight),
+          pad(Text('HOURS', style: head()), a: Alignment.centerRight),
+          pad(Text('BILLABLE', style: head()), a: Alignment.centerRight),
+          if (hasEv)
+            pad(Text('EV CHARGING', style: head()), a: Alignment.centerRight),
+          pad(Text('TRACK COST', style: head()), a: Alignment.centerRight),
+        ],
+      ),
+    ];
+
+    for (final d in days) {
+      final tracks = perDayTrack[d] ?? const <String, int>{};
+      final codes = tracks.keys.toList()
+        ..sort((a, b) => tracks[b]!.compareTo(tracks[a]!));
+      final split = codes.length > 1;
+      rows.add(TableRow(
+        decoration: split
+            ? BoxDecoration(color: const Color(0xFF00F3FF).withOpacity(0.025))
+            : null,
+        children: [
+          tap(d, pad(Row(mainAxisSize: MainAxisSize.min, children: [
+            Text(DateFormat('d MMM').format(dateOf[d]!), style: cell(bold: true)),
+            if (commentedDays.contains(d)) ...[
+              const SizedBox(width: 5),
+              const Tooltip(
+                message: 'Has comments',
+                child: Icon(Icons.chat_bubble_outline,
+                    size: 11, color: Color(0xFFFFB547)),
+              ),
+            ],
+          ]))),
+          tap(d, pad(codes.isEmpty
+              ? Text('EV only', style: cell(c: const Color(0xFF6B7490)))
+              : Wrap(spacing: 4, runSpacing: 3, children: [
+                  for (final c in (List<String>.from(codes)..sort())) chip(c),
+                ]))),
+          tap(d, pad(Text(codes.isEmpty ? '—' : '${sumI(runsPerDayTrack[d])}',
+                  style: cell(c: sub)),
+              a: Alignment.centerRight)),
+          tap(d, pad(
+              Text(codes.isEmpty ? '—' : (sumI(tracks) / 60.0).toStringAsFixed(1),
+                  style: cell()),
+              a: Alignment.centerRight)),
+          tap(d, pad(
+              Text(codes.isEmpty ? '—' : sumD(billPerDayTrack[d]).toStringAsFixed(0),
+                  style: cell(bold: true, c: const Color(0xFF00F3FF))),
+              a: Alignment.centerRight)),
+          if (hasEv)
+            tap(d, pad(evCell(evUnitsPerDay[d] ?? 0, evCostPerDay[d] ?? 0),
+                a: Alignment.centerRight)),
+          tap(d, pad(Text(inr.format(sumD(costPerDayTrack[d])), style: cell()),
+              a: Alignment.centerRight)),
+        ],
+      ));
+
+      // Two or more tracks in a day: each one on its own line underneath,
+      // so a day can be set against NATRAX's sheet track by track.
+      if (split) {
+        for (final c in codes) {
+          rows.add(TableRow(
+            decoration: BoxDecoration(
+                color: const Color(0xFF00F3FF).withOpacity(0.025)),
+            children: [
+              tap(d, pad(const SizedBox.shrink(), v: 4)),
+              tap(d, pad(Row(mainAxisSize: MainAxisSize.min, children: [
+                const Text('└ ', style: TextStyle(color: Color(0xFF3A4560), fontSize: 11)),
+                chip(c, size: 9),
+              ]), v: 4)),
+              tap(d, pad(Text('${runsPerDayTrack[d]![c]}', style: cell(c: sub, size: 10.5)),
+                  a: Alignment.centerRight, v: 4)),
+              tap(d, pad(Text((tracks[c]! / 60.0).toStringAsFixed(1),
+                      style: cell(c: sub, size: 10.5)),
+                  a: Alignment.centerRight, v: 4)),
+              tap(d, pad(Text(billPerDayTrack[d]![c]!.toStringAsFixed(0),
+                      style: cell(c: const Color(0xFF00F3FF), size: 10.5)),
+                  a: Alignment.centerRight, v: 4)),
+              if (hasEv) tap(d, pad(const SizedBox.shrink(), v: 4)),
+              tap(d, pad(Text(inr.format(costPerDayTrack[d]![c] ?? 0),
+                      style: cell(c: sub, size: 10.5)),
+                  a: Alignment.centerRight, v: 4)),
+            ],
+          ));
+        }
+      }
+    }
+
+    final allRuns =
+        runsPerDayTrack.values.fold<int>(0, (a, m) => a + sumI(m));
+    final allMins = perDayTrack.values.fold<int>(0, (a, m) => a + sumI(m));
+    final allBill =
+        billPerDayTrack.values.fold<double>(0, (a, m) => a + sumD(m));
+    final allCost =
+        costPerDayTrack.values.fold<double>(0, (a, m) => a + sumD(m));
+    rows.add(TableRow(
+      decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: Color(0xFF1E293B), width: 1))),
       children: [
-        TableRow(
-          decoration: const BoxDecoration(
-              border: Border(
-                  bottom: BorderSide(color: Color(0xFF1E293B), width: 1))),
-          children: [
-            pad(Text('DATE', style: head())),
-            pad(Text('TRACKS', style: head())),
-            pad(Text('RUNS', style: head()), a: Alignment.centerRight),
-            pad(Text('HOURS', style: head()), a: Alignment.centerRight),
-            pad(Text('BILLABLE', style: head()), a: Alignment.centerRight),
-            pad(Text('COST', style: head()), a: Alignment.centerRight),
-          ],
-        ),
-        for (final d in days)
-          TableRow(children: [
-            pad(Text(DateFormat('d MMM').format(dateOf[d]!),
-                style: cell(bold: true))),
-            pad(Wrap(
-              spacing: 4,
-              runSpacing: 3,
-              children: [
-                for (final c in (perDayTrack[d]!.keys.toList()..sort()))
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: _getTrackColor(c).withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                          color: _getTrackColor(c).withOpacity(0.35)),
-                    ),
-                    child: Text(c,
-                        style: GoogleFonts.spaceGrotesk(
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w700,
-                            color: _getTrackColor(c))),
-                  ),
-              ],
-            )),
-            pad(Text('${runsPerDay[d]}',
-                    style: cell(c: const Color(0xFF94A3B8))),
-                a: Alignment.centerRight),
-            pad(Text((minsPerDay[d]! / 60.0).toStringAsFixed(1), style: cell()),
-                a: Alignment.centerRight),
-            pad(
-                Text(billPerDay[d]!.toStringAsFixed(0),
-                    style: cell(bold: true, c: const Color(0xFF00F3FF))),
-                a: Alignment.centerRight),
-            pad(Text(inr.format(costPerDay[d] ?? 0), style: cell()),
-                a: Alignment.centerRight),
-          ]),
-        TableRow(
-          decoration: const BoxDecoration(
-              border:
-                  Border(top: BorderSide(color: Color(0xFF1E293B), width: 1))),
-          children: [
-            pad(Text('Total', style: cell(bold: true))),
-            pad(Text('${days.length} day${days.length == 1 ? '' : 's'}',
-                style: cell(c: const Color(0xFF6B7490)))),
-            pad(
-                Text('${runsPerDay.values.fold(0, (a, b) => a + b)}',
-                    style: cell(bold: true, c: const Color(0xFF94A3B8))),
-                a: Alignment.centerRight),
-            pad(
-                Text(
-                    (minsPerDay.values.fold(0, (a, b) => a + b) / 60.0)
-                        .toStringAsFixed(1),
-                    style: cell(bold: true)),
-                a: Alignment.centerRight),
-            pad(
-                Text(
-                    billPerDay.values
-                        .fold(0.0, (a, b) => a + b)
-                        .toStringAsFixed(0),
-                    style: cell(bold: true, c: const Color(0xFF00F3FF))),
-                a: Alignment.centerRight),
-            pad(
-                Text(
-                    inr.format(costPerDay.values.fold(0.0, (a, b) => a + b)),
-                    style: cell(bold: true)),
-                a: Alignment.centerRight),
-          ],
-        ),
+        pad(Text('Total', style: cell(bold: true))),
+        pad(Text('${days.length} day${days.length == 1 ? '' : 's'}',
+            style: cell(c: const Color(0xFF6B7490)))),
+        pad(Text('$allRuns', style: cell(bold: true, c: sub)),
+            a: Alignment.centerRight),
+        pad(Text((allMins / 60.0).toStringAsFixed(1), style: cell(bold: true)),
+            a: Alignment.centerRight),
+        pad(Text(allBill.toStringAsFixed(0),
+                style: cell(bold: true, c: const Color(0xFF00F3FF))),
+            a: Alignment.centerRight),
+        if (hasEv)
+          pad(
+              evCell(evUnitsPerDay.values.fold(0.0, (a, b) => a + b),
+                  evCostPerDay.values.fold(0.0, (a, b) => a + b),
+                  bold: true),
+              a: Alignment.centerRight),
+        pad(Text(inr.format(allCost), style: cell(bold: true)),
+            a: Alignment.centerRight),
       ],
-    );
+    ));
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Table(
+        columnWidths: {
+          0: const FlexColumnWidth(1.6),
+          1: const FlexColumnWidth(2.4),
+          2: const FlexColumnWidth(1),
+          3: const FlexColumnWidth(1.2),
+          4: const FlexColumnWidth(1.4),
+          if (hasEv) 5: const FlexColumnWidth(1.6),
+          hasEv ? 6 : 5: const FlexColumnWidth(1.9),
+        },
+        defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+        children: rows,
+      ),
+      const SizedBox(height: 8),
+      Row(children: [
+        const Icon(Icons.touch_app_outlined, size: 12, color: Color(0xFF6B7490)),
+        const SizedBox(width: 5),
+        Expanded(
+          child: Text(
+              'Click a day to see its runs with in/out times, and to edit a '
+              'comment, change a run or delete it.',
+              style: GoogleFonts.spaceGrotesk(
+                  fontSize: 9.5, color: const Color(0xFF6B7490))),
+        ),
+      ]),
+    ]);
+  }
+
+  /// Opens one day's runs; reloads the month if anything was changed.
+  Future<void> _openDay(DateTime day, Set<String> projects) async {
+    final changed = await DayEntriesDialog.show(context, day: day, projects: projects);
+    if (changed == true && mounted) await _loadData();
   }
 
   /// A two-way switch between the by-track and by-day tables.
