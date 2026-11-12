@@ -10,6 +10,7 @@ import '../../services/billing_baseline.dart';
 import '../../services/muster_service.dart';
 import '../../services/natrax_invoice_parser.dart';
 import '../../services/project_catalog.dart';
+import '../../services/month_utilisation_export.dart';
 import '../../services/project_manager.dart';
 import '../../theme/app_theme.dart';
 import '../../services/session_status.dart';
@@ -122,6 +123,104 @@ class _TrackLine {
   int minutes;
   double cost;
   _TrackLine({required this.code, required this.name, this.minutes = 0, this.cost = 0});
+}
+
+/// Writes the selected month to a .xlsx, with the detail this panel cannot
+/// carry: every day, every track, and the clock times of every run.
+///
+/// Disabled on "All Months", which is a running total rather than a billing
+/// period — NATRAX issue one utilisation sheet per month and there is nothing
+/// to reconcile a multi-month file against.
+class _ExportMonthButton extends StatefulWidget {
+  final _MonthGroup? month;
+  final String project;
+  const _ExportMonthButton({required this.month, required this.project});
+
+  @override
+  State<_ExportMonthButton> createState() => _ExportMonthButtonState();
+}
+
+class _ExportMonthButtonState extends State<_ExportMonthButton> {
+  bool _busy = false;
+
+  DateTime? get _monthDate {
+    final key = widget.month?.monthKey ?? '';
+    final p = key.split('-');
+    if (p.length != 2) return null;
+    final y = int.tryParse(p[0]), m = int.tryParse(p[1]);
+    return (y == null || m == null) ? null : DateTime(y, m);
+  }
+
+  Future<void> _run() async {
+    final month = _monthDate;
+    if (month == null) return;
+    setState(() => _busy = true);
+    try {
+      // Every programme, always. One NATRAX sheet covers the whole account,
+      // so a file scoped to the vehicle on screen could not be held against
+      // it without the reader doing the arithmetic again by hand.
+      final name = await MonthUtilisationExport.run(month: month);
+      if (mounted) _say('Downloaded $name');
+    } catch (e) {
+      if (mounted) _say('Could not export: $e', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _say(String text, {bool error = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(text,
+          style: const TextStyle(fontFamily: 'Space Grotesk')),
+      backgroundColor:
+          error ? const Color(0xFF5A1A1A) : const Color(0xFF0A1025),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final can = _monthDate != null && !_busy;
+    const c = Color(0xFF00F3FF);
+    return Tooltip(
+      message: _monthDate == null
+          ? 'Pick a single month to export'
+          : 'Day by day, track by track, with in and out times',
+      child: GestureDetector(
+        onTap: can ? _run : null,
+        child: MouseRegion(
+          cursor: can ? SystemMouseCursors.click : SystemMouseCursors.basic,
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 150),
+            opacity: can ? 1 : 0.4,
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: c.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: c.withOpacity(0.5)),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                _busy
+                    ? const SizedBox(
+                        width: 11,
+                        height: 11,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 1.6, color: c))
+                    : const Icon(Icons.download_rounded, size: 11, color: c),
+                const SizedBox(width: 5),
+                Text(_busy ? 'Exporting...' : 'Export month',
+                    style: GoogleFonts.spaceGrotesk(
+                        fontSize: 9, fontWeight: FontWeight.w700, color: c)),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _MonthGroup {
@@ -1236,6 +1335,19 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
               ]),
             ])),
             const SizedBox(width: 12),
+            // Download the month the panel is showing.
+            //
+            // The panel reads the way the invoice reads — programme, then
+            // track lines — which is right for checking a total and useless
+            // for checking a NATRAX utilisation sheet. That is written a day
+            // at a time with clock times against every run, so reconciling it
+            // needs the dates, the tracks and the in/out times, and none of
+            // them fit on this panel. They go in the file instead.
+            _ExportMonthButton(
+              month: _selected,
+              project: _activeProject,
+            ),
+            const SizedBox(width: 10),
             Image.asset(
               'assets/images/goodyear_sightline_logo.png',
               height: 18,

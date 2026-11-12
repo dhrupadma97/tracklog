@@ -68,6 +68,7 @@ NatraxInvoice _inv(String month, double total) => NatraxInvoice(
 
 void main() {
   musterDayExpansion();
+  deadWeightIsNotAManDay();
   thisWeekWindow();
   workshopAccrualAfterInvoice();
   workshopDatesComeFromSettings();
@@ -550,6 +551,122 @@ void thisWeekWindow() {
       final entry = DateTime(2026, 9, 28, 14, 58);
       expect(entry.isAfter(oldStart), false);
       expect(inWeek(entry, now), true);
+    });
+  });
+}
+
+/// Dead weight is hired by the day and is never a man-day.
+///
+/// MOI/TV-2331 billed 16 days of dead-weight hire at 450 as 4 man-days,
+/// because 7,200 divided by the 1,800 man-day rate is 4. The rupees were
+/// right and the day count was not: 8242399275 is contracted in days, so four
+/// days of manpower cover were spent on a block of steel.
+void deadWeightIsNotAManDay() {
+  group('dead weight never reaches the man-day count', () {
+    test('a dead-weight row carries no head count, whatever is passed', () {
+      final d = MusterDay(
+        date: DateTime(2026, 10, 1),
+        headCount: 3,
+        poNumber: '8242399275',
+        kind: MusterKind.deadweight,
+      );
+      expect(d.toJson()['head_count'], 0);
+    });
+
+    test('workshop still carries none either', () {
+      final d = MusterDay(
+        date: DateTime(2026, 10, 1),
+        headCount: 2,
+        poNumber: '8242390552',
+        kind: MusterKind.workshop,
+      );
+      expect(d.toJson()['head_count'], 0);
+    });
+
+    test('manpower keeps the head count it was given', () {
+      final d = MusterDay(
+        date: DateTime(2026, 10, 15),
+        headCount: 2,
+        poNumber: '8242399275',
+        kind: MusterKind.manpower,
+      );
+      expect(d.toJson()['head_count'], 2);
+    });
+
+    test('only manpower is head-counted', () {
+      expect(MusterKind.manpower.isHeadCounted, true);
+      expect(MusterKind.workshop.isHeadCounted, false);
+      expect(MusterKind.deadweight.isHeadCounted, false);
+    });
+
+    test('a dead-weight day consumes one day, not its head count', () {
+      final d = MusterDay(
+        date: DateTime(2026, 10, 1),
+        headCount: 5,
+        poNumber: '8242399275',
+        kind: MusterKind.deadweight,
+      );
+      expect(d.daysConsumed, 1);
+    });
+  });
+
+  group('dead weight draws the manpower PO but bills by the day', () {
+    test('it books against manpower, not the track PO', () {
+      expect(MusterKind.deadweight.poCategory, 'manpower');
+      expect(MusterKind.manpower.poCategory, 'manpower');
+      expect(MusterKind.workshop.poCategory, 'track_booking');
+    });
+
+    test('the rate is flat per day, not per ton', () {
+      // 450 for a 250 kg block, as MOICARS bill it. NATRAX price dead weight
+      // at 200/ton/day, which at 250 kg would be 50 -- a different supplier
+      // selling a different thing.
+      expect(kDeadWeightRatePerDay, 450.0);
+    });
+
+    test('16 days of hire is 7,200 and no man-days at all', () {
+      var cost = 0.0, manDays = 0;
+      for (var i = 0; i < 16; i++) {
+        final d = MusterDay(
+          date: DateTime(2026, 10, 1 + i),
+          headCount: 0,
+          poNumber: '8242399275',
+          kind: MusterKind.deadweight,
+        );
+        cost += kDeadWeightRatePerDay;
+        manDays += (d.toJson()['head_count'] as int);
+      }
+      expect(cost, 7200.0);
+      // The whole point: the invoice turned this into 4 man-days.
+      expect(manDays, 0);
+    });
+  });
+
+  group('a range books every day of hire', () {
+    test('dead weight books a weekend, like workshop', () {
+      final sat = DateTime(2026, 10, 10);
+      final sun = DateTime(2026, 10, 11);
+      expect(sat.weekday, DateTime.saturday);
+      expect(MusterService.booksADay(sat, MusterKind.deadweight, const {}), true);
+      expect(MusterService.booksADay(sun, MusterKind.deadweight, const {}), true);
+    });
+
+    test('manpower still does not', () {
+      final sun = DateTime(2026, 10, 11);
+      expect(MusterService.booksADay(sun, MusterKind.manpower, const {}), false);
+    });
+  });
+
+  group('the kind survives a round trip through the database name', () {
+    test('deadweight parses back to itself', () {
+      expect(MusterKindX.parse(MusterKind.deadweight.dbValue),
+          MusterKind.deadweight);
+      expect(MusterKind.deadweight.dbValue, 'deadweight');
+    });
+
+    test('an unknown kind falls back to manpower, not to a crash', () {
+      expect(MusterKindX.parse('something else'), MusterKind.manpower);
+      expect(MusterKindX.parse(null), MusterKind.manpower);
     });
   });
 }

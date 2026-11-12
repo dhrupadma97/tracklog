@@ -624,6 +624,8 @@ class _MusterScreenState extends State<MusterScreen> {
         .fold<int>(0, (s, d) => s + d.headCount);
     final manRows = _days.where((d) => d.kind == MusterKind.manpower).length;
     final shopDays = _days.where((d) => d.kind == MusterKind.workshop).length;
+    final deadRows =
+        _days.where((d) => d.kind == MusterKind.deadweight).length;
 
     // _days is ordered newest first by the query.
     final newest = _days.first.date;
@@ -674,6 +676,8 @@ class _MusterScreenState extends State<MusterScreen> {
           _kindChip('Manpower', MusterKind.manpower, manRows),
           const SizedBox(width: 8),
           _kindChip('Workshop', MusterKind.workshop, shopDays),
+          const SizedBox(width: 8),
+          _kindChip('Dead wt', MusterKind.deadweight, deadRows),
         ]),
       ]),
     );
@@ -681,7 +685,11 @@ class _MusterScreenState extends State<MusterScreen> {
 
   Widget _kindChip(String label, MusterKind? kind, int count) {
     final on = _kindFilter == kind;
-    final accent = kind == MusterKind.workshop ? _amber : _teal;
+    final accent = switch (kind) {
+      MusterKind.workshop => _amber,
+      MusterKind.deadweight => const Color(0xFFB794F6),
+      _ => _teal,
+    };
     return GestureDetector(
       onTap: () => setState(() => _kindFilter = kind),
       child: Container(
@@ -860,6 +868,22 @@ class _MusterScreenState extends State<MusterScreen> {
                     }),
                   ),
                 ),
+                const SizedBox(width: 10),
+                // Hired by the day from MOICARS alongside the assistant, and
+                // billed on their invoice — but it is not a man-day, so it
+                // gets its own kind rather than being folded into the head
+                // count the way MOI/TV-2331 folded it.
+                Expanded(
+                  child: _kindTab(
+                    label: 'DEAD WT',
+                    icon: Icons.fitness_center,
+                    selected: kind == MusterKind.deadweight,
+                    onTap: () => setSheet(() {
+                      kind = MusterKind.deadweight;
+                      po = _defaultPoFor(kind);
+                    }),
+                  ),
+                ),
               ]),
             if (existing == null) const SizedBox(height: 14),
 
@@ -953,7 +977,7 @@ class _MusterScreenState extends State<MusterScreen> {
             // Headcount - manpower only. Workshop rental is flat per
             // operational day whoever is in it, so a head count on a
             // workshop day would be a number that bills nothing.
-            if (kind == MusterKind.workshop)
+            if (!kind.isHeadCounted)
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -968,7 +992,9 @@ class _MusterScreenState extends State<MusterScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                        'Flat ${_inr.format(kWorkshopRatePerDay)} per operational day',
+                        kind == MusterKind.deadweight
+                            ? 'Flat ${_inr.format(kDeadWeightRatePerDay)} per day of hire  ·  250 kg'
+                            : 'Flat ${_inr.format(kWorkshopRatePerDay)} per operational day',
                         style: GoogleFonts.spaceGrotesk(
                             color: Colors.white70, fontSize: 13)),
                   ),
@@ -1013,7 +1039,7 @@ class _MusterScreenState extends State<MusterScreen> {
                 child: Text(
                     'Recorded against each of the '
                     '${_workingDays(date, stillRunning ? _today : endDate!, saturdaysWorked, kind)} '
-                    '${kind == MusterKind.workshop ? 'days, weekends included' : 'working days'}.',
+                    '${kind.isHeadCounted ? 'working days' : 'days, weekends included'}.',
                     style: GoogleFonts.spaceGrotesk(
                         color: _muted, fontSize: 11)),
               ),

@@ -15,26 +15,57 @@ import 'supabase_service.dart';
 ///    rows and head count is always zero. Drawn against the NATRAX track PO,
 ///    a lumpsum billed on actuals, so it accrues rupees rather than drawing
 ///    down a contracted number of days.
-enum MusterKind { manpower, workshop }
+enum MusterKind { manpower, workshop, deadweight }
 
 extension MusterKindX on MusterKind {
-  String get label => this == MusterKind.manpower ? 'Manpower' : 'Workshop';
+  String get label => switch (this) {
+        MusterKind.manpower => 'Manpower',
+        MusterKind.workshop => 'Workshop',
+        MusterKind.deadweight => 'Dead weight',
+      };
 
   /// The `kind` column value. Must match the check constraint on
   /// manpower_muster.kind.
   String get dbValue => name;
 
   /// PO category a day of this kind draws against.
-  String get poCategory =>
-      this == MusterKind.manpower ? 'manpower' : 'track_booking';
+  ///
+  /// Dead weight is hired by MOICARS alongside the assistant and appears on
+  /// their invoice, so it draws the manpower PO — but it is never a man-day.
+  /// See [isHeadCounted].
+  String get poCategory => switch (this) {
+        MusterKind.manpower => 'manpower',
+        MusterKind.deadweight => 'manpower',
+        MusterKind.workshop => 'track_booking',
+      };
 
-  static MusterKind parse(String? raw) =>
-      (raw ?? '').trim() == 'workshop' ? MusterKind.workshop : MusterKind.manpower;
+  /// Whether a row of this kind is a person.
+  ///
+  /// Only manpower is. Workshop is a bay and dead weight is a block of steel;
+  /// both are hired by the day and neither is anybody's time. A day-contracted
+  /// PO is drawn down on SUM(head_count), so letting either carry a head count
+  /// would spend manpower cover on equipment — which is exactly what
+  /// MOI/TV-2331 did by billing 16 days of dead weight as 4 man-days.
+  bool get isHeadCounted => this == MusterKind.manpower;
+
+  static MusterKind parse(String? raw) => switch ((raw ?? '').trim()) {
+        'workshop' => MusterKind.workshop,
+        'deadweight' => MusterKind.deadweight,
+        _ => MusterKind.manpower,
+      };
 }
 
 /// Workshop rental at NATRAX, per operational day. Matches the WORKSHOP
 /// service line in manual entry and the VBA macro.
 const double kWorkshopRatePerDay = 5000.0;
+
+/// Dead-weight hire, per day, as MOICARS bill it.
+///
+/// 450/day for a 250 kg block, confirmed 12 Nov 2026 and first seen on
+/// MOI/TV-2331. Flat per day, not per ton: NATRAX's own card prices dead
+/// weight at 200/ton/day, which at 250 kg would be 50 — a different supplier
+/// selling a different thing, and not a rate to reconcile this against.
+const double kDeadWeightRatePerDay = 450.0;
 
 /// One day of the muster: what was consumed, and which PO it draws against.
 class MusterDay {
@@ -57,8 +88,7 @@ class MusterDay {
   });
 
   /// One day of drawdown, in the unit this kind is counted in.
-  int get daysConsumed =>
-      kind == MusterKind.workshop ? 1 : headCount;
+  int get daysConsumed => kind.isHeadCounted ? headCount : 1;
 
   /// 'YYYY-MM-DD' — the form Postgres wants and the key the UI groups on.
   String get dateKey => date.toIso8601String().split('T').first;
@@ -83,7 +113,7 @@ class MusterDay {
         'kind': kind.dbValue,
         // Meaningless for a workshop day, which is flat per day. Forced
         // to zero so it can never leak into the manpower sum.
-        'head_count': kind == MusterKind.workshop ? 0 : headCount,
+        'head_count': kind.isHeadCounted ? headCount : 0,
       };
 }
 
@@ -222,25 +252,38 @@ class ProjectCharges {
   /// multiply by — not because the work was free.
   final int manpowerUnpricedDays;
 
+  /// Dead-weight hire days at the flat daily rate, and what they cost.
+  ///
+  /// Deliberately separate from [manpowerCost] even though MOICARS bill both
+  /// on one invoice and both draw the same PO. The PO is contracted in
+  /// man-days, and a block of steel is not a man-day: folding this in is what
+  /// MOI/TV-2331 did, spending four days of manpower cover on equipment.
+  final double deadWeightCost;
+  final int deadWeightDays;
+
   /// The same money split by 'YYYY-MM', for callers reporting per month.
   final Map<String, double> manpowerByMonth;
   final Map<String, double> workshopByMonth;
+  final Map<String, double> deadWeightByMonth;
 
   const ProjectCharges({
     this.manpowerCost = 0,
     this.workshopCost = 0,
+    this.deadWeightCost = 0,
     this.manDays = 0,
     this.workshopDays = 0,
+    this.deadWeightDays = 0,
     this.manpowerUnpricedDays = 0,
     this.manpowerByMonth = const {},
     this.workshopByMonth = const {},
+    this.deadWeightByMonth = const {},
   });
 
   /// What a project with nothing logged costs. Used where a failed read must
   /// not be mistaken for a project that has spent money.
   static const ProjectCharges none = ProjectCharges();
 
-  double get total => manpowerCost + workshopCost;
+  double get total => manpowerCost + workshopCost + deadWeightCost;
 }
 
 /// The muster register, and the notifier for it.
@@ -342,7 +385,11 @@ class MusterService extends ChangeNotifier {
   /// changed nothing.
   static bool booksADay(
       DateTime day, MusterKind kind, Set<String> saturdaysWorked) {
-    if (kind == MusterKind.workshop) return true;
+    // Workshop and dead weight are both hired by the day and payable whether
+    // or not anybody used them that day, so a range books all seven. Only
+    // manpower follows the working week, because a person is paid for days
+    // actually worked.
+    if (!kind.isHeadCounted) return true;
     if (day.weekday == DateTime.sunday) return false;
     if (day.weekday == DateTime.saturday) {
       return saturdaysWorked.contains(day.toIso8601String().split('T').first);
@@ -462,22 +509,34 @@ class MusterService extends ChangeNotifier {
       rate[n] = d > 0 ? v / d : 0.0;
     }
 
-    double manpowerCost = 0, workshopCost = 0;
-    int manDays = 0, workshopDays = 0, unpriced = 0;
+    double manpowerCost = 0, workshopCost = 0, deadCost = 0;
+    int manDays = 0, workshopDays = 0, deadDays = 0, unpriced = 0;
     final manByMonth = <String, double>{};
     final shopByMonth = <String, double>{};
+    final deadByMonth = <String, double>{};
     for (final r in (rows as List).cast<Map<String, dynamic>>()) {
       if (!belongs(r['project_name'] as String?)) continue;
       // 'YYYY-MM-DD' -> 'YYYY-MM'. A row whose date is too short to carry a
       // month is skipped rather than bucketed under a truncated key.
       final dateStr = (r['muster_date'] as String? ?? '');
       final monthKey = dateStr.length >= 7 ? dateStr.substring(0, 7) : null;
-      if (MusterKindX.parse(r['kind'] as String?) == MusterKind.workshop) {
+      final kind = MusterKindX.parse(r['kind'] as String?);
+      if (kind == MusterKind.workshop) {
         workshopDays++;
         workshopCost += kWorkshopRatePerDay;
         if (monthKey != null) {
           shopByMonth[monthKey] =
               (shopByMonth[monthKey] ?? 0) + kWorkshopRatePerDay;
+        }
+      } else if (kind == MusterKind.deadweight) {
+        // Counted by row at a flat daily rate, the same way workshop is. It
+        // carries head_count 0, so falling through to the manpower branch
+        // would have priced it at zero and lost the money silently.
+        deadDays++;
+        deadCost += kDeadWeightRatePerDay;
+        if (monthKey != null) {
+          deadByMonth[monthKey] =
+              (deadByMonth[monthKey] ?? 0) + kDeadWeightRatePerDay;
         }
       } else {
         final heads = (r['head_count'] as num?)?.toInt() ?? 0;
@@ -498,11 +557,14 @@ class MusterService extends ChangeNotifier {
     return ProjectCharges(
       manpowerCost: manpowerCost,
       workshopCost: workshopCost,
+      deadWeightCost: deadCost,
       manDays: manDays,
       workshopDays: workshopDays,
+      deadWeightDays: deadDays,
       manpowerUnpricedDays: unpriced,
       manpowerByMonth: manByMonth,
       workshopByMonth: shopByMonth,
+      deadWeightByMonth: deadByMonth,
     );
   }
 
