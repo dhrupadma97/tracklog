@@ -1589,7 +1589,8 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
             border: Border(
                 bottom: BorderSide(color: Color(0xFF1E293B), width: 1))),
         children: [
-          pad(Text('DATE / TRACK', style: head())),
+          pad(Text('DATE', style: head())),
+          pad(Text('TRACKS', style: head())),
           pad(Text('RUNS', style: head()), a: Alignment.centerRight),
           pad(Text('HOURS', style: head()), a: Alignment.centerRight),
           pad(Text('BILLABLE', style: head()), a: Alignment.centerRight),
@@ -1610,25 +1611,22 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
             ? BoxDecoration(color: const Color(0xFF00F3FF).withOpacity(0.025))
             : null,
         children: [
-          // No separate tracks column: a one-track day names its track next
-          // to the date, and a day on two or more lists them underneath.
-          tap(d, pad(Wrap(
-            spacing: 6,
-            runSpacing: 3,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text(DateFormat('d MMM').format(dateOf[d]!), style: cell(bold: true)),
-              if (codes.length == 1) chip(codes.single),
-              if (codes.isEmpty)
-                Text('EV only', style: cell(c: const Color(0xFF6B7490), size: 10.5)),
-              if (commentedDays.contains(d))
-                const Tooltip(
-                  message: 'Has comments',
-                  child: Icon(Icons.chat_bubble_outline,
-                      size: 11, color: Color(0xFFFFB547)),
-                ),
+          tap(d, pad(Row(mainAxisSize: MainAxisSize.min, children: [
+            Text(DateFormat('d MMM').format(dateOf[d]!), style: cell(bold: true)),
+            if (commentedDays.contains(d)) ...[
+              const SizedBox(width: 5),
+              const Tooltip(
+                message: 'Has comments',
+                child: Icon(Icons.chat_bubble_outline,
+                    size: 11, color: Color(0xFFFFB547)),
+              ),
             ],
-          ))),
+          ]))),
+          tap(d, pad(codes.isEmpty
+              ? Text('EV only', style: cell(c: const Color(0xFF6B7490)))
+              : Wrap(spacing: 4, runSpacing: 3, children: [
+                  for (final c in (List<String>.from(codes)..sort())) chip(c),
+                ]))),
           tap(d, pad(Text(codes.isEmpty ? '—' : '${sumI(runsPerDayTrack[d])}',
                   style: cell(c: sub)),
               a: Alignment.centerRight)),
@@ -1656,14 +1654,11 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
             decoration: BoxDecoration(
                 color: const Color(0xFF00F3FF).withOpacity(0.025)),
             children: [
-              tap(d, Padding(
-                padding: const EdgeInsets.only(left: 14),
-                child: pad(Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Text('└ ',
-                      style: TextStyle(color: Color(0xFF3A4560), fontSize: 11)),
-                  chip(c, size: 9),
-                ]), v: 4),
-              )),
+              tap(d, pad(const SizedBox.shrink(), v: 4)),
+              tap(d, pad(Row(mainAxisSize: MainAxisSize.min, children: [
+                const Text('└ ', style: TextStyle(color: Color(0xFF3A4560), fontSize: 11)),
+                chip(c, size: 9),
+              ]), v: 4)),
               tap(d, pad(Text('${runsPerDayTrack[d]![c]}', style: cell(c: sub, size: 10.5)),
                   a: Alignment.centerRight, v: 4)),
               tap(d, pad(Text((tracks[c]! / 60.0).toStringAsFixed(1),
@@ -1693,12 +1688,9 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
       decoration: const BoxDecoration(
           border: Border(top: BorderSide(color: Color(0xFF1E293B), width: 1))),
       children: [
-        pad(Text.rich(TextSpan(children: [
-          TextSpan(text: 'Total', style: cell(bold: true)),
-          TextSpan(
-              text: '  ${days.length} day${days.length == 1 ? '' : 's'}',
-              style: cell(c: const Color(0xFF6B7490), size: 10.5)),
-        ]))),
+        pad(Text('Total', style: cell(bold: true))),
+        pad(Text('${days.length} day${days.length == 1 ? '' : 's'}',
+            style: cell(c: const Color(0xFF6B7490)))),
         pad(Text('$allRuns', style: cell(bold: true, c: sub)),
             a: Alignment.centerRight),
         pad(Text((allMins / 60.0).toStringAsFixed(1), style: cell(bold: true)),
@@ -1720,12 +1712,13 @@ class _MonthlyInvoicesScreenState extends State<MonthlyInvoicesScreen> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Table(
         columnWidths: {
-          0: const FlexColumnWidth(2.4),
-          1: const FlexColumnWidth(1),
-          2: const FlexColumnWidth(1.2),
-          3: const FlexColumnWidth(1.4),
-          if (hasEv) 4: const FlexColumnWidth(1.6),
-          hasEv ? 5 : 4: const FlexColumnWidth(1.9),
+          0: const FlexColumnWidth(1.6),
+          1: const FlexColumnWidth(2.4),
+          2: const FlexColumnWidth(1),
+          3: const FlexColumnWidth(1.2),
+          4: const FlexColumnWidth(1.4),
+          if (hasEv) 5: const FlexColumnWidth(1.6),
+          hasEv ? 6 : 5: const FlexColumnWidth(1.9),
         },
         defaultVerticalAlignment: TableCellVerticalAlignment.middle,
         children: rows,
