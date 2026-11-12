@@ -69,6 +69,7 @@ NatraxInvoice _inv(String month, double total) => NatraxInvoice(
 void main() {
   musterDayExpansion();
   deadWeightIsNotAManDay();
+  explicitDaySelection();
   thisWeekWindow();
   workshopAccrualAfterInvoice();
   workshopDatesComeFromSettings();
@@ -667,6 +668,97 @@ void deadWeightIsNotAManDay() {
     test('an unknown kind falls back to manpower, not to a crash', () {
       expect(MusterKindX.parse('something else'), MusterKind.manpower);
       expect(MusterKindX.parse(null), MusterKind.manpower);
+    });
+  });
+}
+
+/// An explicit day selection replaces the weekday rule.
+///
+/// The assistant is not on site every working day, and a range plus a rule
+/// has no way to say "not that Tuesday". October was recorded as a clean
+/// 1-15 run and then stopped, leaving ten days MOICARS had billed and the
+/// register had not.
+void explicitDaySelection() {
+  // Mirrors the loop in MusterService.saveRange.
+  List<String> booked({
+    required DateTime from,
+    required DateTime to,
+    required MusterKind kind,
+    Set<String> saturdays = const {},
+    Set<String>? onlyDays,
+  }) {
+    final out = <String>[];
+    for (var d = from; !d.isAfter(to); d = DateTime(d.year, d.month, d.day + 1)) {
+      final key = d.toIso8601String().split('T').first;
+      final skip = onlyDays != null
+          ? !onlyDays.contains(key)
+          : !MusterService.booksADay(d, kind, saturdays);
+      if (!skip) out.add(key);
+    }
+    return out;
+  }
+
+  // Mon 12 Oct 2026 .. Fri 16 Oct 2026.
+  final mon = DateTime(2026, 10, 12);
+  final fri = DateTime(2026, 10, 16);
+
+  group('ticked days win over the weekday rule', () {
+    test('without a selection the rule still applies', () {
+      expect(booked(from: mon, to: fri, kind: MusterKind.manpower).length, 5);
+    });
+
+    test('a day left unticked is not written', () {
+      // He was not there on the Wednesday.
+      final chosen = {'2026-10-12', '2026-10-13', '2026-10-15', '2026-10-16'};
+      final got = booked(
+          from: mon, to: fri, kind: MusterKind.manpower, onlyDays: chosen);
+      expect(got.length, 4);
+      expect(got.contains('2026-10-14'), false);
+    });
+
+    test('a ticked Sunday IS written, which the rule would never allow', () {
+      final sun = DateTime(2026, 10, 11);
+      expect(sun.weekday, DateTime.sunday);
+      final got = booked(
+          from: sun,
+          to: sun,
+          kind: MusterKind.manpower,
+          onlyDays: {'2026-10-11'});
+      expect(got, ['2026-10-11']);
+      // Same day, no selection: the rule drops it.
+      expect(booked(from: sun, to: sun, kind: MusterKind.manpower), isEmpty);
+    });
+
+    test('an empty selection writes nothing at all', () {
+      expect(
+          booked(
+              from: mon,
+              to: fri,
+              kind: MusterKind.manpower,
+              onlyDays: <String>{}),
+          isEmpty);
+    });
+
+    test('days outside the range are ignored', () {
+      // A selection left over from a longer range must not write rows
+      // outside the stretch on screen.
+      final got = booked(
+          from: mon,
+          to: fri,
+          kind: MusterKind.manpower,
+          onlyDays: {'2026-10-12', '2026-11-30', '2026-09-01'});
+      expect(got, ['2026-10-12']);
+    });
+
+    test('it works the same for a hire kind', () {
+      final got = booked(
+          from: mon,
+          to: fri,
+          kind: MusterKind.deadweight,
+          onlyDays: {'2026-10-12', '2026-10-13'});
+      expect(got.length, 2);
+      // Without a selection a hire books all five.
+      expect(booked(from: mon, to: fri, kind: MusterKind.deadweight).length, 5);
     });
   });
 }

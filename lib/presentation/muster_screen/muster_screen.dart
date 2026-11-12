@@ -799,6 +799,13 @@ class _MusterScreenState extends State<MusterScreen> {
     // Saturdays in the range that were actually worked, as date keys.
     // Sunday is never offered - a one-off Sunday is saved as a single date.
     var saturdaysWorked = <String>{};
+    /// The days actually ticked, and whether anybody has touched them.
+    ///
+    /// Until [daysTouched], the calendar is re-seeded from the rule whenever
+    /// the range or the kind changes, so it always opens on the sensible
+    /// answer. After the first tap it is the user's list and is left alone.
+    final chosenDays = <String>{};
+    var daysTouched = false;
     var count = existing?.headCount ?? 1;
     var kind = existing?.kind ?? MusterKind.manpower;
     var po = existing?.poNumber ?? _defaultPo;
@@ -962,13 +969,24 @@ class _MusterScreenState extends State<MusterScreen> {
                   if (v) endDate = null;
                 }),
               ),
-              ..._saturdayPickers(
+              ..._dayPickers(
                 from: date,
                 to: stillRunning ? _today : endDate,
-                selected: saturdaysWorked,
-                onToggle: (k) => setSheet(() => saturdaysWorked.contains(k)
-                    ? saturdaysWorked.remove(k)
-                    : saturdaysWorked.add(k)),
+                selected: _seedDays(
+                    from: date,
+                    to: stillRunning ? _today : endDate,
+                    kind: kind,
+                    chosen: chosenDays,
+                    touched: daysTouched),
+                onChange: (next) => setSheet(() {
+                  chosenDays
+                    ..clear()
+                    ..addAll(next);
+                  // Once anything is ticked by hand the selection stands on
+                  // its own. Re-seeding from the rule after that would undo
+                  // the edit the moment the range or kind changed.
+                  daysTouched = true;
+                }),
                 kind: kind,
               ),
             ],
@@ -1037,9 +1055,13 @@ class _MusterScreenState extends State<MusterScreen> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
+                    // Counts the days actually ticked, not what the rule would
+                    // have picked. The two differ the moment a day is
+                    // unticked, and this line is the one people read back
+                    // before saving.
                     'Recorded against each of the '
-                    '${_workingDays(date, stillRunning ? _today : endDate!, saturdaysWorked, kind)} '
-                    '${kind.isHeadCounted ? 'working days' : 'days, weekends included'}.',
+                    '${_seedDays(from: date, to: stillRunning ? _today : endDate, kind: kind, chosen: chosenDays, touched: daysTouched).length} '
+                    'day(s) ticked above.',
                     style: GoogleFonts.spaceGrotesk(
                         color: _muted, fontSize: 11)),
               ),
@@ -1192,6 +1214,12 @@ class _MusterScreenState extends State<MusterScreen> {
                               notes: note,
                               kind: kind,
                               saturdaysWorked: saturdaysWorked,
+                              onlyDays: _seedDays(
+                                  from: date,
+                                  to: rangeEnd,
+                                  kind: kind,
+                                  chosen: chosenDays,
+                                  touched: daysTouched),
                             );
                           }
                         },
@@ -1288,6 +1316,200 @@ class _MusterScreenState extends State<MusterScreen> {
   /// Saturday is worked some weeks and not others, so neither "always" nor
   /// "never" is right and a single switch cannot express it. Each Saturday in
   /// the range is listed and ticked individually. Sunday is not offered at all.
+  /// What the calendar should show before anybody edits it.
+  ///
+  /// The rule for the kind — Mon-Fri for manpower, every day for a hire —
+  /// so the common case needs no clicks. Once [chosen] has been touched it is
+  /// returned untouched, because re-deriving it would wipe the correction the
+  /// user came here to make.
+  Set<String> _seedDays({
+    required DateTime from,
+    required DateTime? to,
+    required MusterKind kind,
+    required Set<String> chosen,
+    bool touched = false,
+  }) {
+    if (touched || to == null) return chosen;
+    if (chosen.isNotEmpty) return chosen;
+    final start = DateTime(from.year, from.month, from.day);
+    final end = DateTime(to.year, to.month, to.day);
+    final out = <String>{};
+    for (var d = start; !d.isAfter(end); d = DateTime(d.year, d.month, d.day + 1)) {
+      if (MusterService.booksADay(d, kind, const {})) {
+        out.add(d.toIso8601String().split('T').first);
+      }
+    }
+    return out;
+  }
+
+  /// Every day in the stretch, as a calendar you tick.
+  ///
+  /// The Saturday chips could only answer "was Saturday worked". The
+  /// assistant is not on site every working day — leave, a day off, a week
+  /// with no testing — and a range plus a weekday rule has no way to say "not
+  /// that Tuesday". October was recorded as a clean 1–15 run for exactly this
+  /// reason and then stopped, leaving ten days MOICARS had billed and the
+  /// register had not.
+  ///
+  /// Seeded from the rule rather than left blank: the common case is still
+  /// Mon–Fri for manpower and every day for a hire, so the calendar opens on
+  /// the right answer and is corrected rather than filled in.
+  List<Widget> _dayPickers({
+    required DateTime from,
+    required DateTime? to,
+    required Set<String> selected,
+    required void Function(Set<String> next) onChange,
+    required MusterKind kind,
+  }) {
+    if (to == null) return const [];
+    final start = DateTime(from.year, from.month, from.day);
+    final end = DateTime(to.year, to.month, to.day);
+    if (end.isBefore(start)) return const [];
+
+    final days = <DateTime>[];
+    for (var d = start; !d.isAfter(end); d = DateTime(d.year, d.month, d.day + 1)) {
+      days.add(d);
+    }
+    // A very long stretch is a scrolling wall of boxes with no way to see a
+    // month at a time; the rule still covers it and the register can be
+    // corrected per day afterwards.
+    if (days.length > 70) return const [];
+
+    String k(DateTime d) => d.toIso8601String().split('T').first;
+    final accent = switch (kind) {
+      MusterKind.workshop => _amber,
+      MusterKind.deadweight => const Color(0xFFB794F6),
+      _ => _teal,
+    };
+
+    // Grouped by month so a stretch crossing a month boundary reads as two
+    // calendars rather than one run-on strip.
+    final months = <String, List<DateTime>>{};
+    for (final d in days) {
+      months.putIfAbsent(DateFormat('MMMM yyyy').format(d), () => []).add(d);
+    }
+
+    return [
+      const SizedBox(height: 14),
+      Row(children: [
+        Expanded(
+          child: Text('Which days?',
+              style: GoogleFonts.spaceGrotesk(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600)),
+        ),
+        _miniBtn('All', () {
+          onChange({for (final d in days) k(d)});
+        }),
+        const SizedBox(width: 6),
+        _miniBtn('Weekdays', () {
+          onChange({
+            for (final d in days)
+              if (d.weekday != DateTime.saturday && d.weekday != DateTime.sunday)
+                k(d)
+          });
+        }),
+        const SizedBox(width: 6),
+        _miniBtn('None', () => onChange(<String>{})),
+      ]),
+      const SizedBox(height: 2),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+            '${selected.length} day${selected.length == 1 ? '' : 's'} selected'
+            '  ·  tap to add or remove',
+            style: GoogleFonts.spaceGrotesk(color: _muted, fontSize: 10)),
+      ),
+      const SizedBox(height: 10),
+      for (final entry in months.entries) ...[
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(entry.key.toUpperCase(),
+                style: GoogleFonts.spaceGrotesk(
+                    color: _muted,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2)),
+          ),
+        ),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: entry.value.map((d) {
+            final key = k(d);
+            final on = selected.contains(key);
+            final weekend = d.weekday == DateTime.saturday ||
+                d.weekday == DateTime.sunday;
+            return GestureDetector(
+              onTap: () {
+                final next = Set<String>.from(selected);
+                on ? next.remove(key) : next.add(key);
+                onChange(next);
+              },
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 120),
+                  width: 42,
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  decoration: BoxDecoration(
+                    color: on
+                        ? accent.withAlpha(38)
+                        : const Color(0xFF050811).withAlpha(160),
+                    borderRadius: BorderRadius.circular(9),
+                    border: Border.all(
+                        color: on
+                            ? accent.withAlpha(150)
+                            : const Color(0xFF849495).withAlpha(60)),
+                  ),
+                  child: Column(children: [
+                    Text(DateFormat('E').format(d).substring(0, 2),
+                        style: GoogleFonts.spaceGrotesk(
+                            fontSize: 8,
+                            fontWeight: FontWeight.w700,
+                            // Weekends stay legible but read as the exception,
+                            // so an unticked Saturday does not look like a bug.
+                            color: on
+                                ? accent
+                                : (weekend ? _amber.withAlpha(140) : _muted))),
+                    Text('${d.day}',
+                        style: GoogleFonts.spaceGrotesk(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: on ? Colors.white : _muted)),
+                  ]),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 10),
+      ],
+    ];
+  }
+
+  Widget _miniBtn(String label, VoidCallback onTap) => GestureDetector(
+        onTap: onTap,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(7),
+              border: Border.all(color: const Color(0xFF849495).withAlpha(80)),
+            ),
+            child: Text(label,
+                style: GoogleFonts.spaceGrotesk(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white70)),
+          ),
+        ),
+      );
+
   List<Widget> _saturdayPickers({
     required DateTime from,
     required DateTime? to,
@@ -1794,6 +2016,7 @@ class _MusterScreenState extends State<MusterScreen> {
     String? notes,
     MusterKind kind = MusterKind.manpower,
     Set<String> saturdaysWorked = const {},
+    Set<String>? onlyDays,
   }) async {
     try {
       final n = await MusterService.instance.saveRange(
@@ -1805,12 +2028,13 @@ class _MusterScreenState extends State<MusterScreen> {
         notes: notes,
         kind: kind,
         saturdaysWorked: saturdaysWorked,
+        onlyDays: onlyDays,
       );
-      // Zero is a real outcome: a Sat-Sun range with weekends off. Cannot
-      // happen for workshop, which books every day.
+      // Zero is a real outcome, and now usually means the calendar was
+      // cleared rather than that the range fell on a weekend.
       if (n == 0) {
-        _snack('Nothing recorded - that range is all weekend. '
-            'Tick the Saturday you worked, or pick a weekday.');
+        _snack('Nothing recorded - no days are ticked. '
+            'Pick the days on the calendar, then save.');
         return;
       }
       _snack('$n ${n == 1 ? 'day' : 'days'} recorded');

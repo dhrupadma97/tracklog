@@ -410,6 +410,16 @@ class MusterService extends ChangeNotifier {
     /// actually worked. Sunday is never counted here; a one-off Sunday is
     /// recorded by saving that single date on its own.
     Set<String> saturdaysWorked = const {},
+    /// Exactly which dates to write, as 'YYYY-MM-DD'.
+    ///
+    /// When given, this replaces the weekday rule rather than filtering it:
+    /// the caller has said precisely which days to book and nothing should
+    /// second-guess that. The assistant is not on site every working day --
+    /// leave, a day off, a week with no testing -- and a range plus a weekday
+    /// rule has no way to say "not that Tuesday". Days outside [from]..[to]
+    /// are ignored, so a stale selection left over from an earlier range
+    /// cannot write rows outside the stretch on screen.
+    Set<String>? onlyDays,
   }) async {
     var day = DateTime(from.year, from.month, from.day);
     final end = DateTime(to.year, to.month, to.day);
@@ -417,7 +427,13 @@ class MusterService extends ChangeNotifier {
 
     final rows = <Map<String, dynamic>>[];
     while (!day.isAfter(end)) {
-      final skip = !booksADay(day, kind, saturdaysWorked);
+      final key = day.toIso8601String().split('T').first;
+      // An explicit selection is the whole answer. Intersecting it with the
+      // weekday rule would silently drop a Sunday the user had just ticked,
+      // which is the one case they went to the calendar to express.
+      final skip = onlyDays != null
+          ? !onlyDays.contains(key)
+          : !booksADay(day, kind, saturdaysWorked);
       if (skip) {
         day = DateTime(day.year, day.month, day.day + 1);
         continue;
