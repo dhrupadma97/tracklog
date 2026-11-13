@@ -69,20 +69,27 @@ class BackupData {
   static double money(num? v) =>
       ((v ?? 0).toDouble() * 100).roundToDouble() / 100;
 
+  // No toLocal() in either of these. Sessions are written as wall-clock time
+  // with no offset (Manual Entry and the live session both send a bare local
+  // ISO string), Postgres stores that as if it were UTC, and every screen
+  // reads the UTC fields straight back as the clock time. Converting here
+  // added 5 h 30 min to every time in the backup and pushed any run after
+  // 18:30 onto the next day — found 12 Nov 2026 reconciling October, when
+  // the backup's 16:01 was NATRAX's 10:31.
   static String _date(Object? raw) {
     if (raw == null) return '';
     final s = raw.toString();
     if (s.isEmpty) return '';
     final dt = DateTime.tryParse(s);
     if (dt == null) return s;
-    return DateFormat('dd-MMM-yyyy').format(dt.toLocal());
+    return DateFormat('dd-MMM-yyyy').format(dt);
   }
 
   static String _time(Object? raw) {
     if (raw == null) return '';
     final dt = DateTime.tryParse(raw.toString());
     if (dt == null) return '';
-    return DateFormat('HH:mm').format(dt.toLocal());
+    return DateFormat('HH:mm').format(dt);
   }
 
   /// Builds the workbook rows from raw Supabase maps.

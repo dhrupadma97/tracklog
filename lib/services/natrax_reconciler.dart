@@ -1047,7 +1047,21 @@ class NatraxReconciler {
             'blocks, so the money is estimated by block, not by the hour.',
       ];
       final same = tb.isNotEmpty && ob.isNotEmpty && tCode == oCode && th == oh;
-      final favour = tMoney <= oMoney;
+      // Their sheet names one exclusive track, our record another. 15 Oct
+      // 2026: the sheet says "(After 2 Hrs)(T1-003)" — High Speed, ₹1,80,000
+      // a block — where the car was on the braking track, ₹1,50,000. Their
+      // hours can be right while their track is wrong, so the fair figure is
+      // their hours at OUR track's block price. When that is below theirs,
+      // the line is NATRAX billing more and must not be swept up by "accept
+      // all in our favour", however much higher our own 4 h might be.
+      final wrongTrack = tCode.isNotEmpty &&
+          oCode.isNotEmpty &&
+          tCode != oCode &&
+          NatraxRateCard.isExclusive(oCode);
+      final fairMoney =
+          wrongTrack ? NatraxRateCard.exclusiveCost(oCode, th) : tMoney;
+      final overByTrack = wrongTrack && fairMoney < tMoney;
+      final favour = !overByTrack && tMoney <= oMoney;
       keep(ReconItem(
         key: 'exc|$dayKey',
         kind: ReconKind.exclusive,
@@ -1086,6 +1100,17 @@ class NatraxReconciler {
                           'NATRAX booked $tCode.'
                       : null,
                 ),
+                if (wrongTrack)
+                  ReconOption(
+                    id: 'their_hours_our_track',
+                    label: 'Their ${_h(th)} h, priced as $oCode — '
+                        '${_rs(fairMoney)}',
+                    detail: 'Their hours, but the sheet names the wrong track: '
+                        'it was ${NatraxRateCard.nameFor(oCode)}.',
+                    agreed: th,
+                    agreedMoney: fairMoney,
+                    dispute: fairMoney < tMoney,
+                  ),
                 ReconOption(
                   id: 'dispute',
                   label: ob.isEmpty
@@ -1097,13 +1122,19 @@ class NatraxReconciler {
                   dispute: true,
                 ),
               ],
-        suggested: same ? null : (favour ? 'accept' : null),
-        autoComment: favour
-            ? 'Exclusive: NATRAX ${_h(th)} h${tCode.isEmpty ? '' : ' on $tCode'}, '
-                'ours ${_h(oh)} h${oCode.isEmpty ? '' : ' on $oCode'}. Settled at their figure.'
-            : '',
+        suggested: same
+            ? null
+            : (wrongTrack ? 'their_hours_our_track' : (favour ? 'accept' : null)),
+        autoComment: wrongTrack
+            ? 'NATRAX\'s sheet names ${NatraxRateCard.nameFor(tCode)} '
+                '(${_rs(tMoney)}); the car was on ${NatraxRateCard.nameFor(oCode)}. '
+                'Their ${_h(th)} h priced as $oCode: ${_rs(fairMoney)}.'
+            : favour
+                ? 'Exclusive: NATRAX ${_h(th)} h${tCode.isEmpty ? '' : ' on $tCode'}, '
+                    'ours ${_h(oh)} h${oCode.isEmpty ? '' : ' on $oCode'}. Settled at their figure.'
+                : '',
         needsAnswer: !same,
-        bulkOk: !same && favour,
+        bulkOk: !same && favour && !wrongTrack,
         snapshot: 't=${_h(th)}$tCode|o=${_h(oh)}$oCode',
         theirsMoney: tMoney,
         oursMoney: oMoney,

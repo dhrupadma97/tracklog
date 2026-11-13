@@ -116,6 +116,20 @@ void main() {
       expect(numOf(v), 42000.01);
     });
 
+    test('times are the wall clock as entered, not shifted to IST', () {
+      // Stored as 18:40 on 13 Oct — the time on the gate log. Converting to
+      // local time made it 00:10 on the 14th.
+      final d = buildData(sessions: [
+        session(
+            started: '2026-10-13T18:40:00+00:00',
+            ended: '2026-10-13T18:49:00+00:00'),
+      ]);
+      final row = reopen(d)[ExcelBackupService.sheetSessions].rows[1];
+      expect(row[0]?.value.toString(), '13-Oct-2026');
+      expect(row[5]?.value.toString(), '18:40');
+      expect(row[6]?.value.toString(), '18:49');
+    });
+
     test('a running session with no end time does not break the row', () {
       final d = buildData(sessions: [session(ended: null)]);
       final row = reopen(d)[ExcelBackupService.sheetSessions].rows[1];

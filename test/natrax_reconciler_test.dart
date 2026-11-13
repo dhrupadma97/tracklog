@@ -436,4 +436,35 @@ void main() {
           'WATER');
     });
   });
+
+  _wrongTrackExclusive();
+}
+
+void _wrongTrackExclusive() {
+  test('an exclusive on the wrong track is priced at our track, never swept up',
+      () {
+    // 15 Oct 2026: the sheet says High Speed exclusive (T1X, 1,80,000 a
+    // block); the car was on the braking track (T3X, 1,50,000 a block).
+    final sheet = NatraxUtilisationSheet.fromGrid(_grid(track: [
+      _row(1, DateTime(2026, 10, 15), 'Exclusive', 'XUV-7X0',
+          '(After 2 Hrs)(T1-003)', '08:25', '08:51', 2),
+      _more(2, '09:08', '09:43'),
+      _more(3, '10:49', '12:03'),
+    ]));
+    final o = NatraxReconciler.run(
+      sheet: sheet,
+      ours: OurMonth(runs: [_ours(15, '08:00', 240, 'T3X', cost: 300000)]),
+      vehicles: _ice,
+    );
+    final it = _item(o, 'exc|2026-10-15|Mahindra ICE PoC');
+    expect(it.stance, ReconStance.theirsMore);
+    expect(it.bulkOk, isFalse,
+        reason: '"Accept all" must not settle it at the High Speed price');
+    expect(it.suggested, 'their_hours_our_track');
+    final fair = it.options.firstWhere((x) => x.id == 'their_hours_our_track');
+    expect(fair.agreed, 2);
+    expect(fair.agreedMoney, 150000);
+    expect(fair.dispute, isTrue);
+    expect(it.autoComment, contains('1,50,000'));
+  });
 }
