@@ -15,10 +15,15 @@
 - Admin tab is shown ONLY to `userRole == 'manager'` (fixed from inverted bug)
 - Web sidebar (`app_scaffold.dart`) and mobile bottom nav (`app_navigation.dart`)
   are two separate lists and drift apart easily — add a tab to both. Web shows:
-  Projects, Analyser, History, Manual Entry, Settings, Admin (if manager),
-  Instruments, Test Cases, PO Tracker, Muster, Reconcile. No Session, Gates or
-  Tracks tabs on web — Tracks was hidden on request (12 Nov 2026); its route
-  and the mobile tab remain. The rail scrolls, so a long list is never cut off.
+  Projects, Analyser, Manual Entry, Settings, Admin (if manager), Instruments,
+  Test Cases, PO Tracker, Muster, Reconcile. No Session, Gates, Tracks or
+  History tabs on web — Tracks (12 Nov 2026) and History (13 Nov 2026) were
+  hidden on request; their routes and the mobile tabs remain. The rail
+  scrolls, so a long list is never cut off.
+- PO Tracker is split into Manpower POs and Track & Workshop POs, and carries
+  the days used / left per manpower PO (moved from the Muster, 13 Nov 2026).
+  The Muster is the day record only: manpower, workshop, dead weight, and
+  "other" entries in `muster_entries` (a record, never added to cost).
 - Daily Log = `SessionHistoryScreen`, router branch 14 (`/daily-log-screen`).
   Branch 1 is still named `AppRoutes.sessionHistory` but renders `TracksScreen`;
   do not confuse the two.

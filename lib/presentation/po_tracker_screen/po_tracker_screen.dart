@@ -19,6 +19,7 @@ import '../../services/po_parser.dart';
 import '../../services/engineer_auth_service.dart';
 import '../../widgets/invoice_upload_flow.dart';
 import '../../services/session_status.dart';
+import '../../services/muster_service.dart';
 
 class PoTrackerScreen extends StatefulWidget {
   const PoTrackerScreen({super.key});
@@ -88,6 +89,13 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
   /// Every original on file, whichever vehicle it was raised for. POs are
   /// shared funding pools, so their drawdown must count all of them.
   List<NatraxInvoice> _allInvoices = [];
+
+  /// Days on each manpower PO and what the workshop has run up on each track
+  /// PO, from the muster. These cards lived on the Muster screen until
+  /// 13 Nov 2026; the money question belongs here, beside the PO it is about.
+  List<ManpowerPosition> _manpowerPositions = [];
+  List<WorkshopPosition> _workshopPositions = [];
+  String? _nextManpowerPo;
 
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
@@ -221,6 +229,29 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
         _invoices = [];
       }
 
+      // Days used and left on manpower POs, and workshop days on track POs.
+      // Invoiced-per-PO is handed in so the muster maths and these cards
+      // count billing the same way. A failure here costs the day figures,
+      // not the screen.
+      try {
+        final invoicedExcl = <String, double>{};
+        for (final i in _allInvoices) {
+          final po = (i.poNumber ?? '').trim();
+          if (po.isEmpty) continue;
+          invoicedExcl[po] = (invoicedExcl[po] ?? 0) + i.amountExclGst;
+        }
+        _manpowerPositions = await MusterService.instance
+            .positions(invoicedExclGstByPo: invoicedExcl);
+        _workshopPositions = await MusterService.instance
+            .workshopPositions(invoicedExclGstByPo: invoicedExcl);
+        _nextManpowerPo =
+            MusterService.instance.nextManpowerPo(_manpowerPositions);
+      } catch (_) {
+        _manpowerPositions = [];
+        _workshopPositions = [];
+        _nextManpowerPo = null;
+      }
+
       setState(() => _loading = false);
       _animController.forward();
     } catch (e) {
@@ -344,18 +375,6 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
     return _balanceOf(po) <= 1;
   }
 
-  /// POs with money left, most drawn down first — the one closest to closing
-  /// is the one that needs attention.
-  List<Map<String, dynamic>> get _livePos {
-    final live = _poList.where((p) => !_isSpent(p)).toList();
-    live.sort((a, b) => _balanceOf(a).compareTo(_balanceOf(b)));
-    return live;
-  }
-
-  /// POs with nothing left. Kept visible because their invoices are history,
-  /// but separated so they cannot be mistaken for available funding.
-  List<Map<String, dynamic>> get _spentPos =>
-      _poList.where(_isSpent).toList();
 
   /// POs that can still be booked against: not exhausted, and with a value on
   /// record. A PO whose value is unknown cannot be counted as funding.
@@ -976,46 +995,41 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                                 Center(
                                   child: Text('No POs found', style: GoogleFonts.spaceGrotesk(color: Colors.white54)),
                                 ),
-                              // Split so spent POs cannot be read as funding.
-                              // A flat list put 8242348442 -- 80% gone, two
-                              // weeks from expiry -- beside an untouched PO
-                              // with no visual difference between them.
-                              if (_livePos.isNotEmpty) ...[
-                                _poSectionHeader(
-                                  'Available to book',
-                                  '${_livePos.length} PO'
-                                      '${_livePos.length == 1 ? '' : 's'} · '
-                                      '₹${_formatAmount(_livePos.fold<double>(0, (s, p) => s + _balanceOf(p)))} left',
-                                  const Color(0xFF4CAF50),
-                                  Icons.account_balance_wallet_outlined,
-                                ),
-                                ..._livePos.map((po) => Padding(
-                                      padding:
-                                          const EdgeInsets.only(bottom: 16),
-                                      child: _buildPoInfoCard(po),
-                                    )),
-                              ],
-                              if (_spentPos.isNotEmpty) ...[
-                                _poSectionHeader(
-                                  'Fully drawn down',
-                                  '${_spentPos.length} PO'
-                                      '${_spentPos.length == 1 ? '' : 's'} · '
-                                      'history only, no funding left',
-                                  const Color(0xFF6B7490),
-                                  Icons.lock_outline_rounded,
-                                ),
-                                ..._spentPos.map((po) => Padding(
-                                      padding:
-                                          const EdgeInsets.only(bottom: 16),
-                                      child: Opacity(
-                                        // Dimmed, not hidden: the invoices on
-                                        // it are real history and still have
-                                        // to be findable.
-                                        opacity: 0.62,
-                                        child: _buildPoInfoCard(po),
-                                      ),
-                                    )),
-                              ],
+                              // Split by what a PO pays for, 13 Nov 2026.
+                              // Manpower is contracted in days; track and
+                              // workshop is a lumpsum billed on actuals. One
+                              // flat list mixed the two and read as neither.
+                              if (_poList.isNotEmpty) _buildGroupSummary(),
+                              const SizedBox(height: 20),
+                              ..._buildPoGroup(
+                                title: 'MANPOWER POs',
+                                subtitle: 'MOICARS — contracted in days at a '
+                                    'day rate; drawn by the muster',
+                                icon: Icons.groups_outlined,
+                                accent: _manpowerAccent,
+                                pos: _poList
+                                    .where((p) => _groupOf(p) == 'manpower')
+                                    .toList(),
+                              ),
+                              ..._buildPoGroup(
+                                title: 'TRACK & WORKSHOP POs',
+                                subtitle: 'NATRAX — track time, workshop and '
+                                    'services, billed on actuals',
+                                icon: Icons.route_outlined,
+                                accent: _trackAccent,
+                                pos: _poList
+                                    .where((p) => _groupOf(p) == 'track')
+                                    .toList(),
+                              ),
+                              ..._buildPoGroup(
+                                title: 'OTHER POs',
+                                subtitle: 'Not manpower or track',
+                                icon: Icons.inventory_2_outlined,
+                                accent: const Color(0xFF6B7490),
+                                pos: _poList
+                                    .where((p) => _groupOf(p) == 'other')
+                                    .toList(),
+                              ),
                               // Money nobody can attribute to a PO is not a
                               // detail -- it stays on screen.
                               _buildUnattributedWarning(),
@@ -1118,8 +1132,10 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
                   fontWeight: FontWeight.w800,
                 ),
               ),
+              // POs are a shared pool, drawn by whichever programme is on
+              // test — so the title does not name the active project.
               Text(
-                'Purchase Order Utilisation — ${ProjectManager.instance.activeProject}',
+                'Purchase orders for every programme · what is left on each',
                 style: GoogleFonts.spaceGrotesk(
                   color: const Color(0xFF6B7490),
                   fontSize: 12,
@@ -1190,6 +1206,419 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
       ),
     );
   }
+  // ── Grouping: manpower vs track & workshop ──────────────────────────────
+
+  static const _manpowerAccent = Color(0xFF9C88FF);
+  static const _trackAccent = AppTheme.primary;
+  static const _goodGreen = Color(0xFF4CAF50);
+  static const _warnAmber = Color(0xFFFFB74D);
+  static const _mutedGrey = Color(0xFF6B7490);
+
+  /// Which section a PO sits in. Workshop is billed on the NATRAX track PO
+  /// (8242390552 is "Track & Workshop Booking"), so the two share a section.
+  static String _groupOf(Map<String, dynamic> po) =>
+      switch ((po['category'] as String? ?? '').trim()) {
+        'manpower' => 'manpower',
+        'track_booking' || 'workshop' => 'track',
+        _ => 'other',
+      };
+
+  String _po(Map<String, dynamic> po) => (po['po_number'] as String? ?? '').trim();
+
+  double _valueOf(Map<String, dynamic> po) =>
+      ((po['total_po_value'] as num?)?.toDouble() ?? 0) +
+      ((po['tax_amount'] as num?)?.toDouble() ?? 0);
+
+  ManpowerPosition? _manpowerFor(String po) {
+    for (final p in _manpowerPositions) {
+      if (p.poNumber == po) return p;
+    }
+    return null;
+  }
+
+  WorkshopPosition? _workshopFor(String po) {
+    for (final p in _workshopPositions) {
+      if (p.poNumber == po) return p;
+    }
+    return null;
+  }
+
+  /// Two tiles: what is left for manpower, and for track & workshop.
+  Widget _buildGroupSummary() {
+    final man = _poList.where((p) => _groupOf(p) == 'manpower').toList();
+    final track = _poList.where((p) => _groupOf(p) == 'track').toList();
+    final manLive = man.where((p) => !_isSpent(p)).toList();
+    final trackLive = track.where((p) => !_isSpent(p)).toList();
+
+    var daysLeft = 0.0, daysUnbilled = 0.0;
+    var daysKnown = false;
+    for (final p in manLive) {
+      final pos = _manpowerFor(_po(p));
+      if (pos == null || !pos.isComplete) continue;
+      daysKnown = true;
+      daysLeft += pos.daysLeft.clamp(0, double.infinity);
+      daysUnbilled += pos.daysUnbilled;
+    }
+    final manMoney = manLive.fold<double>(0, (s, p) => s + _balanceOf(p));
+    final trackMoney = trackLive.fold<double>(0, (s, p) => s + _balanceOf(p));
+    final trackInvoiced =
+        track.fold<double>(0, (s, p) => s + _invoicedAgainst(_po(p)));
+    final shopDays = _workshopPositions.fold<int>(0, (s, w) => s + w.daysRecorded);
+
+    Widget tile({
+      required String title,
+      required IconData icon,
+      required Color accent,
+      required String big,
+      required String bigLabel,
+      required List<String> lines,
+    }) =>
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0A1025).withAlpha(210),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: accent.withAlpha(80)),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(icon, color: accent, size: 16),
+              const SizedBox(width: 8),
+              Text(title,
+                  style: GoogleFonts.spaceGrotesk(
+                      color: accent,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.1)),
+            ]),
+            const SizedBox(height: 10),
+            Text(big,
+                style: GoogleFonts.spaceGrotesk(
+                    color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800)),
+            Text(bigLabel,
+                style: GoogleFonts.spaceGrotesk(color: _mutedGrey, fontSize: 11)),
+            const SizedBox(height: 8),
+            for (final l in lines)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(l,
+                    style: GoogleFonts.spaceGrotesk(
+                        color: Colors.white70, fontSize: 11.5, height: 1.35)),
+              ),
+          ]),
+        );
+
+    final manTile = tile(
+      title: 'MANPOWER',
+      icon: Icons.groups_outlined,
+      accent: _manpowerAccent,
+      big: daysKnown ? '${daysLeft.toStringAsFixed(0)} days left' : '₹${_formatAmount(manMoney)} left',
+      bigLabel: daysKnown
+          ? '₹${_formatAmount(manMoney)} left on ${manLive.length} PO${manLive.length == 1 ? '' : 's'}'
+          : 'on ${manLive.length} PO${manLive.length == 1 ? '' : 's'}',
+      lines: [
+        if (_nextManpowerPo != null) 'Next day is drawn from PO $_nextManpowerPo',
+        if (daysUnbilled > 0)
+          '${daysUnbilled.toStringAsFixed(0)} day${daysUnbilled == 1 ? '' : 's'} worked, not yet invoiced',
+      ],
+    );
+    final trackTile = tile(
+      title: 'TRACK & WORKSHOP',
+      icon: Icons.route_outlined,
+      accent: _trackAccent,
+      big: '₹${_formatAmount(trackMoney)} left',
+      bigLabel: 'on ${trackLive.length} PO${trackLive.length == 1 ? '' : 's'}',
+      lines: [
+        '₹${_formatAmount(trackInvoiced)} invoiced so far',
+        if (shopDays > 0) '$shopDays workshop day${shopDays == 1 ? '' : 's'} in the muster',
+      ],
+    );
+    return LayoutBuilder(
+      builder: (_, c) => c.maxWidth >= 700
+          ? IntrinsicHeight(
+              child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Expanded(child: manTile),
+                const SizedBox(width: 14),
+                Expanded(child: trackTile),
+              ]),
+            )
+          : Column(children: [manTile, const SizedBox(height: 12), trackTile]),
+    );
+  }
+
+  /// One section: its POs with money left first, then the used-up ones,
+  /// dimmed — their invoices are history and must stay findable, but they
+  /// must not read as funding.
+  List<Widget> _buildPoGroup({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color accent,
+    required List<Map<String, dynamic>> pos,
+  }) {
+    if (pos.isEmpty) return const [];
+    final live = pos.where((p) => !_isSpent(p)).toList()
+      ..sort((a, b) => _balanceOf(a).compareTo(_balanceOf(b)));
+    final spent = pos.where(_isSpent).toList();
+    final left = live.fold<double>(0, (s, p) => s + _balanceOf(p));
+    return [
+      _poSectionHeader(
+        title,
+        '$subtitle  ·  ${live.length} open, ₹${_formatAmount(left)} left',
+        accent,
+        icon,
+      ),
+      for (final po in live)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: _buildPoInfoCard(po),
+        ),
+      if (spent.isNotEmpty) ...[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 2, 4, 10),
+          child: Text(
+              'USED UP · ${spent.length} PO${spent.length == 1 ? '' : 's'} — history only',
+              style: GoogleFonts.spaceGrotesk(
+                  color: _mutedGrey,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1)),
+        ),
+        for (final po in spent)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Opacity(opacity: 0.6, child: _buildPoInfoCard(po)),
+          ),
+      ],
+      const SizedBox(height: 14),
+    ];
+  }
+
+  /// Value, invoiced, left — and a bar.
+  Widget _poMoneyFace(Map<String, dynamic> po) {
+    final number = _po(po);
+    final value = _valueOf(po);
+    final tax = (po['tax_amount'] as num?)?.toDouble() ?? 0;
+    final drawn = _invoicedAgainst(number);
+    final left = value - drawn;
+    final invoices = List<NatraxInvoice>.from(_invoicesByPo[number] ?? const [])
+      ..sort((a, b) => (b.invoiceDate ?? DateTime(2000))
+          .compareTo(a.invoiceDate ?? DateTime(2000)));
+    final pct = value > 0 ? (drawn / value).clamp(0.0, 1.0) : 0.0;
+    final leftColour = value <= 0
+        ? _mutedGrey
+        : left <= 1
+            ? Colors.redAccent
+            : (left < value * 0.2 ? _warnAmber : _goodGreen);
+    final pending = po['tax_pending'] == true;
+
+    Widget stat(String label, String amount, String sub, Color c, {bool big = false}) =>
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label,
+                style: GoogleFonts.spaceGrotesk(
+                    color: _mutedGrey,
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8)),
+            const SizedBox(height: 3),
+            Text(amount,
+                style: GoogleFonts.spaceGrotesk(
+                    color: c, fontSize: big ? 19 : 16, fontWeight: FontWeight.w800)),
+            Text(sub,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.spaceGrotesk(color: _mutedGrey, fontSize: 10)),
+          ]),
+        );
+
+    if (value <= 0) {
+      return Text(
+          'No value recorded on this PO yet, so what is left cannot be worked '
+          'out. ${invoices.isEmpty ? 'No invoices against it.' : '${invoices.length} invoice${invoices.length == 1 ? '' : 's'}, ₹${_formatAmount(drawn)}.'}',
+          style: GoogleFonts.spaceGrotesk(color: _warnAmber, fontSize: 11.5, height: 1.4));
+    }
+    final last = invoices.isEmpty ? null : invoices.first;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        stat('PO VALUE', '₹${_formatAmount(value)}',
+            pending ? 'GST not confirmed' : (tax > 0 ? 'incl. ₹${_formatAmount(tax)} GST' : 'no GST'),
+            Colors.white),
+        stat('INVOICED', '₹${_formatAmount(drawn)}',
+            invoices.isEmpty
+                ? 'no invoices yet'
+                : '${invoices.length} invoice${invoices.length == 1 ? '' : 's'}',
+            Colors.white70),
+        stat('LEFT', '₹${_formatAmount(left)}', '${(100 - pct * 100).toStringAsFixed(0)}% of the PO',
+            leftColour,
+            big: true),
+      ]),
+      const SizedBox(height: 10),
+      ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: LinearProgressIndicator(
+          value: pct,
+          minHeight: 6,
+          backgroundColor: Colors.white.withAlpha(20),
+          valueColor: AlwaysStoppedAnimation(
+              pct >= 0.8 ? _warnAmber : (_groupOf(po) == 'manpower' ? _manpowerAccent : _trackAccent)),
+        ),
+      ),
+      if (last != null) ...[
+        const SizedBox(height: 6),
+        Text(
+            'Last invoice ${last.invoiceNumber}'
+            '${last.invoiceDate == null ? '' : ', ${DateFormat('d MMM yyyy').format(last.invoiceDate!)}'}'
+            ' · ₹${_formatAmount(last.totalAmount)}',
+            style: GoogleFonts.spaceGrotesk(color: _mutedGrey, fontSize: 10.5)),
+      ],
+    ]);
+  }
+
+  /// Days for a manpower PO; workshop days for a track PO. From the muster.
+  List<Widget> _poDaysPanel(Map<String, dynamic> po) {
+    final number = _po(po);
+    final group = _groupOf(po);
+    Widget box(Color c, List<Widget> children) => Container(
+          margin: const EdgeInsets.only(top: 12),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: c.withAlpha(14),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: c.withAlpha(60)),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
+        );
+    Widget line(String s, Color c, {bool bold = false}) => Padding(
+          padding: const EdgeInsets.only(top: 3),
+          child: Text(s,
+              style: GoogleFonts.spaceGrotesk(
+                  color: c,
+                  fontSize: 11.5,
+                  height: 1.4,
+                  fontWeight: bold ? FontWeight.w700 : FontWeight.w500)),
+        );
+
+    if (group == 'manpower') {
+      final p = _manpowerFor(number);
+      if (p == null) return const [];
+      final isNext = number == _nextManpowerPo;
+      if (!p.isComplete) {
+        return [
+          box(_warnAmber, [
+            line('Days not set on this PO', _warnAmber, bold: true),
+            line(
+                '${p.manDaysUsed.toStringAsFixed(0)} man-day${p.manDaysUsed == 1 ? '' : 's'} '
+                'in the muster count against it. Add the contracted days to '
+                'see how many are left.',
+                Colors.white70),
+          ]),
+        ];
+      }
+      final daysPct = (p.manDaysUsed / p.daysContracted).clamp(0.0, 1.0);
+      final leftColour = p.daysLeft <= 0
+          ? Colors.redAccent
+          : (p.daysLeft <= 10 ? _warnAmber : _goodGreen);
+      Widget d(String label, String v, Color c) => Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(label,
+                  style: GoogleFonts.spaceGrotesk(
+                      color: _mutedGrey,
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.8)),
+              Text(v,
+                  style: GoogleFonts.spaceGrotesk(
+                      color: c, fontSize: 16, fontWeight: FontWeight.w800)),
+            ]),
+          );
+      return [
+        box(_manpowerAccent, [
+          Row(children: [
+            const Icon(Icons.event_available, size: 14, color: _manpowerAccent),
+            const SizedBox(width: 6),
+            Text('DAYS',
+                style: GoogleFonts.spaceGrotesk(
+                    color: _manpowerAccent,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1)),
+            const Spacer(),
+            if (isNext)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: _goodGreen.withAlpha(30),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: _goodGreen.withAlpha(110)),
+                ),
+                child: Text('next day draws this PO',
+                    style: GoogleFonts.spaceGrotesk(
+                        color: _goodGreen, fontSize: 9.5, fontWeight: FontWeight.w800)),
+              ),
+          ]),
+          const SizedBox(height: 8),
+          Row(children: [
+            d('USED', p.manDaysUsed.toStringAsFixed(0), Colors.white),
+            d('CONTRACTED', p.daysContracted.toStringAsFixed(0), Colors.white70),
+            d('LEFT', p.daysLeft.toStringAsFixed(0), leftColour),
+            d('INVOICED', p.manDaysInvoiced.toStringAsFixed(0), Colors.white70),
+          ]),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: daysPct,
+              minHeight: 5,
+              backgroundColor: Colors.white.withAlpha(20),
+              valueColor: AlwaysStoppedAnimation(
+                  p.isOverrun ? Colors.redAccent : (daysPct > 0.85 ? _warnAmber : _manpowerAccent)),
+            ),
+          ),
+          line('At ₹${_formatAmount(p.ratePerDay)} a day'
+              '${p.manDaysOpening > 0 ? ' · ${p.manDaysOpening.toStringAsFixed(0)} worked before the muster started' : ''}',
+              _mutedGrey),
+          if (p.daysUnbilled > 0)
+            line(
+                '${p.daysUnbilled.toStringAsFixed(0)} day${p.daysUnbilled == 1 ? '' : 's'} worked but not yet '
+                'invoiced — ₹${_formatAmount(p.valueUnbilled)} before GST still to come.',
+                _warnAmber,
+                bold: true),
+          if (p.isOverrun)
+            line(
+                'Days worked are past the PO by '
+                '${(p.manDaysUsed - p.daysContracted).toStringAsFixed(0)}. A new PO is '
+                'needed before more manpower is booked.',
+                Colors.redAccent,
+                bold: true),
+        ]),
+      ];
+    }
+
+    if (group == 'track') {
+      final w = _workshopFor(number);
+      if (w == null || w.daysRecorded == 0) return const [];
+      return [
+        box(_warnAmber, [
+          Row(children: [
+            const Icon(Icons.home_repair_service, size: 14, color: _warnAmber),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                  'Workshop: ${w.daysRecorded} day${w.daysRecorded == 1 ? '' : 's'} in the muster · '
+                  '₹${_formatAmount(w.accruedExclGst)} at ₹${_formatAmount(w.ratePerDay)}/day',
+                  style: GoogleFonts.spaceGrotesk(
+                      color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700)),
+            ),
+          ]),
+          line('Billed on actuals, so this builds up rather than drawing a set '
+              'number of days.', _mutedGrey),
+        ]),
+      ];
+    }
+    return const [];
+  }
+
   Widget _buildPoInfoCard(Map<String, dynamic> po) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
@@ -1328,47 +1757,11 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
               const SizedBox(height: 12),
               const Divider(color: Color(0xFF2A3450), height: 1),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildPoValueItem(
-                      label: 'Base Value',
-                      amount: (po['total_po_value'] as num?)?.toDouble() ?? 0,
-                      color: Colors.white,
-                    ),
-                  ),
-                  Container(
-                    width: 1,
-                    height: 36,
-                    color: const Color(0xFF2A3450),
-                  ),
-                  Expanded(
-                    child: _buildPoValueItem(
-                      label: 'Tax (GST)',
-                      amount: (po['tax_amount'] as num?)?.toDouble() ?? 0,
-                      color: const Color(0xFFFFB74D),
-                      pending: po['tax_pending'] == true,
-                    ),
-                  ),
-                  Container(
-                    width: 1,
-                    height: 36,
-                    color: const Color(0xFF2A3450),
-                  ),
-                  Expanded(
-                    child: _buildPoValueItem(
-                      label: 'Total PO Value',
-                      amount: ((po['total_po_value'] as num?)?.toDouble() ?? 0) + ((po['tax_amount'] as num?)?.toDouble() ?? 0),
-                      color: AppTheme.primary,
-                      bold: true,
-                      // The total is tax plus value, so an unconfirmed tax
-                      // makes the total unconfirmed too. Marking only the tax
-                      // would leave the bigger number looking settled.
-                      pending: po['tax_pending'] == true,
-                    ),
-                  ),
-                ],
-              ),
+              // The card face answers "what is left" in one line: value,
+              // invoiced, left, and a bar. Base value and GST were three
+              // figures that never said the one thing that matters.
+              _poMoneyFace(po),
+              ..._poDaysPanel(po),
               // Drawdown detail, collapsed. The summary rows above already
               // say value, spent and remaining; this says which invoices got
               // it there, which is a follow-up question.
@@ -1626,63 +2019,6 @@ class _PoTrackerScreenState extends State<PoTrackerScreen>
       child: Text(label,
           style: GoogleFonts.spaceGrotesk(
               color: color, fontSize: 8.5, fontWeight: FontWeight.w800)),
-    );
-  }
-
-  Widget _buildPoValueItem({
-    required String label,
-    required double amount,
-    required Color color,
-    bool bold = false,
-    /// The figure is a working assumption, not a confirmed one.
-    ///
-    /// 8242390552 is a GTCI PO supplying an SEZ, where GST may not be
-    /// chargeable at all, and the treatment has been guessed twice already —
-    /// set to nil in one migration and back to 18% in the next. The amount is
-    /// still shown, because a blank would be worse, but it is marked so the
-    /// total built on it is not read as settled.
-    bool pending = false,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Text(
-            label,
-            style: GoogleFonts.spaceGrotesk(
-              color: const Color(0xFF6B7490),
-              fontSize: 10,
-              fontWeight: FontWeight.w500,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '₹${_formatAmount(amount)}',
-            style: GoogleFonts.spaceGrotesk(
-              color: pending ? const Color(0xFF6B7490) : color,
-              fontSize: bold ? 13 : 12,
-              fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
-              decoration: pending ? TextDecoration.underline : null,
-              decorationStyle: TextDecorationStyle.dotted,
-              decorationColor: const Color(0xFFFFB74D),
-            ),
-            textAlign: TextAlign.center,
-            overflow: TextOverflow.ellipsis,
-          ),
-          if (pending)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text('not confirmed',
-                  style: GoogleFonts.spaceGrotesk(
-                      color: const Color(0xFFFFB74D),
-                      fontSize: 8,
-                      fontWeight: FontWeight.w700),
-                  textAlign: TextAlign.center),
-            ),
-        ],
-      ),
     );
   }
 

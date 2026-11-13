@@ -7,6 +7,7 @@ import '../../services/invoice_service.dart';
 import '../../services/muster_service.dart';
 import '../../services/project_catalog.dart';
 import '../../services/project_manager.dart';
+import '../../routes/app_routes.dart';
 
 /// Daily manpower muster — headcount per day against a manpower PO.
 ///
@@ -26,6 +27,16 @@ class _MusterScreenState extends State<MusterScreen> {
   String? _error;
 
   List<MusterDay> _days = [];
+
+  /// "Other" daily entries, from public.muster_entries — the office, the
+  /// conference hall, food coupons. Kept apart from [_days] because nothing
+  /// that counts man-days or workshop days may ever see them.
+  List<MusterDay> _entries = [];
+
+  /// Both, newest first: what the register shows.
+  List<MusterDay> get _all =>
+      [..._days, ..._entries]..sort((a, b) => b.date.compareTo(a.date));
+
   List<ManpowerPosition> _positions = [];
   List<Map<String, dynamic>> _pos = [];
   // Workshop is billed on the NATRAX track PO, a different pool from the
@@ -43,6 +54,8 @@ class _MusterScreenState extends State<MusterScreen> {
   static const _red = Color(0xFFFF6B6B);
   static const _green = Color(0xFF4CAF50);
   static const _muted = Color(0xFF6B7490);
+  static const _deadColour = Color(0xFFB794F6);
+  static const _otherColour = Color(0xFF4D9FFF);
 
   final _inr = NumberFormat.currency(
       locale: 'en_IN', symbol: '₹ ', decimalDigits: 0);
@@ -89,6 +102,7 @@ class _MusterScreenState extends State<MusterScreen> {
       }
 
       final days = await MusterService.instance.list();
+      final entries = await MusterService.instance.listEntries();
       final positions = await MusterService.instance
           .positions(invoicedExclGstByPo: invoicedExcl);
       final pos = await MusterService.instance.activeManpowerPos();
@@ -100,6 +114,7 @@ class _MusterScreenState extends State<MusterScreen> {
       setState(() {
         _readOnly = profile?.isReadOnly ?? true;
         _days = days;
+        _entries = entries;
         _positions = positions;
         _pos = pos;
         _workshopPos = wPos;
@@ -168,7 +183,8 @@ class _MusterScreenState extends State<MusterScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF050811),
-      floatingActionButton: _readOnly || _pos.isEmpty
+      // Shown even with no manpower PO loaded: an "other" entry needs none.
+      floatingActionButton: _readOnly
           ? null
           : FloatingActionButton.extended(
               onPressed: () => _entrySheet(),
@@ -204,8 +220,13 @@ class _MusterScreenState extends State<MusterScreen> {
                         children: [
                           _header(),
                           const SizedBox(height: 16),
-                          ..._positions.map(_positionCard),
-                          ..._workshopPositions.map(_workshopCard),
+                          // PO balances moved to the PO Tracker (13 Nov 2026):
+                          // the muster is the day record, the tracker is the
+                          // money. One line here says where they went and
+                          // which PO the next manpower day draws.
+                          _poLink(),
+                          if (MusterService.instance.entriesTableMissing)
+                            _entriesMissingNote(),
                           const SizedBox(height: 8),
                           _register(),
                         ],
@@ -253,13 +274,13 @@ class _MusterScreenState extends State<MusterScreen> {
         const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Manpower Muster',
+            Text('Muster',
                 style: GoogleFonts.spaceGrotesk(
                     color: Colors.white,
                     fontSize: 20,
                     fontWeight: FontWeight.w800)),
             Text(
-                'Headcount per day — ${ProjectManager.instance.activeProject}',
+                'Attendance, workshop, dead weight and other daily entries',
                 style: GoogleFonts.spaceGrotesk(
                     color: _muted, fontSize: 12, fontWeight: FontWeight.w500)),
           ]),
@@ -281,202 +302,77 @@ class _MusterScreenState extends State<MusterScreen> {
 
   // ─── Position ──────────────────────────────────────────────────────────────
 
-  /// Workshop position: days recorded and what they accrue.
+  /// Where the PO balances went, and which PO the next manpower day draws.
   ///
-  /// Deliberately has no "days left" bar. The track PO workshop is billed on is
-  /// a lumpsum on actuals, not a contracted number of days, so there is no
-  /// remaining-days figure to show and inventing one would be worse than
-  /// leaving it out.
-  Widget _workshopCard(WorkshopPosition p) {
+  /// The days-left and money-left cards lived here until 13 Nov 2026. They
+  /// answer a money question, so they moved to the PO Tracker, split into
+  /// manpower and track & workshop POs; the muster keeps only the day record.
+  Widget _poLink() {
+    final next = MusterService.instance.nextManpowerPo(_positions);
+    ManpowerPosition? pos;
+    for (final p in _positions) {
+      if (p.poNumber == next) pos = p;
+    }
+    final lowOnDays = pos != null && pos.isComplete && pos.daysLeft <= 10;
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
       decoration: BoxDecoration(
         color: const Color(0xFF0A1025).withAlpha(200),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _amber.withAlpha(60)),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+            color: (lowOnDays ? _amber : _teal).withAlpha(70)),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(Icons.home_repair_service, color: _amber, size: 15),
-          const SizedBox(width: 8),
-          Text('Workshop · PO ${p.poNumber}',
-              style: GoogleFonts.spaceGrotesk(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800)),
-          if (p.isClosed) ...[
-            const Spacer(),
-            Text('closed',
-                style: GoogleFonts.spaceGrotesk(
-                    color: _muted,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700)),
-          ],
-        ]),
-        const SizedBox(height: 12),
-        Row(children: [
-          _stat('Days recorded', '${p.daysRecorded}', 'days', Colors.white),
-          _stat('Rate', _inr.format(p.ratePerDay), 'per day', Colors.white),
-          _stat('Accrued', _inr.format(p.accruedExclGst), 'excl GST', _amber),
-        ]),
-        if (p.balanceExclGst != null) ...[
-          const SizedBox(height: 10),
-          Row(children: [
-            _stat('PO value', _inr.format(p.poValue), 'excl GST',
-                Colors.white),
-            _stat('Invoiced', _inr.format(p.invoicedExclGst), 'excl GST',
-                _muted),
-            _stat('Balance', _inr.format(p.balanceExclGst!), 'excl GST',
-                p.balanceExclGst! <= 0 ? _red : _green),
-          ]),
-        ],
-        const SizedBox(height: 10),
-        Text(
-            p.isClosed
-                ? 'This PO is closed. The days on it are historical and no '
-                    'new ones can be booked against it.'
-                : p.daysRecorded == 0
-                    ? 'No workshop days recorded yet. Mark a day and pick '
-                        'WORKSHOP to start the count.'
-                    : 'Billed on actuals against a lumpsum PO, so this '
-                        'accrues rather than drawing a contracted day '
-                        'count down.',
-            style: GoogleFonts.spaceGrotesk(
-                color: _muted, fontSize: 11, height: 1.5)),
-      ]),
-    );
-  }
-
-  Widget _positionCard(ManpowerPosition p) {
-    final incomplete = !p.isComplete;
-    final pct = p.daysContracted <= 0
-        ? 0.0
-        : (p.manDaysUsed / p.daysContracted).clamp(0.0, 1.0);
-    final barColour =
-        p.isOverrun ? _red : (pct > 0.85 ? _amber : _teal);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0A1025).withAlpha(200),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _teal.withAlpha(50)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Text('PO ${p.poNumber}',
-              style: GoogleFonts.spaceGrotesk(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800)),
-          const Spacer(),
-          if (incomplete)
-            Text('value / days pending',
-                style: GoogleFonts.spaceGrotesk(
-                    color: _amber, fontSize: 10, fontWeight: FontWeight.w700)),
-        ]),
-        const SizedBox(height: 12),
-        if (incomplete)
-          Text(
-              'This PO has no value or day count recorded, so days remaining '
-              'cannot be worked out. The muster below still counts against it.',
-              style: GoogleFonts.spaceGrotesk(
-                  color: _muted, fontSize: 11, height: 1.5))
-        else ...[
-          Row(children: [
-            _stat('Used', p.manDaysUsed.toStringAsFixed(0), 'man-days',
-                p.isOverrun ? _red : Colors.white),
-            _stat('Contracted', p.daysContracted.toStringAsFixed(0), 'days',
-                Colors.white),
-            _stat(
-                'Left',
-                p.daysLeft.toStringAsFixed(0),
-                'days',
-                p.daysLeft <= 0
-                    ? _red
-                    : (p.daysLeft <= 10 ? _amber : _green)),
-          ]),
-          const SizedBox(height: 10),
-          // Money left on the PO. Measured against what has been INVOICED,
-          // not against days worked: a day draws nothing down until it is
-          // billed, and counting accrual as drawdown is what once made a PO
-          // read overspent with 6.4 lakh still on it.
-          Builder(builder: (_) {
-            final value = p.daysContracted * p.ratePerDay;
-            final billed = p.manDaysInvoiced * p.ratePerDay;
-            final left = value - billed;
-            return Row(children: [
-              _stat('PO value', _inr.format(value), 'excl GST',
-                  Colors.white),
-              _stat('Invoiced', _inr.format(billed), 'excl GST', _muted),
-              _stat('Balance', _inr.format(left), 'excl GST',
-                  left <= 0 ? _red : _green),
-            ]);
-          }),
-          if (p.manDaysOpening > 0) ...[
-            const SizedBox(height: 8),
+      child: Row(children: [
+        Icon(Icons.receipt_long, color: lowOnDays ? _amber : _teal, size: 18),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(
-                '${p.manDaysOpening.toStringAsFixed(0)} of those were worked '
-                'before the muster started and are carried on the PO; '
-                '${p.manDaysMustered} recorded here by date.',
+                pos == null
+                    ? 'No manpower PO with days left'
+                    : pos.isComplete
+                        ? 'Next manpower day draws PO ${pos.poNumber} · '
+                            '${pos.daysLeft.toStringAsFixed(0)} day'
+                            '${pos.daysLeft == 1 ? '' : 's'} left'
+                        : 'Next manpower day draws PO ${pos.poNumber} · '
+                            'days not set on the PO',
                 style: GoogleFonts.spaceGrotesk(
-                    color: _muted, fontSize: 11, height: 1.4)),
-          ],
-          const SizedBox(height: 14),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: pct,
-              minHeight: 6,
-              backgroundColor: Colors.white.withAlpha(20),
-              valueColor: AlwaysStoppedAnimation(barColour),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-              '${p.manDaysInvoiced.toStringAsFixed(0)} man-days invoiced '
-              'at ${_inr.format(p.ratePerDay)}/day',
-              style: GoogleFonts.spaceGrotesk(color: _muted, fontSize: 11)),
-          if (p.daysUnbilled > 0) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: _amber.withAlpha(20),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _amber.withAlpha(70)),
-              ),
-              child: Text(
-                  '${p.daysUnbilled.toStringAsFixed(0)} man-days worked but not '
-                  'yet invoiced — ${_inr.format(p.valueUnbilled)} ex-GST '
-                  'outside PO drawdown.',
-                  style: GoogleFonts.spaceGrotesk(
-                      color: _amber, fontSize: 11, height: 1.4)),
-            ),
-          ],
-          if (p.isOverrun) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: _red.withAlpha(20),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _red.withAlpha(70)),
-              ),
-              child: Text(
-                  'Mustered days exceed the PO by '
-                  '${(p.manDaysMustered - p.daysContracted).toStringAsFixed(0)}. '
-                  'A follow-on PO is needed before further manpower is booked.',
-                  style: GoogleFonts.spaceGrotesk(
-                      color: _red, fontSize: 11, height: 1.4)),
-            ),
-          ],
-        ],
+                    color: lowOnDays ? _amber : Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700)),
+            const SizedBox(height: 2),
+            Text(
+                'Days left and money left on every PO are in the PO Tracker.',
+                style: GoogleFonts.spaceGrotesk(color: _muted, fontSize: 11)),
+          ]),
+        ),
+        TextButton(
+          onPressed: () => context.go(AppRoutes.poTracker),
+          child: Text('Open PO Tracker →',
+              style: GoogleFonts.spaceGrotesk(
+                  color: _teal, fontSize: 12, fontWeight: FontWeight.w700)),
+        ),
       ]),
     );
   }
+
+  /// The "other" entries table has not been created yet.
+  Widget _entriesMissingNote() => Container(
+        margin: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: _amber.withAlpha(18),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _amber.withAlpha(80)),
+        ),
+        child: Text(
+            'Other entries need one setup step: paste '
+            '20261113090000_muster_entries.sql into the Supabase SQL editor '
+            'and run it. Manpower, workshop and dead weight work as before.',
+            style: GoogleFonts.spaceGrotesk(
+                color: _amber, fontSize: 11.5, height: 1.4)),
+      );
 
   Widget _stat(String label, String value, String unit, Color colour) =>
       Expanded(
@@ -507,7 +403,8 @@ class _MusterScreenState extends State<MusterScreen> {
   // ─── Register ──────────────────────────────────────────────────────────────
 
   Widget _register() {
-    if (_days.isEmpty) {
+    final all = _all;
+    if (all.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
@@ -525,10 +422,7 @@ class _MusterScreenState extends State<MusterScreen> {
                   fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
           Text(
-              _pos.isEmpty
-                  ? 'No manpower PO is loaded, so there is nothing to book a '
-                      'day against yet.'
-                  : 'Mark a day to start the register.',
+              'Mark a day to start the register.',
               textAlign: TextAlign.center,
               style: GoogleFonts.spaceGrotesk(color: _muted, fontSize: 11)),
         ]),
@@ -536,8 +430,8 @@ class _MusterScreenState extends State<MusterScreen> {
     }
 
     final shown = _kindFilter == null
-        ? _days
-        : _days.where((d) => d.kind == _kindFilter).toList();
+        ? all
+        : all.where((d) => d.kind == _kindFilter).toList();
 
     // Grouped by month, newest first — the register is read by month.
     final byMonth = <String, List<MusterDay>>{};
@@ -555,8 +449,8 @@ class _MusterScreenState extends State<MusterScreen> {
             padding: const EdgeInsets.symmetric(vertical: 28),
             child: Center(
               child: Text(
-                  'No ${_kindFilter == MusterKind.workshop ? 'workshop' : 'manpower'} '
-                  'days in the register yet.',
+                  'No ${(_kindFilter?.label ?? 'manpower').toLowerCase()} '
+                  'entries in the register yet.',
                   style:
                       GoogleFonts.spaceGrotesk(color: _muted, fontSize: 12)),
             ),
@@ -576,6 +470,7 @@ class _MusterScreenState extends State<MusterScreen> {
               rows.where((d) => d.kind == MusterKind.manpower).length;
           final shopDays =
               rows.where((d) => d.kind == MusterKind.workshop).length;
+          final others = rows.where((d) => d.kind == MusterKind.other).length;
           return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -588,7 +483,7 @@ class _MusterScreenState extends State<MusterScreen> {
                       fontSize: 13,
                       fontWeight: FontWeight.w700)),
               const Spacer(),
-              Text(_monthTally(manDays, manRows, shopDays),
+              Text(_monthTally(manDays, manRows, shopDays, others),
                   style:
                       GoogleFonts.spaceGrotesk(color: _muted, fontSize: 11)),
             ]),
@@ -603,7 +498,7 @@ class _MusterScreenState extends State<MusterScreen> {
   /// Month header tally. Only states a figure that exists — a month of pure
   /// manpower should not read '0 workshop days', which invites the reader to
   /// wonder what happened to the workshop that month.
-  String _monthTally(int manDays, int manRows, int shopDays) {
+  String _monthTally(int manDays, int manRows, int shopDays, [int others = 0]) {
     final parts = <String>[];
     if (manRows > 0) {
       parts.add('$manDays man-day${manDays == 1 ? '' : 's'}'
@@ -611,6 +506,9 @@ class _MusterScreenState extends State<MusterScreen> {
     }
     if (shopDays > 0) {
       parts.add('$shopDays workshop day${shopDays == 1 ? '' : 's'}');
+    }
+    if (others > 0) {
+      parts.add('$others other entr${others == 1 ? 'y' : 'ies'}');
     }
     return parts.join('  ·  ');
   }
@@ -626,10 +524,12 @@ class _MusterScreenState extends State<MusterScreen> {
     final shopDays = _days.where((d) => d.kind == MusterKind.workshop).length;
     final deadRows =
         _days.where((d) => d.kind == MusterKind.deadweight).length;
+    final otherRows = _entries.length;
+    final all = _all;
 
-    // _days is ordered newest first by the query.
-    final newest = _days.first.date;
-    final oldest = _days.last.date;
+    // _all is ordered newest first.
+    final newest = all.first.date;
+    final oldest = all.last.date;
     final fmt = DateFormat('d MMM yyyy');
 
     return Container(
@@ -667,17 +567,18 @@ class _MusterScreenState extends State<MusterScreen> {
               'in $manRows day${manRows == 1 ? '' : 's'}', _teal),
           _stat('WORKSHOP', '$shopDays', shopDays == 1 ? 'day' : 'days',
               _amber),
-          _stat('ENTRIES', '${_days.length}', 'rows', _muted),
+          _stat('DEAD WT', '$deadRows', deadRows == 1 ? 'day' : 'days',
+              _deadColour),
+          _stat('OTHER', '$otherRows',
+              otherRows == 1 ? 'entry' : 'entries', _otherColour),
         ]),
         const SizedBox(height: 14),
-        Row(children: [
-          _kindChip('All', null, _days.length),
-          const SizedBox(width: 8),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          _kindChip('All', null, all.length),
           _kindChip('Manpower', MusterKind.manpower, manRows),
-          const SizedBox(width: 8),
           _kindChip('Workshop', MusterKind.workshop, shopDays),
-          const SizedBox(width: 8),
           _kindChip('Dead wt', MusterKind.deadweight, deadRows),
+          _kindChip('Other', MusterKind.other, otherRows),
         ]),
       ]),
     );
@@ -687,7 +588,8 @@ class _MusterScreenState extends State<MusterScreen> {
     final on = _kindFilter == kind;
     final accent = switch (kind) {
       MusterKind.workshop => _amber,
-      MusterKind.deadweight => const Color(0xFFB794F6),
+      MusterKind.deadweight => _deadColour,
+      MusterKind.other => _otherColour,
       _ => _teal,
     };
     return GestureDetector(
@@ -711,14 +613,34 @@ class _MusterScreenState extends State<MusterScreen> {
     );
   }
 
+  String _qty(double v) =>
+      v % 1 == 0 ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+
   Widget _dayTile(MusterDay d) {
     final isWorkshop = d.kind == MusterKind.workshop;
-    // Amber zero means "day checked, nobody on site". A workshop day
-    // legitimately carries head_count 0, so it must not borrow that
-    // colour or it reads as an empty manpower day.
-    final emptyManpowerDay = !isWorkshop && d.headCount == 0;
-    final accent =
-        isWorkshop ? _amber : (emptyManpowerDay ? _amber : _teal);
+    final isDead = d.kind == MusterKind.deadweight;
+    final isOther = d.kind == MusterKind.other;
+    // Amber zero means "day checked, nobody on site". Workshop, dead weight
+    // and other entries legitimately carry head_count 0, so they must not
+    // borrow that colour or they read as an empty manpower day.
+    final emptyManpowerDay =
+        d.kind == MusterKind.manpower && d.headCount == 0;
+    final accent = isWorkshop
+        ? _amber
+        : isDead
+            ? _deadColour
+            : isOther
+                ? _otherColour
+                : (emptyManpowerDay ? _amber : _teal);
+    final what = switch (d.kind) {
+      MusterKind.workshop => 'Workshop · PO ${d.poNumber}',
+      MusterKind.deadweight => 'Dead weight 250 kg · PO ${d.poNumber}',
+      MusterKind.other => '${d.item}'
+          '${d.quantity == 1 ? '' : ' × ${_qty(d.quantity)}'}'
+          '${d.amount == null ? '' : ' · ${_inr.format(d.amount)}'}'
+          '${d.poNumber.isEmpty ? '' : ' · PO ${d.poNumber}'}',
+      _ => '${d.headCount} on site · PO ${d.poNumber}',
+    };
     return GestureDetector(
       onTap: _readOnly ? null : () => _entrySheet(existing: d),
       child: Container(
@@ -728,7 +650,7 @@ class _MusterScreenState extends State<MusterScreen> {
           color: const Color(0xFF0A1025).withAlpha(170),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-              color: emptyManpowerDay || isWorkshop
+              color: d.kind != MusterKind.manpower || emptyManpowerDay
                   ? accent.withAlpha(60)
                   : const Color(0xFF849495).withAlpha(60)),
         ),
@@ -741,8 +663,15 @@ class _MusterScreenState extends State<MusterScreen> {
               color: accent.withAlpha(26),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: isWorkshop
-                ? Icon(Icons.home_repair_service, color: accent, size: 17)
+            child: d.kind != MusterKind.manpower
+                ? Icon(
+                    isWorkshop
+                        ? Icons.home_repair_service
+                        : isDead
+                            ? Icons.fitness_center
+                            : Icons.playlist_add_check,
+                    color: accent,
+                    size: 17)
                 : Text('${d.headCount}',
                     style: GoogleFonts.spaceGrotesk(
                         color: accent,
@@ -759,8 +688,7 @@ class _MusterScreenState extends State<MusterScreen> {
                       fontSize: 13,
                       fontWeight: FontWeight.w600)),
               Text(
-                  '${isWorkshop ? 'Workshop' : '${d.headCount} on site'}'
-                  ' · PO ${d.poNumber}'
+                  '$what'
                   ' · ${ProjectCatalog.displayName(d.projectName)}'
                   '${(d.notes ?? '').isEmpty ? '' : ' · ${d.notes}'}',
                   maxLines: 1,
@@ -815,6 +743,12 @@ class _MusterScreenState extends State<MusterScreen> {
     // to what. Shown and editable, like the track entry form.
     var project = existing?.projectName ?? ProjectManager.instance.activeProject;
     final notes = TextEditingController(text: existing?.notes ?? '');
+    // "Other" entries: what, how many, and at what rate if known.
+    final item = TextEditingController(text: existing?.item ?? '');
+    final qty = TextEditingController(
+        text: existing == null ? '1' : _qty(existing.quantity));
+    final rate = TextEditingController(
+        text: existing?.rate == null ? '' : _qty(existing!.rate!));
 
     await showModalBottomSheet<void>(
       context: context,
@@ -888,6 +822,20 @@ class _MusterScreenState extends State<MusterScreen> {
                     onTap: () => setSheet(() {
                       kind = MusterKind.deadweight;
                       po = _defaultPoFor(kind);
+                    }),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                // Anything else worth a line on the day: the office, the
+                // conference hall, food coupons. Drawn on no PO.
+                Expanded(
+                  child: _kindTab(
+                    label: 'OTHER',
+                    icon: Icons.playlist_add,
+                    selected: kind == MusterKind.other,
+                    onTap: () => setSheet(() {
+                      kind = MusterKind.other;
+                      po = '';
                     }),
                   ),
                 ),
@@ -992,10 +940,13 @@ class _MusterScreenState extends State<MusterScreen> {
             ],
             const SizedBox(height: 12),
 
+            // Other: what it was, how many, and the rate if known.
+            if (kind == MusterKind.other)
+              ..._otherFields(item, qty, rate, setSheet)
             // Headcount - manpower only. Workshop rental is flat per
             // operational day whoever is in it, so a head count on a
             // workshop day would be a number that bills nothing.
-            if (!kind.isHeadCounted)
+            else if (!kind.isHeadCounted)
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -1068,7 +1019,8 @@ class _MusterScreenState extends State<MusterScreen> {
             ],
             const SizedBox(height: 12),
 
-            // PO
+            // PO — not for an "other" entry, which draws on none.
+            if (kind != MusterKind.other) ...[
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14),
               decoration: BoxDecoration(
@@ -1103,6 +1055,7 @@ class _MusterScreenState extends State<MusterScreen> {
             _destinationHint(kind, po),
             _poCapacityBar(kind, po),
             const SizedBox(height: 12),
+            ],
 
             // Project the day is booked to
             Container(
@@ -1184,7 +1137,9 @@ class _MusterScreenState extends State<MusterScreen> {
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                   ),
-                  onPressed: po.isEmpty
+                  onPressed: (kind == MusterKind.other
+                          ? item.text.trim().isEmpty
+                          : po.isEmpty)
                       ? null
                       : () async {
                           Navigator.pop(ctx);
@@ -1193,6 +1148,33 @@ class _MusterScreenState extends State<MusterScreen> {
                               : notes.text.trim();
                           final rangeEnd =
                               stillRunning ? _today : endDate;
+                          if (kind == MusterKind.other) {
+                            final entry = MusterDay(
+                              id: existing?.id,
+                              date: DateTime(date.year, date.month, date.day),
+                              headCount: 0,
+                              poNumber: '',
+                              projectName: project,
+                              notes: note,
+                              kind: MusterKind.other,
+                              item: item.text.trim(),
+                              quantity: double.tryParse(qty.text.trim()) ?? 1,
+                              rate: double.tryParse(
+                                  rate.text.trim().replaceAll(',', '')),
+                            );
+                            await _saveOther(
+                              entry,
+                              rangeEnd == null
+                                  ? null
+                                  : _seedDays(
+                                      from: date,
+                                      to: rangeEnd,
+                                      kind: kind,
+                                      chosen: chosenDays,
+                                      touched: daysTouched),
+                            );
+                            return;
+                          }
                           if (rangeEnd == null) {
                             await _save(MusterDay(
                               id: existing?.id,
@@ -1378,7 +1360,8 @@ class _MusterScreenState extends State<MusterScreen> {
     String k(DateTime d) => d.toIso8601String().split('T').first;
     final accent = switch (kind) {
       MusterKind.workshop => _amber,
-      MusterKind.deadweight => const Color(0xFFB794F6),
+      MusterKind.deadweight => _deadColour,
+      MusterKind.other => _otherColour,
       _ => _teal,
     };
 
@@ -2058,10 +2041,148 @@ class _MusterScreenState extends State<MusterScreen> {
   Future<void> _delete(MusterDay day) async {
     if (day.id == null) return;
     try {
-      await MusterService.instance.delete(day.id!);
-      _snack('Day removed');
+      if (day.kind == MusterKind.other) {
+        await MusterService.instance.deleteEntry(day.id!);
+        _snack('Entry removed');
+      } else {
+        await MusterService.instance.delete(day.id!);
+        _snack('Day removed');
+      }
     } catch (e) {
       _snack('Could not remove: $e', error: true);
     }
+  }
+
+  /// Saves an "other" entry — one row, or one per ticked day of a range.
+  Future<void> _saveOther(MusterDay entry, Set<String>? days) async {
+    try {
+      if (days == null || entry.id != null) {
+        await MusterService.instance.saveEntry(entry);
+        _snack('${entry.item} recorded');
+      } else {
+        final n = await MusterService.instance.saveEntries(entry, days);
+        _snack(n == 0
+            ? 'Nothing recorded - no days are ticked.'
+            : '${entry.item} recorded on $n day${n == 1 ? '' : 's'}');
+      }
+    } catch (e) {
+      final msg = e.toString();
+      _snack(
+          msg.contains('PGRST205') || msg.contains('does not exist')
+              ? 'Other entries need the setup step first: run '
+                  '20261113090000_muster_entries.sql in Supabase.'
+              : 'Could not save: $e',
+          error: true);
+    }
+  }
+
+  /// Item, quantity and rate for an "other" entry, with the usual items one
+  /// tap away.
+  List<Widget> _otherFields(
+    TextEditingController item,
+    TextEditingController qty,
+    TextEditingController rate,
+    void Function(void Function()) setSheet,
+  ) {
+    const suggestions = [
+      'Office / porta cabin',
+      'Conference hall',
+      'Food coupons',
+      'Bisleri water 20L',
+      'Weigh bridge',
+      'Visitor',
+      'Fuel',
+    ];
+    InputDecoration deco(String hint, {String? prefix}) => InputDecoration(
+          hintText: hint,
+          prefixText: prefix,
+          prefixStyle: GoogleFonts.spaceGrotesk(color: _muted, fontSize: 13),
+          hintStyle: GoogleFonts.spaceGrotesk(color: _muted, fontSize: 13),
+          filled: true,
+          isDense: true,
+          fillColor: const Color(0xFF050811).withAlpha(160),
+          border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide:
+                  BorderSide(color: const Color(0xFF849495).withAlpha(90))),
+          enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide:
+                  BorderSide(color: const Color(0xFF849495).withAlpha(90))),
+        );
+    final style = GoogleFonts.spaceGrotesk(color: Colors.white, fontSize: 13);
+    final q = double.tryParse(qty.text.trim()) ?? 0;
+    final r = double.tryParse(rate.text.trim().replaceAll(',', ''));
+    return [
+      TextField(
+        controller: item,
+        style: style,
+        decoration: deco('What was it? e.g. Conference hall'),
+        onChanged: (_) => setSheet(() {}),
+      ),
+      const SizedBox(height: 8),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: Wrap(spacing: 6, runSpacing: 6, children: [
+          for (final s in suggestions)
+            GestureDetector(
+              onTap: () => setSheet(() => item.text = s),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: item.text == s
+                      ? _otherColour.withAlpha(40)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                      color: item.text == s
+                          ? _otherColour
+                          : const Color(0xFF849495).withAlpha(70)),
+                ),
+                child: Text(s,
+                    style: GoogleFonts.spaceGrotesk(
+                        color: item.text == s ? _otherColour : Colors.white70,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600)),
+              ),
+            ),
+        ]),
+      ),
+      const SizedBox(height: 10),
+      Row(children: [
+        Expanded(
+          child: TextField(
+            controller: qty,
+            style: style,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: deco('Quantity', prefix: 'Qty  '),
+            onChanged: (_) => setSheet(() {}),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: TextField(
+            controller: rate,
+            style: style,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: deco('Rate (optional)', prefix: '₹  '),
+            onChanged: (_) => setSheet(() {}),
+          ),
+        ),
+      ]),
+      const SizedBox(height: 6),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+            r == null
+                ? 'A record of the day. Not added to any programme cost — '
+                    'NATRAX charges go in Manual Entry → Other Services.'
+                : '${_qty(q)} × ${_inr.format(r)} = ${_inr.format(q * r)} per day. '
+                    'A record only; not added to programme cost.',
+            style: GoogleFonts.spaceGrotesk(
+                color: _muted, fontSize: 11, height: 1.4)),
+      ),
+    ];
   }
 }

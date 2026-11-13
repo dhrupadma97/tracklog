@@ -111,13 +111,10 @@ class _WideScaffoldState extends State<_WideScaffold> {
       branch: 4,
     ));
 
-    // 1b. History - history for the active project (tracks, manpower, workshop).
-    items.add(const _NavItem(
-      icon: Icons.history_outlined,
-      activeIcon: Icons.history_rounded,
-      label: 'History',
-      branch: 14,
-    ));
+    // 1b. History (branch 14) - hidden from the web rail at the user's request
+    // (13 Nov 2026): the Analyser's month table covers it. The route and the
+    // screen stay, and mobile still has the tab; put this item back to show
+    // it on web again.
 
     // 2. Sessions (mobile only, center tab)
     if (!kIsWeb) {

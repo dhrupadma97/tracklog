@@ -15,13 +15,14 @@ import 'supabase_service.dart';
 ///    rows and head count is always zero. Drawn against the NATRAX track PO,
 ///    a lumpsum billed on actuals, so it accrues rupees rather than drawing
 ///    down a contracted number of days.
-enum MusterKind { manpower, workshop, deadweight }
+enum MusterKind { manpower, workshop, deadweight, other }
 
 extension MusterKindX on MusterKind {
   String get label => switch (this) {
         MusterKind.manpower => 'Manpower',
         MusterKind.workshop => 'Workshop',
         MusterKind.deadweight => 'Dead weight',
+        MusterKind.other => 'Other',
       };
 
   /// The `kind` column value. Must match the check constraint on
@@ -37,6 +38,8 @@ extension MusterKindX on MusterKind {
         MusterKind.manpower => 'manpower',
         MusterKind.deadweight => 'manpower',
         MusterKind.workshop => 'track_booking',
+        // A record of the day, drawn on no PO. See [MusterDay.item].
+        MusterKind.other => '',
       };
 
   /// Whether a row of this kind is a person.
@@ -51,6 +54,7 @@ extension MusterKindX on MusterKind {
   static MusterKind parse(String? raw) => switch ((raw ?? '').trim()) {
         'workshop' => MusterKind.workshop,
         'deadweight' => MusterKind.deadweight,
+        'other' => MusterKind.other,
         _ => MusterKind.manpower,
       };
 }
@@ -77,6 +81,15 @@ class MusterDay {
   final String? notes;
   final MusterKind kind;
 
+  /// For an [MusterKind.other] entry only: what it was ("Conference hall",
+  /// "Food coupons"), how many, and at what rate if known. These live in
+  /// public.muster_entries, not manpower_muster — see that migration for why.
+  final String item;
+  final double quantity;
+
+  /// Null means not priced, which is not the same as free.
+  final double? rate;
+
   const MusterDay({
     this.id,
     required this.date,
@@ -85,10 +98,42 @@ class MusterDay {
     this.projectName,
     this.notes,
     this.kind = MusterKind.manpower,
+    this.item = '',
+    this.quantity = 1,
+    this.rate,
   });
 
-  /// One day of drawdown, in the unit this kind is counted in.
-  int get daysConsumed => kind.isHeadCounted ? headCount : 1;
+  /// Quantity × rate, when a rate is known.
+  double? get amount => rate == null ? null : quantity * rate!;
+
+  /// One day of drawdown, in the unit this kind is counted in. An "other"
+  /// entry draws on no PO, so it consumes nothing.
+  int get daysConsumed => kind == MusterKind.other
+      ? 0
+      : (kind.isHeadCounted ? headCount : 1);
+
+  factory MusterDay.fromEntryJson(Map<String, dynamic> j) => MusterDay(
+        id: j['id'] as String?,
+        date: DateTime.parse(j['entry_date'] as String),
+        headCount: 0,
+        poNumber: (j['po_number'] as String?) ?? '',
+        projectName: j['project_name'] as String?,
+        notes: j['notes'] as String?,
+        kind: MusterKind.other,
+        item: ((j['item'] as String?) ?? '').trim(),
+        quantity: (j['quantity'] as num?)?.toDouble() ?? 1,
+        rate: (j['rate'] as num?)?.toDouble(),
+      );
+
+  Map<String, dynamic> toEntryJson() => {
+        'entry_date': dateKey,
+        'item': item.trim(),
+        'quantity': quantity,
+        'rate': rate,
+        'project_name': projectName,
+        'po_number': poNumber.trim().isEmpty ? null : poNumber.trim(),
+        'notes': notes,
+      };
 
   /// 'YYYY-MM-DD' — the form Postgres wants and the key the UI groups on.
   String get dateKey => date.toIso8601String().split('T').first;
@@ -466,6 +511,88 @@ class MusterService extends ChangeNotifier {
 
   Future<void> delete(String id) async {
     await _client.from('manpower_muster').delete().eq('id', id);
+    notifyListeners();
+  }
+
+  // ── Other daily entries (public.muster_entries) ─────────────────────────
+
+  /// True once a read has found muster_entries missing — the migration
+  /// 20261113090000_muster_entries.sql not yet run. The muster still works;
+  /// it just cannot hold "other" entries until then.
+  bool entriesTableMissing = false;
+
+  static bool _isMissingTable(Object e) {
+    final s = e.toString();
+    return s.contains('PGRST205') ||
+        (s.contains('muster_entries') && s.contains('does not exist'));
+  }
+
+  /// Every "other" entry, newest first. Empty — not an error — when the
+  /// table is not there yet, so the rest of the muster still loads.
+  Future<List<MusterDay>> listEntries() async {
+    try {
+      final rows = await _client
+          .from('muster_entries')
+          .select()
+          .order('entry_date', ascending: false)
+          .order('created_at', ascending: false);
+      entriesTableMissing = false;
+      return [
+        for (final r in (rows as List).cast<Map<String, dynamic>>())
+          MusterDay.fromEntryJson(r),
+      ];
+    } catch (e) {
+      if (_isMissingTable(e)) {
+        entriesTableMissing = true;
+        return const [];
+      }
+      rethrow;
+    }
+  }
+
+  /// Saves one entry: an update when it has an id, a new row otherwise.
+  /// Two entries for the same item on the same day are allowed — two
+  /// conference-hall bookings is two rows, not a correction.
+  Future<void> saveEntry(MusterDay d) async {
+    final who = _client.auth.currentUser?.email;
+    if (d.id != null) {
+      await _client.from('muster_entries').update(d.toEntryJson()).eq('id', d.id!);
+    } else {
+      await _client
+          .from('muster_entries')
+          .insert({...d.toEntryJson(), 'created_by': who});
+    }
+    notifyListeners();
+  }
+
+  /// One entry per day in [days] ('YYYY-MM-DD'), each a copy of [template].
+  Future<int> saveEntries(MusterDay template, Set<String> days) async {
+    if (days.isEmpty) return 0;
+    final who = _client.auth.currentUser?.email;
+    final rows = [
+      for (final k in (days.toList()..sort()))
+        {
+          ...MusterDay(
+            date: DateTime.parse(k),
+            headCount: 0,
+            poNumber: template.poNumber,
+            projectName: template.projectName,
+            notes: template.notes,
+            kind: MusterKind.other,
+            item: template.item,
+            quantity: template.quantity,
+            rate: template.rate,
+          ).toEntryJson(),
+          'created_by': who,
+        },
+    ];
+    await _client.from('muster_entries').insert(rows);
+    notifyListeners();
+    return rows.length;
+  }
+
+  Future<void> deleteEntry(String id) async {
+    await _client.from('muster_entries').delete().eq('id', id);
     notifyListeners();
   }
 
