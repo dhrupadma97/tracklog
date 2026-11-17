@@ -326,6 +326,36 @@ class ReconTrackLine {
   double get disputedMoney => natraxMoney - agreedMoney;
 }
 
+/// One line of the month in four figures — see [NatraxReconciler.bridge].
+class ReconBridgeRow {
+  final String key;
+  final String name;
+  double sheet = 0;
+  double ours = 0;
+  double agreed = 0;
+
+  /// Null until an invoice is set against the month.
+  double? invoice;
+
+  /// The invoice line is answered as a dispute / still unanswered.
+  bool disputed = false;
+  bool open = false;
+
+  /// What a disputed invoice line is to be paid at.
+  double? payAt;
+
+  ReconBridgeRow(this.key, this.name);
+
+  /// What this line adds to "to pay": the invoice figure, unless it is
+  /// disputed, when it is what was agreed. Summed, the rows give exactly
+  /// invoice less what is to be raised — the money card's figure.
+  double? get toPay =>
+      invoice == null ? null : (disputed ? (payAt ?? agreed) : invoice);
+
+  double get biggest => [sheet, ours, agreed, invoice ?? 0]
+      .reduce((a, b) => a > b ? a : b);
+}
+
 class ReconOutcome {
   final NatraxUtilisationSheet sheet;
   final List<ReconItem> items;
@@ -1278,6 +1308,31 @@ class NatraxReconciler {
         ));
         continue;
       }
+      // Food coupons, water, weighing pads, the conference hall: not kept in
+      // TrackLog for now (17 Nov 2026 — "we don't keep record now, I will do
+      // that next time onwards"). With nothing of ours to set against them
+      // there is no question to ask, so NATRAX's figure is taken and the
+      // line shown for information. The workshop / office is the exception:
+      // the muster does record it, so it is still asked.
+      if (oq == 0 && tq > 0 && k != 'ACCOM') {
+        keep(ReconItem(
+          key: 'svc|$k',
+          kind: ReconKind.service,
+          stance: ReconStance.theirsOnly,
+          title: name,
+          subtitle: 'Not recorded in TrackLog — NATRAX\'s figure taken',
+          unit: unit,
+          ours: oq,
+          theirs: tq,
+          rate: rate,
+          hints: hints,
+          needsAnswer: false,
+          snapshot: snapshot,
+          theirsMoney: tMoney,
+          oursMoney: oMoney,
+        ));
+        continue;
+      }
       final favour = tq < oq;
       keep(ReconItem(
         key: 'svc|$k',
@@ -1509,6 +1564,59 @@ class NatraxReconciler {
   /// One question per kind of line — T3 Wet, EV charging, water — because
   /// the invoice carries no dates. Any difference needs an answer, and the
   /// comment is what records it against the month.
+  /// The month line by line in four figures: NATRAX's sheet, our record,
+  /// what was agreed, and the invoice. The columns add up to the four
+  /// totals shown on the money card, so any gap between two of them can be
+  /// pointed at a line. Keyed exactly as [tally] keys the invoice.
+  static List<ReconBridgeRow> bridge({
+    required ReconOutcome outcome,
+    ParsedInvoice? invoice,
+    List<ReconItem> tallyItems = const [],
+  }) {
+    final rows = <String, ReconBridgeRow>{};
+    ReconBridgeRow row(String k, String name) =>
+        rows.putIfAbsent(k, () => ReconBridgeRow(k, name));
+    for (final i in outcome.items) {
+      String? k;
+      String name = i.title;
+      if (i.kind == ReconKind.track || i.kind == ReconKind.exclusive) {
+        k = i.code;
+        if (k != null) name = '$k  ${NatraxRateCard.nameFor(k)}';
+      } else if (i.kind == ReconKind.service) {
+        k = i.key.substring('svc|'.length);
+      } else if (i.kind == ReconKind.ev) {
+        k = 'EV';
+        name = 'EV charging';
+      }
+      if (k == null) continue;
+      final r = row(k, name);
+      r.sheet += i.theirsMoney;
+      r.ours += i.oursMoney;
+      r.agreed += i.agreedMoney;
+    }
+    if (invoice != null) {
+      for (final l in invoice.lines) {
+        final k = invoiceLineKey(l);
+        final r = row(k, rows[k]?.name ?? l.description);
+        r.invoice = (r.invoice ?? 0) + l.amount;
+      }
+      for (final r in rows.values) {
+        r.invoice ??= 0;
+      }
+      for (final t in tallyItems) {
+        final k = t.key.startsWith('inv|') ? t.key.substring(4) : t.key;
+        final r = rows[k];
+        if (r == null) continue;
+        r.disputed = isDispute(t);
+        r.open = t.isOpen;
+        if (r.disputed) r.payAt = t.agreedMoney;
+      }
+    }
+    final list = rows.values.toList()
+      ..sort((a, b) => b.biggest.compareTo(a.biggest));
+    return list;
+  }
+
   static List<ReconItem> tally({
     required ReconOutcome outcome,
     required ParsedInvoice invoice,

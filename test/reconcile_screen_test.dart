@@ -244,11 +244,14 @@ Future<void> _pump(WidgetTester tester, _FakeService svc, Size size) async {
 /// out at least once; an overflow anywhere fails the test. Then back to the
 /// top — the lists build lazily, so a card scrolled past no longer exists.
 Future<void> _scrollAll(WidgetTester tester) async {
-  final n = find.byType(ListView).evaluate().length;
+  final lists = [find.byKey(const Key('recon-main')), find.byKey(const Key('recon-side'))]
+      .where((f) => f.evaluate().isNotEmpty)
+      .toList();
+  final n = lists.length;
   for (final dy in [-600.0, 600.0]) {
     for (var k = 0; k < n; k++) {
       for (var i = 0; i < 12; i++) {
-        await tester.drag(find.byType(ListView).at(k), Offset(0, dy),
+        await tester.drag(lists[k], Offset(0, dy),
             warnIfMissed: false);
         await tester.pump();
       }
@@ -260,7 +263,7 @@ Future<void> _scrollAll(WidgetTester tester) async {
 /// Scrolls the main column down until [finder] has been built.
 Future<void> _scrollTo(WidgetTester tester, Finder finder) async {
   for (var i = 0; i < 30 && finder.evaluate().isEmpty; i++) {
-    await tester.drag(find.byType(ListView).first, const Offset(0, -300),
+    await tester.drag(find.byKey(const Key('recon-main')), const Offset(0, -300),
         warnIfMissed: false);
     await tester.pump();
   }
@@ -402,5 +405,32 @@ void main() {
     await _pump(tester, svc, desktop);
     expect(find.textContaining('20261112120000_natrax_reconciliation.sql'),
         findsOneWidget);
+  });
+  _jumpTests();
+}
+
+void _jumpTests() {
+  testWidgets('the step boxes jump to their card, however far down it is',
+      (tester) async {
+    tester.view.physicalSize = const Size(1440, 1000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: ReconcileScreen(
+          service: _FakeService(_october(invoice: _invoice)),
+          initialMonth: '2026-10'),
+    ));
+    await tester.pumpAndSettle();
+    final settle = find.text('STEP 5 · SETTLE THE MONTH');
+    expect(tester.getTopLeft(settle).dy, greaterThan(1000),
+        reason: 'starts below the screen');
+    await tester.tap(find.textContaining('5. Settled'));
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(settle).dy, inInclusiveRange(0, 1000));
+    // And back up again to the vehicles.
+    await tester.tap(find.textContaining('2. Vehicles'));
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(find.text('STEP 2 · WHOSE VEHICLES')).dy,
+        inInclusiveRange(0, 1000));
   });
 }

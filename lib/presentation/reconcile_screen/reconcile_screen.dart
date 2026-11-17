@@ -129,6 +129,7 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
   final _kInvoice = GlobalKey();
   final _kSettle = GlobalKey();
   final _kSummary = GlobalKey();
+  final _kBridge = GlobalKey();
 
   void _goTo(GlobalKey k) {
     final c = k.currentContext;
@@ -807,26 +808,40 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
             Expanded(child: Center(child: _errorCard(_error!)))
           else
             Expanded(
+              // Plain columns, not lazy lists: every card is built all the
+              // time, so the step boxes and "Go there" can always find the
+              // card they jump to. A ListView only builds what is near the
+              // screen, and a jump to a card scrolled far away found nothing
+              // and did nothing (17 Nov 2026).
               child: wide
                   ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Expanded(
                         flex: 7,
-                        child: ListView(
+                        child: SingleChildScrollView(
+                          key: const Key('recon-main'),
                           padding: const EdgeInsets.fromLTRB(20, 4, 10, 40),
-                          children: _mainCards(),
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: _mainCards()),
                         ),
                       ),
                       SizedBox(
                         width: 380,
-                        child: ListView(
+                        child: SingleChildScrollView(
+                          key: const Key('recon-side'),
                           padding: const EdgeInsets.fromLTRB(10, 4, 20, 40),
-                          children: _sideCards(),
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: _sideCards()),
                         ),
                       ),
                     ])
-                  : ListView(
+                  : SingleChildScrollView(
+                      key: const Key('recon-main'),
                       padding: const EdgeInsets.fromLTRB(14, 4, 14, 60),
-                      children: [..._mainCards(), ..._sideCards()],
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [..._mainCards(), ..._sideCards()]),
                     ),
             ),
         ]),
@@ -1143,7 +1158,7 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
       KeyedSubtree(key: _kSheet, child: _sheetCard()),
       KeyedSubtree(key: _kVehicles, child: _vehiclesCard()),
       KeyedSubtree(key: _kQuestions, child: _questionsCard()),
-      _agreedCard(),
+      KeyedSubtree(key: _kBridge, child: _bridgeCard()),
       KeyedSubtree(key: _kInvoice, child: _invoiceCard()),
       KeyedSubtree(key: _kSettle, child: _settleCard()),
       KeyedSubtree(key: _kSummary, child: _summaryCard()),
@@ -1818,99 +1833,126 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
     );
   }
 
-  Widget _agreedCard() {
+  /// Why the figures differ: every line in the four figures, side by side.
+  ///
+  /// "Why 11 lakhs when the record shows 10 — where is the difference?"
+  /// (17 Nov 2026). The columns add up to the money card's figures, so the
+  /// gap between any two of them is the sum of the lines that differ, and
+  /// each line that differs says by how much and which way.
+  Widget _bridgeCard() {
     final o = _outcome!;
-    final services = o.items
-        .where((i) => i.kind == ReconKind.service || i.kind == ReconKind.ev)
-        .toList();
-    Widget cell(String t, {bool head = false, TextAlign align = TextAlign.right, Color? colour}) =>
+    final inv = _state?.invoice;
+    final rows = NatraxReconciler.bridge(
+        outcome: o, invoice: inv, tallyItems: _invoiceItems);
+    final hasInvoice = inv != null;
+    double sum(double? Function(ReconBridgeRow r) f) =>
+        rows.fold<double>(0, (s, r) => s + (f(r) ?? 0));
+    String m(double? v) => v == null || v.abs() < 0.5 ? '—' : _inr.format(v);
+
+    /// The one thing worth saying about a line, in plain words.
+    (String, Color)? why(ReconBridgeRow r) {
+      if (hasInvoice) {
+        final over = (r.invoice ?? 0) - r.agreed;
+        if (r.disputed) {
+          return ('Disputed: invoice ${_inr.format(over.abs())} above what you agreed', _red);
+        }
+        if (over >= 1 && r.open) {
+          return ('Invoice ${_inr.format(over)} above what you agreed — answer it below', _amber);
+        }
+        if (over >= 1) return ('Invoice ${_inr.format(over)} above the sheet — accepted', _muted);
+        if (over <= -1) return ('Invoice ${_inr.format(-over)} below — in your favour', _teal);
+      }
+      final rec = r.ours - r.sheet;
+      if (rec >= 1) return ('Our record ${_inr.format(rec)} more than NATRAX\'s sheet', _muted);
+      if (rec <= -1) return ('Our record ${_inr.format(-rec)} less than NATRAX\'s sheet', _muted);
+      return null;
+    }
+
+    Widget c(String s,
+            {bool head = false, bool left = false, Color? col, bool bold = false}) =>
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
-          child: Text(t,
-              textAlign: align,
+          padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 6),
+          child: Text(s,
+              textAlign: left ? TextAlign.left : TextAlign.right,
               style: head
                   ? _t(9.5, weight: FontWeight.w800, color: _muted).copyWith(letterSpacing: 0.8)
-                  : _t(11.5, weight: FontWeight.w600, color: colour ?? Colors.white)),
+                  : _t(12, weight: bold ? FontWeight.w800 : FontWeight.w600, color: col ?? Colors.white)),
         );
+
     return _card(
-      title: 'WHAT IS AGREED',
-      icon: Icons.table_chart_outlined,
-      trailing: o.cleared
-          ? _pill('final', _green)
-          : _pill('provisional — questions open', _amber),
+      title: 'WHY THE FIGURES DIFFER — LINE BY LINE',
+      icon: Icons.table_rows_outlined,
       children: [
+        Text(
+            "NATRAX's sheet = their gate log for our vehicles.  Our record = what TrackLog has.  "
+            '${hasInvoice ? 'Invoice = what NATRAX billed.  To pay = invoice, less the lines you dispute.' : 'Agreed = what each line was settled at.'}',
+            style: _t(11.5, color: Colors.white70, height: 1.45)),
+        const SizedBox(height: 10),
         Table(
-          columnWidths: const {
-            0: FlexColumnWidth(2.6),
-            1: FlexColumnWidth(1.1),
-            2: FlexColumnWidth(1.1),
-            3: FlexColumnWidth(1.1),
-            4: FlexColumnWidth(1.7),
-            5: FlexColumnWidth(1.7),
+          columnWidths: {
+            0: const FlexColumnWidth(2.6),
+            1: const FlexColumnWidth(1.3),
+            2: const FlexColumnWidth(1.3),
+            3: const FlexColumnWidth(1.3),
+            if (hasInvoice) 4: const FlexColumnWidth(1.3),
           },
+          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
           children: [
             TableRow(
               decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: _line))),
               children: [
-                cell('TRACK', head: true, align: TextAlign.left),
-                cell('NATRAX', head: true),
-                cell('OURS', head: true),
-                cell('AGREED', head: true),
-                cell('AGREED ₹', head: true),
-                cell('DISPUTED ₹', head: true),
+                c('LINE', head: true, left: true),
+                c("NATRAX'S SHEET", head: true),
+                c('OUR RECORD', head: true),
+                c(hasInvoice ? 'INVOICE' : 'AGREED', head: true),
+                if (hasInvoice) c('TO PAY', head: true),
               ],
             ),
-            for (final l in o.trackLines)
+            for (final r in rows) ...[
               TableRow(children: [
-                cell('${l.code}  ${l.name}', align: TextAlign.left),
-                cell('${_h(l.natrax)} h', colour: _amber),
-                cell('${_h(l.ours)} h', colour: _teal),
-                cell('${_h(l.agreed)} h'),
-                cell(_inr.format(l.agreedMoney)),
-                cell(l.disputedMoney.abs() < 1 ? '—' : _inr.format(l.disputedMoney),
-                    colour: l.disputedMoney >= 1 ? _red : _muted),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 6),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(r.name, style: _t(12, weight: FontWeight.w700)),
+                    if (why(r) != null)
+                      Text(why(r)!.$1, style: _t(10.5, weight: FontWeight.w600, color: why(r)!.$2)),
+                  ]),
+                ),
+                c(m(r.sheet), col: _amber),
+                c(m(r.ours), col: _teal),
+                c(m(hasInvoice ? r.invoice : r.agreed)),
+                if (hasInvoice)
+                  c(m(r.toPay), col: r.disputed ? _red : _green, bold: true),
               ]),
-            for (final s in services)
-              TableRow(children: [
-                cell(s.title, align: TextAlign.left),
-                cell('${_h(s.theirs)} ${s.unit}', colour: _amber),
-                cell('${_h(s.ours)} ${s.unit}', colour: _teal),
-                cell('${_h(s.agreed)} ${s.unit}'),
-                cell(_inr.format(s.agreedMoney)),
-                cell((s.theirsMoney - s.agreedMoney).abs() < 1
-                    ? '—'
-                    : _inr.format(s.theirsMoney - s.agreedMoney),
-                    colour: (s.theirsMoney - s.agreedMoney) >= 1 ? _red : _muted),
-              ]),
+            ],
             TableRow(
               decoration: const BoxDecoration(border: Border(top: BorderSide(color: _line))),
               children: [
-                cell('Total, our vehicles', align: TextAlign.left),
-                cell(_inr.format(o.natraxMoney), colour: _amber),
-                cell(_inr.format(o.oursMoney), colour: _teal),
-                cell(''),
-                cell(_inr.format(o.agreedMoney), colour: _green),
-                cell(_inr.format((o.natraxMoney - o.agreedMoney).clamp(0, double.infinity)),
-                    colour: _red),
+                c('Total', left: true, bold: true),
+                c(m(sum((r) => r.sheet)), col: _amber, bold: true),
+                c(m(sum((r) => r.ours)), col: _teal, bold: true),
+                c(m(hasInvoice ? sum((r) => r.invoice) : sum((r) => r.agreed)), bold: true),
+                if (hasInvoice) c(m(sum((r) => r.toPay)), col: _green, bold: true),
               ],
             ),
           ],
         ),
-        if (o.notOursMoney > 0)
+        if (o.unknownVehicles > 0)
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text(
-                'Plus ${_inr.format(o.notOursMoney)} billed against vehicles that are '
-                'not ours — disputed in full.',
-                style: _t(11.5, weight: FontWeight.w700, color: _red)),
+                '${o.unknownVehicles} vehicle${o.unknownVehicles == 1 ? ' is' : 's are'} not '
+                'placed yet, so their lines are not in the sheet column. Place them in step 2.',
+                style: _t(11, color: _purple)),
           ),
-        Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Text(
-              'Exclusive blocks are estimated at the quoted block price. NATRAX\'s '
-              'invoice is the figure of record.',
-              style: _t(10.5, color: _muted)),
-        ),
+        if (hasInvoice && (sum((r) => r.invoice) - (_figures.invoiceExcl ?? 0)).abs() >= 1)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+                "The invoice's lines add up to ${_inr.format(sum((r) => r.invoice))}; its "
+                'total says ${_inr.format(_figures.invoiceExcl)}. A line may not have been read.',
+                style: _t(11, color: _amber)),
+          ),
       ],
     );
   }
@@ -2207,79 +2249,83 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
     );
   }
 
+  /// The month in five figures, plainly named — and a link to the table
+  /// that says, line by line, why they differ.
+  ///
+  /// Asked for "very clear and crisp" (17 Nov 2026) after the card had grown
+  /// nine rows — sheet, record, agreed so far, still to decide, not ours,
+  /// GST, total, to raise, to pay — and "why 11 lakhs when the record shows
+  /// 10" had no answer on screen.
   Widget _moneyCard() {
     final o = _outcome!;
-    // What NATRAX bill above our record on lines nobody has answered yet.
-    // Rule lines restate a track line's hours, so they are left out.
-    final openMore = o.items
-        .where((i) =>
-            i.isOpen && !i.bulkOk && i.kind != ReconKind.vehicle && i.kind != ReconKind.rule)
-        .fold<double>(0, (s, i) => s + (i.theirsMoney - i.oursMoney).clamp(0, double.infinity));
-    Widget row(String k, double v, Color c, {bool bold = false}) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Row(children: [
-            Expanded(child: Text(k, style: _t(12, color: Colors.white70))),
-            Text(_inr.format(v), style: _t(bold ? 16 : 13, weight: FontWeight.w800, color: c)),
-          ]),
-        );
     final f = _figures;
     final inv = _state?.invoice;
     final invoiceOpen = _invoiceItems.where((i) => i.isOpen).length;
+    Widget big(String label, String hint, double? v, Color c) => Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(label, style: _t(13, weight: FontWeight.w700)),
+                Text(hint, style: _t(10.5, color: _muted)),
+              ]),
+            ),
+            Text(v == null ? '—' : _inr.format(v),
+                style: _t(20, weight: FontWeight.w800, color: c)),
+          ]),
+        );
+    Widget small(String label, double v, Color c) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Row(children: [
+            Expanded(child: Text(label, style: _t(12, color: Colors.white70))),
+            Text(_inr.format(v), style: _t(13, weight: FontWeight.w700, color: c)),
+          ]),
+        );
     return _card(
       title: 'THE MONTH IN MONEY',
       icon: Icons.currency_rupee,
       accent: inv == null ? _teal : _green,
+      trailing: Text('before GST', style: _t(10.5, color: _muted)),
       children: [
-        // Once the invoice is in, it leads: it is what will be paid.
         if (inv != null) ...[
-          Text('FINAL INVOICE  ${_state?.invoiceNumber ?? ''}',
-              style: _t(10, weight: FontWeight.w800, color: _green)
-                  .copyWith(letterSpacing: 1)),
-          const SizedBox(height: 4),
-          row('Invoice, before GST', f.invoiceExcl ?? 0, Colors.white),
-          row('GST', f.invoiceGst ?? 0, _muted),
-          row('Invoice total', f.invoiceTotal ?? 0, Colors.white, bold: true),
-          row('To raise with NATRAX', f.toRaise, f.toRaise >= 1 ? _red : _muted),
-          const Divider(color: _line, height: 16),
-          row('To pay, before GST', f.toPay ?? 0, _green, bold: true),
+          big('Invoice', _state?.invoiceNumber ?? '', f.invoiceExcl, Colors.white),
+          big('To raise', 'lines you dispute', f.toRaise, f.toRaise >= 1 ? _red : _muted),
+          big('To pay', 'invoice less what you raise', f.toPay, _green),
           if (invoiceOpen > 0)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                  '$invoiceOpen invoice line${invoiceOpen == 1 ? '' : 's'} still to '
-                  'answer — the figure to pay is provisional until then.',
-                  style: _t(10.5, color: _amber)),
-            ),
-          const SizedBox(height: 10),
-          Text('THE SHEET',
-              style: _t(10, weight: FontWeight.w800, color: _muted)
-                  .copyWith(letterSpacing: 1)),
+            Text(
+                '$invoiceOpen invoice line${invoiceOpen == 1 ? '' : 's'} still to answer, '
+                'so "to pay" may still change.',
+                style: _t(11, color: _amber)),
+          const Divider(color: _line, height: 20),
+        ] else ...[
+          Text('Set the final invoice and its amount leads this card.',
+              style: _t(11.5, color: _muted)),
+          const SizedBox(height: 8),
         ],
-        row('NATRAX sheet, our vehicles', o.natraxMoney, _amber),
-        row('Our record', o.oursMoney, _teal),
-        if (inv == null) const Divider(color: _line, height: 16),
-        row(o.cleared ? 'Agreed' : 'Agreed so far', o.agreedMoney, _green, bold: inv == null),
-        if (openMore > 0) row('NATRAX more — still to decide', openMore, _amber),
-        if (o.notOursMoney > 0) row('Not ours (disputed)', o.notOursMoney, _red),
-        if (inv == null) row('To raise with NATRAX', f.toRaise, _red),
-        if (!o.cleared)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-                'Lines not yet answered count at NATRAX\'s figure until you decide.',
-                style: _t(10.5, color: _amber)),
+        small("NATRAX's sheet", f.sheet, _amber),
+        small('Our record', f.ours, _teal),
+        if (o.notOursMoney > 0) small('Not ours, on the sheet', o.notOursMoney, _red),
+        const SizedBox(height: 10),
+        GestureDetector(
+          onTap: () => _goTo(_kBridge),
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: Row(children: [
+              const Icon(Icons.table_rows_outlined, size: 15, color: _teal),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text('Why do these differ? See each line →',
+                    style: _t(12, weight: FontWeight.w700, color: _teal)),
+              ),
+            ]),
           ),
+        ),
         const SizedBox(height: 6),
-        Text(
-            inv == null
-                ? 'Before GST — NATRAX bill the SEZ entity under LUT. Upload the '
-                    'final invoice and its amount leads this card.'
-                : 'Before GST unless shown — NATRAX bill the SEZ entity under LUT.',
+        Text('GST nil: NATRAX bill this SEZ unit under LUT.',
             style: _t(10.5, color: _muted)),
       ],
     );
   }
-
   Widget _todoCard() {
     final todos = _outcome!.todos;
     return _card(
