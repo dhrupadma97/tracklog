@@ -12,6 +12,8 @@ import '../../services/project_manager.dart';
 import '../../services/project_status_service.dart';
 import '../../services/session_keepalive.dart';
 import '../../services/session_status.dart';
+import '../../services/spend_breakdown_service.dart';
+import 'spend_detail_dialog.dart';
 
 // ─── Project metadata registry ────────────────────────────────────────────────
 class _CarDetail {
@@ -474,6 +476,9 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
   // Completed programmes are kept out of the main rail but not dropped:
   // they still carry the bulk of the spend and their own billing history.
   List<_ProjectCard> _completed = [];
+
+  /// Every programme's spend by kind, before GST — what TOTAL SPEND opens.
+  SpendBreakdown? _spend;
   bool _showCompleted = false;
 
   /// What the rail is currently laying out.
@@ -652,6 +657,28 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
         evCard.totalInclGst = mahindraEvSubtotalExcl;
       }
 
+      // The full spend, on one basis (13 Nov 2026). The figures above grossed
+      // the live programmes up by 18% while Mahindra EV stood before GST, and
+      // left the muster out. SpendBreakdown adds workshop, manpower and dead
+      // weight, nothing grossed up — NATRAX bill this SEZ unit without GST —
+      // and keeps Mahindra EV pinned to its invoices. When it loads, every
+      // card and the headline read from it; if it fails, the old figures
+      // stand rather than the screen going blank.
+      SpendBreakdown? spend;
+      try {
+        spend = await SpendBreakdownService.load();
+        for (final card in cardMap.values) {
+          final row = spend.rowFor(card.displayName);
+          if (row == null) continue;
+          card.subtotalExcl = row.total;
+          // Named "incl GST" from before the SEZ ruling; it is now the same
+          // before-GST figure, because there is no GST on it to include.
+          card.totalInclGst = row.total;
+        }
+      } catch (_) {
+        spend = null;
+      }
+
       // Maintain fixed order — cardMap was filled from _knownProjects in
       // order, so reading its values back keeps that order without naming
       // each project again here.
@@ -678,6 +705,7 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
         setState(() {
           _projects = live;
           _completed = done;
+          _spend = spend;
           _isLoading = false;
         });
         _fadeCtrl.forward();
@@ -956,7 +984,10 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
     // Compute totals across all loaded projects
     final all = _allProjects;
     final totalSessions = all.fold(0, (s, p) => s + p.sessions);
-    final totalSpendInclGst = all.fold(0.0, (s, p) => s + p.totalInclGst);
+    // The breakdown's own total when it loaded: it also carries manpower
+    // worked before the muster, which belongs to no programme card.
+    final totalSpendInclGst =
+        _spend?.total ?? all.fold<double>(0.0, (s, p) => s + p.totalInclGst);
     final activeCount =
         all.where((p) => p.status == ProjectStatus.active).length;
 
@@ -1043,6 +1074,10 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
             value: _inrCompact.format(totalSpendInclGst),
             color: const Color(0xFFE8002D),
             icon: Icons.currency_rupee_rounded,
+            hint: _spend == null ? null : 'before GST · details ›',
+            onTap: _spend == null
+                ? null
+                : () => SpendDetailDialog.show(context, _spend!),
           ),
           _statDivider(),
           _statItem(
@@ -1110,22 +1145,35 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
     required String value,
     required Color color,
     required IconData icon,
+    String? hint,
+    VoidCallback? onTap,
   }) {
-    return Expanded(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(icon, color: color, size: 12),
-          const SizedBox(width: 4),
-          Text(label,
-              style: GoogleFonts.spaceGrotesk(
-                  fontSize: 8, fontWeight: FontWeight.w700,
-                  color: color.withOpacity(0.7), letterSpacing: 1.2)),
-        ]),
-        const SizedBox(height: 4),
-        Text(value,
+    final body = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Icon(icon, color: color, size: 12),
+        const SizedBox(width: 4),
+        Text(label,
             style: GoogleFonts.spaceGrotesk(
-                fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
+                fontSize: 8, fontWeight: FontWeight.w700,
+                color: color.withOpacity(0.7), letterSpacing: 1.2)),
       ]),
+      const SizedBox(height: 4),
+      Text(value,
+          style: GoogleFonts.spaceGrotesk(
+              fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
+      if (hint != null)
+        Text(hint,
+            style: GoogleFonts.spaceGrotesk(
+                fontSize: 9, fontWeight: FontWeight.w600,
+                color: color.withOpacity(0.8))),
+    ]);
+    return Expanded(
+      child: onTap == null
+          ? body
+          : MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(onTap: onTap, child: body),
+            ),
     );
   }
 
