@@ -115,6 +115,33 @@ class _FakeService extends ReconciliationService {
   ReconMonthState state;
   bool failLoad = false;
   final bulkAccepted = <String>[];
+  final answered = <String>[];
+
+  @override
+  Future<List<ReconHistoryEntry>> history(String month) async => const [];
+
+  @override
+  Future<void> answer(
+      String month, ReconItem item, String choice, String comment) async {
+    answered.add(item.key);
+    state = ReconMonthState(
+      month: state.month,
+      sheet: state.sheet,
+      invoice: state.invoice,
+      invoiceNumber: state.invoiceNumber,
+      answers: {
+        ...state.answers,
+        item.key: ReconAnswer(
+            itemKey: item.key,
+            choice: choice,
+            comment: comment,
+            snapshot: item.snapshot,
+            at: DateTime(2026, 11, 17, 12),
+            by: 'engineer@example.com'),
+      },
+      notes: state.notes,
+    );
+  }
 
   @override
   Future<List<({String month, bool settled, bool hasSheet})>> months() async =>
@@ -251,10 +278,57 @@ void main() {
     expect(find.text('NATRAX RECONCILIATION'), findsOneWidget);
     expect(find.text('STEP 2 · WHOSE VEHICLES'), findsOneWidget);
     expect(find.text('Ertiga'), findsWidgets);
-    expect(find.text('STEP 3 · WHAT DOES NOT AGREE'), findsOneWidget);
     expect(find.text('THE MONTH IN MONEY'), findsOneWidget);
+    // The next step is named, and it is the unplaced vehicles.
+    expect(find.textContaining('Next: Place 2 vehicles'), findsOneWidget);
+    await _scrollTo(tester, find.text('STEP 3 · WHAT DOES NOT AGREE'));
+    expect(find.text('STEP 3 · WHAT DOES NOT AGREE'), findsOneWidget);
     await _scrollAll(tester);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a picked option stays on screen, shown as chosen', (tester) async {
+    final svc = _FakeService(_october());
+    await _pump(tester, svc, desktop);
+    // 13 Oct T3D: NATRAX bill more, so it is under "Needs a decision".
+    final option = find.textContaining('Accept 3 h');
+    await _scrollTo(tester, option);
+    await tester.ensureVisible(option.first);
+    await tester.pumpAndSettle();
+    await tester.tap(option.first);
+    await tester.pumpAndSettle();
+    expect(svc.answered, contains('trk|2026-10-13|Mahindra ICE PoC|T3D'));
+    // Still in view, now marked saved — not vanished from the list.
+    expect(find.textContaining('Accept 3 h'), findsWidgets);
+    expect(find.textContaining('Saved: Accept 3 h'), findsOneWidget);
+  });
+
+  testWidgets('Enter in a comment with no choice says what is missing', (tester) async {
+    // Nine hours of T16 invoiced where seven were agreed: a difference that
+    // must be explained, with no suggested answer to fall back on.
+    const over = ParsedInvoice(
+      invoiceNumber: 'INV/26-27/998',
+      periodMonth: '2026-10',
+      amountExclGst: 81000,
+      gstAmount: 0,
+      totalAmount: 81000,
+      lines: [
+        ParsedInvoiceLine(
+            description: 'General Road Track Testing (GVW< 3.5T)',
+            quantity: 9, unit: 'Hrs', amount: 81000),
+      ],
+    );
+    await _pump(tester, _FakeService(_october(invoice: over)), desktop);
+    final box = find.byWidgetPredicate((w) =>
+        w is TextField &&
+        (w.decoration?.hintText ?? '').contains('required: why does the invoice differ'));
+    await _scrollTo(tester, box);
+    await tester.ensureVisible(box.first);
+    await tester.pumpAndSettle();
+    await tester.enterText(box.first, 'Raised already');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Pick one of the options above'), findsOneWidget);
   });
 
   testWidgets('and on a phone', (tester) async {

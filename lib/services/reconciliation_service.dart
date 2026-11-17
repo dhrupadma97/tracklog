@@ -33,6 +33,46 @@ class ReconNote {
   });
 }
 
+/// One entry in a month's history: a decision, with its comment and the
+/// amounts as they stood. Append-only — see 20261117090000_recon_history.sql.
+class ReconHistoryEntry {
+  final String action;
+  final String? itemKey;
+  final String? title;
+  final String? choice;
+  final String? choiceLabel;
+  final String? comment;
+  final double? natraxAmount;
+  final double? agreedAmount;
+  final DateTime at;
+  final String? by;
+  const ReconHistoryEntry({
+    required this.action,
+    required this.at,
+    this.itemKey,
+    this.title,
+    this.choice,
+    this.choiceLabel,
+    this.comment,
+    this.natraxAmount,
+    this.agreedAmount,
+    this.by,
+  });
+
+  factory ReconHistoryEntry.fromJson(Map<String, dynamic> j) => ReconHistoryEntry(
+        action: (j['action'] as String?) ?? '',
+        itemKey: j['item_key'] as String?,
+        title: j['title'] as String?,
+        choice: j['choice'] as String?,
+        choiceLabel: j['choice_label'] as String?,
+        comment: j['comment'] as String?,
+        natraxAmount: (j['natrax_amount'] as num?)?.toDouble(),
+        agreedAmount: (j['agreed_amount'] as num?)?.toDouble(),
+        at: DateTime.tryParse(j['created_at']?.toString() ?? '') ?? DateTime.now(),
+        by: j['created_by'] as String?,
+      );
+}
+
 /// Everything stored for one month's reconciliation.
 class ReconMonthState {
   final String month;
@@ -275,6 +315,81 @@ class ReconciliationService {
       '${sheet.runCount} runs, ${_h(sheet.chargedHours)} h charged.',
       kind: 'sheet',
     );
+    await logHistory(sheet.monthKey,
+        action: 'sheet uploaded',
+        title: sheet.reference.isEmpty ? fileName : sheet.reference,
+        comment: '${sheet.blocks.length} track lines, ${_h(sheet.chargedHours)} h charged');
+  }
+
+  // ── History ──────────────────────────────────────────────────────────────
+
+  /// True once a write or read has found recon_history missing — the
+  /// migration not run yet. Decisions still save; only the trail is lost.
+  bool historyMissing = false;
+
+  /// Adds one line to the month's history. Never throws: a decision must
+  /// not fail because its record of itself could not be written.
+  Future<void> logHistory(
+    String month, {
+    required String action,
+    ReconItem? item,
+    String? title,
+    String? choice,
+    String? comment,
+    double? natrax,
+    double? agreed,
+  }) async {
+    ReconOption? option;
+    if (item != null && choice != null) {
+      for (final o in item.options) {
+        if (o.id == choice) option = o;
+      }
+    }
+    try {
+      await _db.from('recon_history').insert({
+        'month': month,
+        'action': action,
+        'item_key': item?.key,
+        'title': title ?? item?.title,
+        'choice': choice,
+        'choice_label': option?.label,
+        'comment': (comment ?? '').trim().isEmpty ? null : comment!.trim(),
+        'natrax_amount': natrax ?? item?.theirsMoney,
+        'agreed_amount': agreed ??
+            option?.agreedMoney ??
+            (option?.agreed == null || item == null ? null : option!.agreed! * item.rate),
+        'created_by': _who,
+      });
+      historyMissing = false;
+    } catch (e) {
+      final s = e.toString();
+      if (s.contains('PGRST205') || s.contains('recon_history')) {
+        historyMissing = true;
+      }
+    }
+  }
+
+  /// The month's history, newest first. Empty when the table is missing.
+  Future<List<ReconHistoryEntry>> history(String month) async {
+    try {
+      final rows = await _db
+          .from('recon_history')
+          .select()
+          .eq('month', month)
+          .order('created_at', ascending: false);
+      historyMissing = false;
+      return [
+        for (final r in (rows as List).cast<Map<String, dynamic>>())
+          ReconHistoryEntry.fromJson(r),
+      ];
+    } catch (e) {
+      final s = e.toString();
+      if (s.contains('PGRST205') || s.contains('recon_history')) {
+        historyMissing = true;
+        return const [];
+      }
+      rethrow;
+    }
   }
 
   Future<void> answer(String month, ReconItem item, String choice,
@@ -288,6 +403,16 @@ class ReconciliationService {
       'answered_at': DateTime.now().toUtc().toIso8601String(),
       'answered_by': _who,
     }, onConflict: 'month,item_key');
+    final prev = item.answer;
+    await logHistory(
+      month,
+      action: prev == null
+          ? 'answered'
+          : (prev.choice == choice ? 'comment changed' : 'changed'),
+      item: item,
+      choice: choice,
+      comment: comment,
+    );
   }
 
   /// Settles every in-our-favour question at its suggestion, with its own
@@ -308,19 +433,33 @@ class ReconciliationService {
     ];
     if (rows.isEmpty) return 0;
     await _db.from('recon_answers').upsert(rows, onConflict: 'month,item_key');
+    for (final i in items) {
+      if (i.isOpen && i.bulkOk && i.suggested != null) {
+        await logHistory(month,
+            action: 'accepted (in our favour)',
+            item: i,
+            choice: i.suggested,
+            comment: i.autoComment);
+      }
+    }
     return rows.length;
   }
 
-  Future<void> clearAnswer(String month, String itemKey) async {
+  Future<void> clearAnswer(String month, String itemKey, {ReconItem? item}) async {
     await _db
         .from('recon_answers')
         .delete()
         .eq('month', month)
         .eq('item_key', itemKey);
+    await logHistory(month,
+        action: 'undone',
+        item: item,
+        title: item?.title ?? itemKey,
+        comment: item?.answer?.comment);
   }
 
   Future<void> setVehicle(String key, String label,
-      {String? project, bool notOurs = false}) async {
+      {String? project, bool notOurs = false, String? month}) async {
     await _db.from('recon_vehicles').upsert({
       'vehicle_key': key,
       'label': label,
@@ -329,6 +468,13 @@ class ReconciliationService {
       'decided_at': DateTime.now().toUtc().toIso8601String(),
       'decided_by': _who,
     }, onConflict: 'vehicle_key');
+    if (month != null) {
+      await logHistory(month,
+          action: 'vehicle placed',
+          title: label,
+          choice: notOurs ? 'not_ours' : 'prog:$project',
+          comment: notOurs ? 'Not ours' : '→ $project');
+    }
   }
 
   Future<void> addNote(String month, String note, {String kind = 'note'}) async {
@@ -379,6 +525,21 @@ class ReconciliationService {
       'GST ₹${_money(parsed.gstAmount ?? inv.gstAmount)}.',
       kind: 'invoice',
     );
+    await logHistory(month,
+        action: 'invoice set',
+        title: inv.invoiceNumber,
+        natrax: parsed.amountExclGst ?? inv.amountExclGst);
+  }
+
+  /// Takes the invoice off the month, so a different one can be set.
+  Future<void> clearInvoice(String month, String? invoiceNumber) async {
+    await _db.from('recon_months').update({
+      'invoice_id': null,
+      'invoice_number': null,
+      'invoice_json': null,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('month', month);
+    await logHistory(month, action: 'invoice removed', title: invoiceNumber);
   }
 
   // ── Settling ─────────────────────────────────────────────────────────────
@@ -398,6 +559,12 @@ class ReconciliationService {
       '${summary['invoice'] == null ? '' : ', invoice ${summary['invoice']}'}.',
       kind: 'settled',
     );
+    await logHistory(month,
+        action: 'settled',
+        title: summary['invoice'] as String?,
+        natrax: (summary['invoice_excl'] as num?)?.toDouble(),
+        agreed: (summary['to_pay'] as num?)?.toDouble() ??
+            (summary['agreed'] as num?)?.toDouble());
   }
 
   Future<void> reopen(String month, String reason) async {
@@ -408,6 +575,7 @@ class ReconciliationService {
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     }).eq('month', month);
     await addNote(month, 'Reopened: $reason', kind: 'reopened');
+    await logHistory(month, action: 'reopened', comment: reason);
   }
 
   // ── Fixing our own record ────────────────────────────────────────────────
@@ -521,6 +689,13 @@ class ReconciliationService {
       added++;
     }
     SessionLogService.instance.changed();
+    final month = '${date.year}-${date.month.toString().padLeft(2, '0')}';
+    await logHistory(month,
+        action: 'runs added to TrackLog',
+        item: item,
+        comment: '$added run${added == 1 ? '' : 's'}: '
+            '${sorted.map((r) => r.label).join(', ')}',
+        agreed: total);
     return (count: added, cost: total);
   }
 

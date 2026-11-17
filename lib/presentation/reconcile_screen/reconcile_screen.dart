@@ -105,6 +105,40 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
   final _noteCtrl = TextEditingController();
   bool _working = false;
 
+  /// Every decision made on the month, newest first, with its comment.
+  List<ReconHistoryEntry> _history = [];
+
+  /// Lines answered while this month is open on screen. They stay where
+  /// they are, shown as chosen, instead of vanishing from "Needs a
+  /// decision" the moment an option is picked — which read as the choice
+  /// not having been taken.
+  final _justAnswered = <String>{};
+
+  /// The option clicked on a line whose save has not come back yet, so it
+  /// shows as selected at once.
+  final _pending = <String, String>{};
+
+  /// Why a line's last save failed, shown on the line itself.
+  final _itemErrors = <String, String>{};
+
+  // Anchors for "go to" links: the stage strip, the next-step bar and the
+  // settle checklist all jump to the card that needs doing.
+  final _kSheet = GlobalKey();
+  final _kVehicles = GlobalKey();
+  final _kQuestions = GlobalKey();
+  final _kInvoice = GlobalKey();
+  final _kSettle = GlobalKey();
+  final _kSummary = GlobalKey();
+
+  void _goTo(GlobalKey k) {
+    final c = k.currentContext;
+    if (c == null) return;
+    Scrollable.ensureVisible(c,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOutCubic,
+        alignment: 0.02);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -165,6 +199,13 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
       _ours = results[2] as OurMonth;
       _invoiceChoices = results[3] as List<NatraxInvoice>;
       _error = null;
+      // On its own: a history that cannot be read costs the history, not
+      // the month.
+      try {
+        _history = await _svc.history(_month);
+      } catch (_) {
+        _history = [];
+      }
       _recompute();
     } catch (e) {
       final msg = e.toString();
@@ -295,10 +336,53 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
     // A difference on the invoice must say why; that is what the month's
     // record is for.
     if (i.kind == ReconKind.invoice && ctrl.text.trim().isEmpty) {
-      _say('Add a comment saying why, then choose again.', error: true);
+      setState(() => _itemErrors[i.key] =
+          'Write why in the comment box, then pick the option again.');
       return;
     }
-    await _do(i.key, () => _svc.answer(_month, i, o.id, ctrl.text));
+    setState(() {
+      _pending[i.key] = o.id;
+      _justAnswered.add(i.key);
+      _itemErrors.remove(i.key);
+      _busy.add(i.key);
+    });
+    try {
+      await _svc.answer(_month, i, o.id, ctrl.text);
+      await _load(quiet: true);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _justAnswered.remove(i.key);
+          _itemErrors[i.key] = 'Not saved: $e';
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _pending.remove(i.key);
+          _busy.remove(i.key);
+        });
+      }
+    }
+  }
+
+  /// Enter in a comment box: saves the comment with the option already
+  /// chosen, or with the suggested one; otherwise says what is missing
+  /// rather than doing nothing.
+  void _submitComment(ReconItem i) {
+    final c = i.stale ? null : i.chosen;
+    if (c != null) {
+      _answer(i, c);
+      return;
+    }
+    for (final o in i.options) {
+      if (o.id == i.suggested) {
+        _answer(i, o);
+        return;
+      }
+    }
+    setState(() => _itemErrors[i.key] =
+        'Pick one of the options above — the comment is saved with it.');
   }
 
   Future<void> _setVehicle(ReconItem v, ReconOption o) async {
@@ -308,7 +392,8 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
       v.key,
       () => _svc.setVehicle(key, v.title,
           project: notOurs ? null : o.id.substring('prog:'.length),
-          notOurs: notOurs),
+          notOurs: notOurs,
+          month: _month),
       done: notOurs
           ? '${v.title} marked not ours — everything on it is disputed.'
           : '${v.title} → ${o.label}. Remembered for later months.',
@@ -383,17 +468,85 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
     }
   }
 
+  /// The month's money in one place, so the money card, the list to raise,
+  /// the summary and the export cannot disagree.
+  ///
+  /// Once the invoice is set it is the figure of record: what is to be
+  /// raised is then the invoice lines disputed, and what is to be paid is
+  /// the invoice less those. Before it, the sheet's disputes stand in.
+  ({
+    double sheet,
+    double ours,
+    double agreed,
+    double? invoiceExcl,
+    double? invoiceGst,
+    double? invoiceTotal,
+    List<ReconItem> raise,
+    double toRaise,
+    double? toPay,
+  }) get _figures {
+    final o = _outcome!;
+    final inv = _state?.invoice;
+    double? excl, gst, total;
+    if (inv != null) {
+      excl = inv.amountExclGst ??
+          inv.lines.fold<double>(0, (s, l) => s + l.amount);
+      gst = inv.gstAmount ?? 0;
+      total = inv.totalAmount ?? (excl + gst);
+    }
+    final raise = inv == null
+        ? o.disputes
+        : NatraxReconciler.invoiceDisputes(_invoiceItems);
+    final toRaise = raise.fold<double>(
+        0,
+        (s, d) => s +
+            (d.kind == ReconKind.notOurs
+                ? d.theirsMoney
+                : d.theirsMoney - d.agreedMoney));
+    return (
+      sheet: o.natraxMoney,
+      ours: o.oursMoney,
+      agreed: o.agreedMoney,
+      invoiceExcl: excl,
+      invoiceGst: gst,
+      invoiceTotal: total,
+      raise: raise,
+      toRaise: toRaise,
+      toPay: excl == null ? null : excl - toRaise,
+    );
+  }
+
+  /// Every answered line that carries a comment: the month's remarks.
+  List<ReconItem> get _remarks => [
+        for (final i in [...?_outcome?.items, ..._invoiceItems])
+          if (i.answer != null && (i.answer!.comment).trim().isNotEmpty) i,
+      ];
+
   Map<String, dynamic> _summary() {
     final o = _outcome!;
     final s = _state!;
+    final f = _figures;
     return {
       'natrax': o.natraxMoney,
       'ours': o.oursMoney,
       'agreed': o.agreedMoney,
-      'disputed': o.disputedMoney,
+      'disputed': f.toRaise,
       'not_ours': o.notOursMoney,
       'invoice': s.invoiceNumber,
-      'invoice_excl': s.invoice?.amountExclGst,
+      'invoice_excl': f.invoiceExcl,
+      'invoice_gst': f.invoiceGst,
+      'invoice_total': f.invoiceTotal,
+      'to_raise': f.toRaise,
+      'to_pay': f.toPay,
+      'remarks': [
+        for (final r in _remarks)
+          {
+            'line': r.title,
+            'decision': r.chosen?.label ?? r.answer!.choice,
+            'comment': r.answer!.comment,
+            'by': r.answer!.by,
+          },
+      ],
       'sheet': s.sheet?.reference,
       'lines': [
         for (final l in o.trackLines)
@@ -438,13 +591,14 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
   }
 
   String _disputeText() {
-    final o = _outcome!;
     final s = _state!;
+    final f = _figures;
     final b = StringBuffer()
-      ..writeln('Utilisation sheet ${s.sheet?.reference ?? ''} — '
-          '${_monthLabel(_month)}')
+      ..writeln(s.invoice != null
+          ? 'Invoice ${s.invoiceNumber ?? ''} — ${_monthLabel(_month)}'
+          : 'Utilisation sheet ${s.sheet?.reference ?? ''} — ${_monthLabel(_month)}')
       ..writeln();
-    for (final d in o.disputes) {
+    for (final d in f.raise) {
       if (d.kind == ReconKind.notOurs) {
         b.writeln('• ${d.title}${d.subtitle.isEmpty ? '' : ' (${d.subtitle})'}: '
             '${_h(d.theirs)} h and services, ${_inr.format(d.theirsMoney)}');
@@ -461,7 +615,11 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
     }
     b
       ..writeln()
-      ..writeln('Total in question: ${_inr.format(o.disputedMoney)}');
+      ..writeln('Total in question: ${_inr.format(f.toRaise)}');
+    if (f.toPay != null) {
+      b.writeln('Invoice ${_inr.format(f.invoiceExcl)} less this: '
+          '${_inr.format(f.toPay)} to pay');
+    }
     return b.toString();
   }
 
@@ -490,10 +648,37 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
       ['Our record', o.oursMoney],
       ['Agreed', o.agreedMoney],
       ['Not ours', o.notOursMoney],
-      ['Disputed in total', o.disputedMoney],
       ['Invoice', s.invoiceNumber],
-      ['Invoice taxable', s.invoice?.amountExclGst],
+      ['Invoice, before GST', _figures.invoiceExcl],
+      ['Invoice GST', _figures.invoiceGst],
+      ['Invoice total', _figures.invoiceTotal],
+      ['To raise with NATRAX', _figures.toRaise],
+      ['To pay, before GST', _figures.toPay],
       ['Settled', s.settledAt == null ? 'No' : DateFormat('d MMM yyyy').format(s.settledAt!)],
+    ]);
+    sheet('Remarks', ['Line', 'Stage', 'Decision', 'Comment', 'By', 'When'], [
+      for (final r in _remarks)
+        [
+          r.title,
+          r.kind == ReconKind.invoice ? 'Invoice' : 'Sheet',
+          r.chosen?.label ?? r.answer!.choice,
+          r.answer!.comment,
+          r.answer!.by ?? '',
+          r.answer!.at == null ? '' : DateFormat('dd-MMM-yyyy HH:mm').format(r.answer!.at!.toLocal()),
+        ],
+    ]);
+    sheet('History', ['When', 'Action', 'Line', 'Decision', 'Comment', 'NATRAX ₹', 'Agreed ₹', 'By'], [
+      for (final h in _history)
+        [
+          DateFormat('dd-MMM-yyyy HH:mm').format(h.at.toLocal()),
+          h.action,
+          h.title ?? '',
+          h.choiceLabel ?? h.choice ?? '',
+          h.comment ?? '',
+          h.natraxAmount,
+          h.agreedAmount,
+          h.by ?? '',
+        ],
     ]);
     sheet('Tracks', ['Track', 'Name', 'NATRAX h', 'Ours h', 'Agreed h', 'Rate', 'Agreed ₹', 'Disputed ₹'], [
       for (final l in o.trackLines)
@@ -686,6 +871,7 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
         if (!_loading && _error == null) ...[
           const SizedBox(height: 12),
           _stageStrip(),
+          _nextStepBar(),
         ],
       ]),
     );
@@ -701,6 +887,9 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
               setState(() {
                 _month = m;
                 _comments.clear();
+                _justAnswered.clear();
+                _pending.clear();
+                _itemErrors.clear();
                 _expanded.clear();
               });
               _load();
@@ -729,6 +918,134 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
     );
   }
 
+  /// Where the month stands, and what is left, with a jump to each.
+  ///
+  /// "I came here and nothing to go forward" (17 Nov 2026): the strip said
+  /// step 2 while the screen was scrolled to the invoice, and nothing said
+  /// what was holding the month up. Now every step can be clicked, and the
+  /// bar under it names the next thing to do and goes there.
+  List<({String text, GlobalKey target, String? filter})> _nextSteps() {
+    final s = _state;
+    final o = _outcome;
+    final out = <({String text, GlobalKey target, String? filter})>[];
+    if (s?.sheet == null) {
+      out.add((text: "Upload NATRAX's utilisation sheet", target: _kSheet, filter: null));
+      return out;
+    }
+    if (o == null) return out;
+    final vehicles = o.items
+        .where((i) => i.kind == ReconKind.vehicle && i.isOpen)
+        .map((i) => i.title)
+        .toList();
+    if (vehicles.isNotEmpty) {
+      out.add((
+        text: 'Place ${vehicles.length} vehicle${vehicles.length == 1 ? '' : 's'}: '
+            '${vehicles.join(', ')}',
+        target: _kVehicles,
+        filter: null,
+      ));
+    }
+    final ask = o.items
+        .where((i) => i.kind != ReconKind.vehicle && i.isOpen && !i.bulkOk)
+        .length;
+    if (ask > 0) {
+      out.add((
+        text: 'Decide $ask line${ask == 1 ? '' : 's'} where NATRAX bill more',
+        target: _kQuestions,
+        filter: 'ask',
+      ));
+    }
+    final favour = o.items.where((i) => i.isOpen && i.bulkOk).length;
+    if (favour > 0) {
+      out.add((
+        text: 'Accept $favour line${favour == 1 ? '' : 's'} in your favour — one click',
+        target: _kQuestions,
+        filter: 'favour',
+      ));
+    }
+    if (s!.invoice == null) {
+      out.add((text: 'Set the final invoice against the month', target: _kInvoice, filter: null));
+    } else {
+      final inv = _invoiceItems.where((i) => i.isOpen).length;
+      if (inv > 0) {
+        out.add((
+          text: 'Explain $inv invoice difference${inv == 1 ? '' : 's'} (comment + choice)',
+          target: _kInvoice,
+          filter: null,
+        ));
+      }
+    }
+    if (out.isEmpty && !_settled) {
+      out.add((text: 'Everything is answered — settle the month', target: _kSettle, filter: null));
+    }
+    return out;
+  }
+
+  void _follow(({String text, GlobalKey target, String? filter}) step) {
+    if (step.filter != null && step.filter != _filter) {
+      setState(() {
+        _filter = step.filter!;
+        _justAnswered.clear();
+      });
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _goTo(step.target));
+  }
+
+  Widget _nextStepBar() {
+    final steps = _nextSteps();
+    if (_settled) {
+      return _bar(
+        colour: _green,
+        icon: Icons.verified,
+        text: '${_monthLabel(_month)} is settled'
+            '${_state?.settledAt == null ? '' : ' on ${DateFormat('d MMM yyyy').format(_state!.settledAt!.toLocal())}'}'
+            '. The summary, remarks and history are at the bottom.',
+        action: 'See summary',
+        onTap: () => _goTo(_kSummary),
+      );
+    }
+    if (steps.isEmpty) return const SizedBox.shrink();
+    final next = steps.first;
+    final more = steps.length - 1;
+    return _bar(
+      colour: _teal,
+      icon: Icons.arrow_circle_right_outlined,
+      text: 'Next: ${next.text}'
+          '${more > 0 ? '   ·   then $more more: ${steps.skip(1).map((x) => x.text).join(' · ')}' : ''}',
+      action: 'Go there',
+      onTap: () => _follow(next),
+    );
+  }
+
+  Widget _bar({
+    required Color colour,
+    required IconData icon,
+    required String text,
+    required String action,
+    required VoidCallback onTap,
+  }) =>
+      Container(
+        margin: const EdgeInsets.only(top: 10),
+        padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+        decoration: BoxDecoration(
+          color: colour.withAlpha(20),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: colour.withAlpha(110)),
+        ),
+        child: Row(children: [
+          Icon(icon, size: 18, color: colour),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(text,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: _t(12.5, weight: FontWeight.w700, color: Colors.white)),
+          ),
+          const SizedBox(width: 8),
+          _smallButton(Icons.south, action, onTap, colour: colour),
+        ]),
+      );
+
   Widget _stageStrip() {
     final s = _state;
     final o = _outcome;
@@ -738,11 +1055,11 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
     final invoiceDone = s?.invoice != null &&
         _invoiceItems.every((i) => !i.isOpen);
     final steps = [
-      ('Sheet', hasSheet),
-      ('Vehicles', vehiclesDone),
-      ('Questions', questionsDone),
-      ('Invoice', invoiceDone),
-      ('Settled', _settled),
+      ('Sheet', hasSheet, _kSheet),
+      ('Vehicles', vehiclesDone, _kVehicles),
+      ('Questions', questionsDone, _kQuestions),
+      ('Invoice', invoiceDone, _kInvoice),
+      ('Settled', _settled, _kSettle),
     ];
     final current = steps.indexWhere((x) => !x.$2);
     // On a phone only the current step keeps its name; the rest shrink to a
@@ -752,21 +1069,17 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
               ? const Icon(Icons.check_circle, size: 15, color: _green)
               : Text('${i + 1}', style: _t(12, weight: FontWeight.w800, color: _muted)),
         );
-    return Row(children: [
-      for (var i = 0; i < steps.length; i++) ...[
-        Expanded(
-          flex: _narrow && i == current ? 4 : 1,
-          child: _narrow && i != current
-              ? Container(
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: steps[i].$2 ? _green.withAlpha(22) : Colors.transparent,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: steps[i].$2 ? _green.withAlpha(110) : _line),
-                  ),
-                  child: compact(i),
-                )
-              : Container(
+    Widget box(int i) => _narrow && i != current
+        ? Container(
+            height: 34,
+            decoration: BoxDecoration(
+              color: steps[i].$2 ? _green.withAlpha(22) : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: steps[i].$2 ? _green.withAlpha(110) : _line),
+            ),
+            child: compact(i),
+          )
+        : Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
               color: steps[i].$2
@@ -800,6 +1113,20 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
                             : (i == current ? _teal : _muted))),
               ),
             ]),
+          );
+    return Row(children: [
+      for (var i = 0; i < steps.length; i++) ...[
+        Expanded(
+          flex: _narrow && i == current ? 4 : 1,
+          child: Tooltip(
+            message: 'Go to ${steps[i].$1.toLowerCase()}',
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: () => _goTo(steps[i].$3),
+                child: box(i),
+              ),
+            ),
           ),
         ),
         if (i < steps.length - 1) const SizedBox(width: 6),
@@ -809,14 +1136,17 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
 
   List<Widget> _mainCards() {
     final s = _state!;
-    if (s.sheet == null) return [_sheetCard()];
+    if (s.sheet == null) {
+      return [KeyedSubtree(key: _kSheet, child: _sheetCard())];
+    }
     return [
-      _sheetCard(),
-      _vehiclesCard(),
-      _questionsCard(),
+      KeyedSubtree(key: _kSheet, child: _sheetCard()),
+      KeyedSubtree(key: _kVehicles, child: _vehiclesCard()),
+      KeyedSubtree(key: _kQuestions, child: _questionsCard()),
       _agreedCard(),
-      _invoiceCard(),
-      _settleCard(),
+      KeyedSubtree(key: _kInvoice, child: _invoiceCard()),
+      KeyedSubtree(key: _kSettle, child: _settleCard()),
+      KeyedSubtree(key: _kSummary, child: _summaryCard()),
     ];
   }
 
@@ -1127,9 +1457,13 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
   Widget _questionsCard() {
     final o = _outcome!;
     final items = o.items.where((i) => i.kind != ReconKind.vehicle).toList();
+    // A line answered while on screen stays in the view it was answered in,
+    // shown as chosen, until the month or the view changes.
     bool inFilter(ReconItem i) => switch (_filter) {
-          'ask' => i.isOpen && !i.bulkOk,
-          'favour' => i.isOpen && i.bulkOk,
+          'ask' => (i.isOpen && !i.bulkOk) ||
+              (_justAnswered.contains(i.key) && !i.bulkOk && i.needsAnswer),
+          'favour' => (i.isOpen && i.bulkOk) ||
+              (_justAnswered.contains(i.key) && i.bulkOk),
           'answered' => i.needsAnswer && !i.isOpen,
           'info' => !i.needsAnswer,
           _ => true,
@@ -1181,7 +1515,10 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
               selected: _filter == f.$1,
               suggested: false,
               colour: f.$1 == 'ask' ? _amber : (f.$1 == 'favour' ? _teal : _green),
-              onTap: () => setState(() => _filter = f.$1),
+              onTap: () => setState(() {
+                _filter = f.$1;
+                _justAnswered.clear();
+              }),
             ),
         ]),
         if (counts['favour']! > 0 && !_settled) ...[
@@ -1226,7 +1563,15 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
     final busy = _busy.contains(i.key);
     final open = _expanded.contains(i.key);
     final diff = i.theirsMoney - i.oursMoney;
-    final chosen = i.stale ? null : i.chosen;
+    // The option just clicked shows as chosen before its save returns.
+    final pendingId = _pending[i.key];
+    ReconOption? chosen = i.stale ? null : i.chosen;
+    if (pendingId != null) {
+      for (final o in i.options) {
+        if (o.id == pendingId) chosen = o;
+      }
+    }
+    final itemError = _itemErrors[i.key];
     final missing = ReconciliationService.missingRuns(i);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -1348,21 +1693,30 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
                 : (i.kind == ReconKind.invoice
                     ? 'Comment — required: why does the invoice differ?'
                     : 'Comment (optional)')),
-            onSubmitted: (_) {
-              final c = i.chosen;
-              if (c != null) _answer(i, c);
-            },
+            onSubmitted: (_) => _submitComment(i),
           ),
+          if (itemError != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.error_outline, size: 14, color: _red),
+                const SizedBox(width: 6),
+                Expanded(child: Text(itemError, style: _t(11.5, weight: FontWeight.w600, color: _red))),
+              ]),
+            ),
           if (i.answer != null && !i.stale)
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Row(children: [
+                const Icon(Icons.check_circle, size: 14, color: _green),
+                const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                      'Answered${i.answer!.by == null ? '' : ' by ${i.answer!.by}'}'
+                      'Saved: ${i.chosen?.label ?? i.answer!.choice}'
+                      '${i.answer!.by == null ? '' : ' · ${i.answer!.by}'}'
                       '${i.answer!.at == null ? '' : ', ${DateFormat('d MMM, HH:mm').format(i.answer!.at!.toLocal())}'}',
                       overflow: TextOverflow.ellipsis,
-                      style: _t(10.5, color: _muted)),
+                      style: _t(10.5, weight: FontWeight.w600, color: _green)),
                 ),
                 if (!_settled)
                   GestureDetector(
@@ -1375,7 +1729,7 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
                 if (!_settled) ...[
                   const SizedBox(width: 12),
                   GestureDetector(
-                    onTap: () => _do(i.key, () => _svc.clearAnswer(_month, i.key)),
+                    onTap: () => _do(i.key, () => _svc.clearAnswer(_month, i.key, item: i)),
                     child: MouseRegion(
                       cursor: SystemMouseCursors.click,
                       child: Text('Undo', style: _t(10.5, weight: FontWeight.w700, color: _muted)),
@@ -1616,13 +1970,8 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: _smallButton(Icons.swap_horiz, 'Use a different invoice', () async {
-                await _do('invoice', () async {
-                  await SupabaseService.instance.client.from('recon_months').update({
-                    'invoice_id': null,
-                    'invoice_number': null,
-                    'invoice_json': null,
-                  }).eq('month', _month);
-                });
+                await _do('invoice',
+                    () => _svc.clearInvoice(_month, s.invoiceNumber));
               }, colour: _muted),
             ),
         ],
@@ -1645,13 +1994,32 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
     final s = _state!;
     final o = _outcome!;
     final invoiceOpen = _invoiceItems.where((i) => i.isOpen).length;
+    final questionsOpen =
+        o.items.where((i) => i.kind != ReconKind.vehicle && i.isOpen).length;
+    // Each unticked line says how many are left and goes to them.
     final checks = [
-      ('Every vehicle placed', o.unknownVehicles == 0),
-      ('Every question answered', o.cleared),
-      ('Invoice set against the month', s.invoice != null),
-      ('Every invoice difference explained', s.invoice != null && invoiceOpen == 0),
+      (
+        'Every vehicle placed',
+        o.unknownVehicles == 0,
+        '${o.unknownVehicles} to place',
+        _kVehicles,
+      ),
+      (
+        'Every question answered',
+        o.cleared,
+        '$questionsOpen to answer',
+        _kQuestions,
+      ),
+      ('Invoice set against the month', s.invoice != null, 'not set yet', _kInvoice),
+      (
+        'Every invoice difference explained',
+        s.invoice != null && invoiceOpen == 0,
+        s.invoice == null ? 'after the invoice' : '$invoiceOpen to explain',
+        _kInvoice,
+      ),
     ];
     final ready = checks.every((c) => c.$2);
+    final f = _figures;
     if (_settled) {
       final sum = s.settledSummary ?? const {};
       return _card(
@@ -1667,9 +2035,15 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
               style: _t(12.5, color: Colors.white70)),
           const SizedBox(height: 8),
           Wrap(spacing: 8, runSpacing: 8, children: [
-            _chip('Agreed ${_inr.format((sum['agreed'] as num?) ?? 0)}', colour: _green),
-            _chip('Disputed ${_inr.format((sum['disputed'] as num?) ?? 0)}', colour: _red),
             if (sum['invoice'] != null) _chip('${sum['invoice']}'),
+            if (sum['invoice_excl'] != null)
+              _chip('Invoice ${_inr.format(sum['invoice_excl'] as num)}', colour: Colors.white),
+            _chip('To raise ${_inr.format((sum['to_raise'] ?? sum['disputed'] ?? 0) as num)}',
+                colour: _red),
+            if (sum['to_pay'] != null)
+              _chip('To pay ${_inr.format(sum['to_pay'] as num)}', colour: _green),
+            if (sum['invoice_excl'] == null)
+              _chip('Agreed ${_inr.format((sum['agreed'] as num?) ?? 0)}', colour: _green),
           ]),
         ],
       );
@@ -1684,15 +2058,151 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
             padding: const EdgeInsets.only(bottom: 5),
             child: Row(children: [
               Icon(c.$2 ? Icons.check_circle : Icons.radio_button_unchecked,
-                  size: 15, color: c.$2 ? _green : _muted),
+                  size: 15, color: c.$2 ? _green : _amber),
               const SizedBox(width: 8),
               Expanded(
-                  child: Text(c.$1, style: _t(12, color: c.$2 ? Colors.white : _muted))),
+                  child: Text(c.$1, style: _t(12, color: c.$2 ? Colors.white : Colors.white70))),
+              if (!c.$2)
+                GestureDetector(
+                  onTap: () => _goTo(c.$4),
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: Text('${c.$3}  →',
+                        style: _t(11.5, weight: FontWeight.w700, color: _amber)),
+                  ),
+                ),
             ]),
           ),
+        if (f.toPay != null) ...[
+          const SizedBox(height: 8),
+          Text(
+              'On settling: invoice ${_inr.format(f.invoiceExcl)}, raise '
+              '${_inr.format(f.toRaise)}, pay ${_inr.format(f.toPay)} (before GST).',
+              style: _t(11.5, color: Colors.white70)),
+        ],
         const SizedBox(height: 10),
         _smallButton(Icons.verified, 'Settle ${_monthLabel(_month)}', ready ? _settle : null,
             colour: _green, busy: _busy.contains('settle')),
+      ],
+    );
+  }
+
+  /// The month on one card: the figures, every remark made on a line, and
+  /// the history of every decision — who, when, what, and why.
+  Widget _summaryCard() {
+    final f = _figures;
+    final remarks = _remarks;
+    IconData iconOf(String action) => switch (action) {
+          'answered' || 'accepted (in our favour)' => Icons.check_circle_outline,
+          'changed' || 'comment changed' => Icons.edit_outlined,
+          'undone' => Icons.undo,
+          'vehicle placed' => Icons.directions_car_outlined,
+          'sheet uploaded' => Icons.description_outlined,
+          'invoice set' || 'invoice removed' => Icons.receipt_long_outlined,
+          'settled' => Icons.verified,
+          'reopened' => Icons.lock_open,
+          'runs added to TrackLog' => Icons.playlist_add,
+          _ => Icons.circle_outlined,
+        };
+    Widget fig(String k, double? v, Color c, {bool bold = false}) => Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(k, style: _t(9.5, weight: FontWeight.w800, color: _muted).copyWith(letterSpacing: 0.8)),
+            Text(v == null ? '—' : _inr.format(v),
+                style: _t(bold ? 17 : 15, weight: FontWeight.w800, color: c)),
+          ]),
+        );
+    return _card(
+      title: 'SUMMARY · ${_monthLabel(_month).toUpperCase()}',
+      icon: Icons.summarize_outlined,
+      trailing: _smallButton(Icons.download_rounded, 'Export', _export),
+      children: [
+        Row(children: [
+          fig('NATRAX SHEET', f.sheet, _amber),
+          fig('AGREED', f.agreed, _teal),
+          fig('INVOICE', f.invoiceExcl, Colors.white),
+          fig('TO RAISE', f.toRaise, _red),
+          fig('TO PAY', f.toPay, _green, bold: true),
+        ]),
+        const SizedBox(height: 16),
+        Text('REMARKS  ${remarks.length}',
+            style: _t(10.5, weight: FontWeight.w800, color: _teal).copyWith(letterSpacing: 1)),
+        const SizedBox(height: 6),
+        if (remarks.isEmpty)
+          Text('No comments on any line yet.', style: _t(11.5, color: _muted)),
+        for (final r in remarks)
+          Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppTheme.backgroundDark.withAlpha(150),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _line),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Expanded(child: Text(r.title, style: _t(12, weight: FontWeight.w700))),
+                Text(r.kind == ReconKind.invoice ? 'invoice' : 'sheet',
+                    style: _t(10, weight: FontWeight.w700, color: _muted)),
+              ]),
+              Text(r.chosen?.label ?? r.answer!.choice,
+                  style: _t(11, weight: FontWeight.w600, color: _green)),
+              Text('“${r.answer!.comment}”',
+                  style: _t(11.5, color: const Color(0xFFE2C18C), height: 1.4)),
+              Text(
+                  '${r.answer!.by ?? ''}'
+                  '${r.answer!.at == null ? '' : ' · ${DateFormat('d MMM, HH:mm').format(r.answer!.at!.toLocal())}'}',
+                  style: _t(10, color: _muted)),
+            ]),
+          ),
+        const SizedBox(height: 14),
+        Text('HISTORY  ${_history.length}',
+            style: _t(10.5, weight: FontWeight.w800, color: _teal).copyWith(letterSpacing: 1)),
+        const SizedBox(height: 6),
+        if (_svc.historyMissing)
+          Text(
+              'History needs one setup step: paste 20261117090000_recon_history.sql '
+              'into the Supabase SQL editor and run it. Decisions save either way.',
+              style: _t(11.5, color: _amber, height: 1.4))
+        else if (_history.isEmpty)
+          Text('Nothing recorded yet. Every decision from now on is kept here.',
+              style: _t(11.5, color: _muted)),
+        for (final h in _history)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Icon(iconOf(h.action), size: 14, color: _muted),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text.rich(TextSpan(children: [
+                    TextSpan(
+                        text: '${h.action[0].toUpperCase()}${h.action.substring(1)}',
+                        style: _t(12, weight: FontWeight.w700)),
+                    if ((h.title ?? '').isNotEmpty)
+                      TextSpan(text: ' · ${h.title}', style: _t(12, color: Colors.white70)),
+                  ])),
+                  if ((h.choiceLabel ?? '').isNotEmpty)
+                    Text(h.choiceLabel!, style: _t(11, color: _green)),
+                  if ((h.comment ?? '').isNotEmpty)
+                    Text('“${h.comment}”',
+                        style: _t(11, color: const Color(0xFFE2C18C), height: 1.4)),
+                  if (h.natraxAmount != null || h.agreedAmount != null)
+                    Text(
+                        '${h.natraxAmount == null ? '' : 'NATRAX ${_inr.format(h.natraxAmount)}'}'
+                        '${h.natraxAmount != null && h.agreedAmount != null ? ' · ' : ''}'
+                        '${h.agreedAmount == null ? '' : 'agreed ${_inr.format(h.agreedAmount)}'}',
+                        style: _t(10.5, color: _muted)),
+                  Text(
+                      '${DateFormat('d MMM yyyy, HH:mm').format(h.at.toLocal())}'
+                      '${h.by == null ? '' : ' · ${h.by}'}',
+                      style: _t(10, color: _muted)),
+                ]),
+              ),
+            ]),
+          ),
       ],
     );
   }
@@ -1712,17 +2222,46 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
             Text(_inr.format(v), style: _t(bold ? 16 : 13, weight: FontWeight.w800, color: c)),
           ]),
         );
+    final f = _figures;
+    final inv = _state?.invoice;
+    final invoiceOpen = _invoiceItems.where((i) => i.isOpen).length;
     return _card(
       title: 'THE MONTH IN MONEY',
       icon: Icons.currency_rupee,
+      accent: inv == null ? _teal : _green,
       children: [
+        // Once the invoice is in, it leads: it is what will be paid.
+        if (inv != null) ...[
+          Text('FINAL INVOICE  ${_state?.invoiceNumber ?? ''}',
+              style: _t(10, weight: FontWeight.w800, color: _green)
+                  .copyWith(letterSpacing: 1)),
+          const SizedBox(height: 4),
+          row('Invoice, before GST', f.invoiceExcl ?? 0, Colors.white),
+          row('GST', f.invoiceGst ?? 0, _muted),
+          row('Invoice total', f.invoiceTotal ?? 0, Colors.white, bold: true),
+          row('To raise with NATRAX', f.toRaise, f.toRaise >= 1 ? _red : _muted),
+          const Divider(color: _line, height: 16),
+          row('To pay, before GST', f.toPay ?? 0, _green, bold: true),
+          if (invoiceOpen > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                  '$invoiceOpen invoice line${invoiceOpen == 1 ? '' : 's'} still to '
+                  'answer — the figure to pay is provisional until then.',
+                  style: _t(10.5, color: _amber)),
+            ),
+          const SizedBox(height: 10),
+          Text('THE SHEET',
+              style: _t(10, weight: FontWeight.w800, color: _muted)
+                  .copyWith(letterSpacing: 1)),
+        ],
         row('NATRAX sheet, our vehicles', o.natraxMoney, _amber),
         row('Our record', o.oursMoney, _teal),
-        const Divider(color: _line, height: 16),
-        row(o.cleared ? 'Agreed' : 'Agreed so far', o.agreedMoney, _green, bold: true),
+        if (inv == null) const Divider(color: _line, height: 16),
+        row(o.cleared ? 'Agreed' : 'Agreed so far', o.agreedMoney, _green, bold: inv == null),
         if (openMore > 0) row('NATRAX more — still to decide', openMore, _amber),
         if (o.notOursMoney > 0) row('Not ours (disputed)', o.notOursMoney, _red),
-        row('Disputed', o.disputedMoney.clamp(0, double.infinity).toDouble(), _red),
+        if (inv == null) row('To raise with NATRAX', f.toRaise, _red),
         if (!o.cleared)
           Padding(
             padding: const EdgeInsets.only(top: 4),
@@ -1731,7 +2270,11 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
                 style: _t(10.5, color: _amber)),
           ),
         const SizedBox(height: 6),
-        Text('GST is not included — NATRAX bill the SEZ entity under LUT.',
+        Text(
+            inv == null
+                ? 'Before GST — NATRAX bill the SEZ entity under LUT. Upload the '
+                    'final invoice and its amount leads this card.'
+                : 'Before GST unless shown — NATRAX bill the SEZ entity under LUT.',
             style: _t(10.5, color: _muted)),
       ],
     );
@@ -1763,8 +2306,8 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
   }
 
   Widget _disputesCard() {
-    final o = _outcome!;
-    final ds = o.disputes;
+    final f = _figures;
+    final ds = f.raise;
     return _card(
       title: 'TO RAISE WITH NATRAX',
       icon: Icons.outgoing_mail,
@@ -1776,6 +2319,12 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
               _say('Copied — paste it into the mail to NATRAX.');
             }, colour: _red),
       children: [
+        Text(
+            _state?.invoice != null
+                ? 'From the invoice: lines where NATRAX charge more than you agreed.'
+                : 'From the sheet. Once the invoice is set, its lines take over.',
+            style: _t(10.5, color: _muted)),
+        const SizedBox(height: 8),
         if (ds.isEmpty)
           Text('Nothing disputed.', style: _t(11.5, color: _muted)),
         for (final d in ds)
@@ -1792,9 +2341,13 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
                   Text(
                       d.kind == ReconKind.notOurs
                           ? '${_inr.format(d.theirsMoney)} — all of it'
-                          : 'Charged ${_h(d.theirs)} ${d.unit}, agreed ${_h(d.chosen?.agreed)} — '
+                          : 'Charged ${_inr.format(d.theirsMoney)}, agreed '
+                              '${_inr.format(d.agreedMoney)} — raise '
                               '${_inr.format(d.theirsMoney - d.agreedMoney)}',
                       style: _t(11, color: _muted)),
+                  if ((d.answer?.comment ?? '').trim().isNotEmpty)
+                    Text('“${d.answer!.comment}”',
+                        style: _t(11, color: const Color(0xFFE2C18C))),
                 ]),
               ),
             ]),
@@ -1802,7 +2355,7 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
         if (ds.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text('Total ${_inr.format(o.disputedMoney)}',
+            child: Text('Total ${_inr.format(f.toRaise)}',
                 style: _t(13, weight: FontWeight.w800, color: _red)),
           ),
       ],

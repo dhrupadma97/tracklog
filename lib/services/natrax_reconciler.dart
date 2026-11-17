@@ -384,7 +384,19 @@ class ReconOutcome {
       .fold(0.0, (s, i) => s + i.theirsMoney);
 
   /// Everything raised with NATRAX: not-ours vehicles plus lines disputed.
-  double get disputedMoney => natraxMoney + notOursMoney - agreedMoney;
+  /// What there is to raise with NATRAX: the whole of a vehicle that is not
+  /// ours, and on every disputed line what they charge above what was agreed.
+  ///
+  /// Summed from [disputes], not as NATRAX minus agreed overall: a line
+  /// settled ABOVE the sheet (15 Oct 2026 — 4 h of braking exclusive agreed
+  /// against a sheet charging one High Speed block) is not a dispute, and
+  /// netting it off showed "-1,20,000 to raise" while hiding the real ones.
+  double get disputedMoney => disputes.fold(
+      0.0,
+      (s, d) => s +
+          (d.kind == ReconKind.notOurs
+              ? d.theirsMoney
+              : d.theirsMoney - d.agreedMoney));
 
   /// Fix-ups for our own record that the answers imply.
   List<String> get todos => [
@@ -394,9 +406,7 @@ class ReconOutcome {
 
   List<ReconItem> get disputes => [
         for (final i in items)
-          if (i.kind == ReconKind.notOurs ||
-              (!i.stale && (i.chosen?.dispute ?? false)))
-            i,
+          if (i.kind == ReconKind.notOurs || NatraxReconciler.isDispute(i)) i,
       ];
 }
 
@@ -425,6 +435,18 @@ class NatraxReconciler {
   static String _h(num v) =>
       v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(1);
   static String _ymd(DateTime d) => DateFormat('yyyy-MM-dd').format(d);
+
+  /// An answered line that leaves NATRAX charging more than was agreed —
+  /// something to raise. A disputing answer that agrees MORE than they
+  /// charge is not one: there is nothing to ask them for.
+  static bool isDispute(ReconItem i) =>
+      !i.stale &&
+      (i.chosen?.dispute ?? false) &&
+      i.theirsMoney - i.agreedMoney >= 1;
+
+  /// The invoice lines to raise, from [tally].
+  static List<ReconItem> invoiceDisputes(List<ReconItem> tally) =>
+      [for (final i in tally) if (isDispute(i)) i];
 
   /// Rupees as the user reads them: ₹1,80,000, or ₹67.80 when there are paise.
   static String _rs(double v) => NumberFormat.currency(
@@ -1113,13 +1135,18 @@ class NatraxReconciler {
                   ),
                 ReconOption(
                   id: 'dispute',
+                  // Called a dispute only when our figure is the lower one.
+                  // When it is higher it is simply our record being agreed.
                   label: ob.isEmpty
                       ? 'Dispute — we had no exclusive run that day'
-                      : 'Dispute — we make it ${_h(oh)} h'
-                          '${oCode.isEmpty ? '' : ' on $oCode'}',
+                      : oMoney < tMoney
+                          ? 'Dispute — we make it ${_h(oh)} h'
+                              '${oCode.isEmpty ? '' : ' on $oCode'}, ${_rs(oMoney)}'
+                          : 'Our record — ${_h(oh)} h'
+                              '${oCode.isEmpty ? '' : ' on $oCode'}, ${_rs(oMoney)}',
                   agreed: oh,
                   agreedMoney: oMoney,
-                  dispute: true,
+                  dispute: ob.isEmpty || oMoney < tMoney,
                 ),
               ],
         suggested: same
