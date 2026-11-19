@@ -57,6 +57,15 @@ invoice upload and the manager report without further edits. The selection
 screen keeps a parallel `_knownProjects` map for hero image, accent colour and
 vehicle specs only; add the matching entry there, keyed identically.
 
+**New programmes are normally added from the app** (19 Nov 2026): Projects →
+NEW PROJECT. They are stored in `public.projects` (key, name, vehicle,
+powertrain, type, three spec chips, details, picture URL) and merged into
+`ProjectCatalog.all` by `ProjectRegistry.load()` — called by the Projects
+screen and by both nav frames. `ProjectCatalog.builtIn` holds the four compiled
+programmes; an app-added row with the same key is ignored. "Look up online"
+(`VehicleLookupService`) reads Wikipedia's summary and infobox — a starting
+point the user edits, not a source of record.
+
 Empty/General `project_name` in DB → treated as Mahindra EV PoC.
 
 The selection screen partitions this list by status rather than showing it

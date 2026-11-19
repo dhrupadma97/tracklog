@@ -73,7 +73,25 @@ class Programme {
 class ProjectCatalog {
   const ProjectCatalog._();
 
-  static const List<Programme> all = [
+  /// Every programme: the compiled ones, then any added from the app.
+  ///
+  /// A getter rather than a const list since 19 Nov 2026, when programmes
+  /// became addable from the Projects screen (ProjectRegistry, public.
+  /// projects). Every picker that reads this — Manual Entry, the muster, the
+  /// Analyser, the reports — sees a new programme without further edits.
+  static List<Programme> get all => [...builtIn, ..._added];
+
+  static final List<Programme> _added = [];
+
+  /// Called by ProjectRegistry once public.projects is read. A key matching a
+  /// compiled programme is ignored, so the originals cannot be redefined.
+  static void setAdded(Iterable<Programme> programmes) {
+    _added
+      ..clear()
+      ..addAll(programmes.where((p) => !builtIn.any((b) => b.key == p.key)));
+  }
+
+  static const List<Programme> builtIn = [
     Programme(
       key: 'mahindra ev poc',
       displayName: 'Mahindra EV PoC',

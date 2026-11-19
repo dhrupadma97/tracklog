@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../core/app_export.dart';
 import '../services/engineer_auth_service.dart';
+import '../services/project_registry.dart';
 
 // V4 Premium — Glow Pill + Bounce + Gradient + Teal top-accent — LOCKED
 class AppNavigation extends StatefulWidget {
@@ -171,6 +172,7 @@ class _AppNavigationState extends State<AppNavigation>
       duration: const Duration(milliseconds: 350),
     );
     _loadRole();
+    ProjectRegistry.instance.load();
   }
 
   void _ensureBounceController(int index) {

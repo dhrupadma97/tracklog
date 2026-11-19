@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import './app_navigation.dart';
 import '../services/engineer_auth_service.dart';
+import '../services/project_registry.dart';
 
 class AppScaffold extends StatelessWidget {
   final StatefulNavigationShell navigationShell;
@@ -78,6 +79,9 @@ class _WideScaffoldState extends State<_WideScaffold> {
   void initState() {
     super.initState();
     _loadRole();
+    // Programmes added from the app, so every picker offers them wherever
+    // the session starts - not only once the Projects screen has loaded.
+    ProjectRegistry.instance.load();
   }
 
   Future<void> _loadRole() async {

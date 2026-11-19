@@ -10,6 +10,8 @@ import 'dart:math' as math;
 import '../../services/project_catalog.dart';
 import '../../services/project_manager.dart';
 import '../../services/project_status_service.dart';
+import '../../services/project_registry.dart';
+import 'new_project_dialog.dart';
 import '../../services/session_keepalive.dart';
 import '../../services/session_status.dart';
 import '../../services/spend_breakdown_service.dart';
@@ -86,6 +88,52 @@ class _ProjectMeta {
     this.details = const [],
     this.status = ProjectStatus.upcoming,
   });
+}
+
+/// Accent colours for programmes added from the app, taken in turn.
+const _addedAccents = [
+  Color(0xFFB794F6),
+  Color(0xFFF59E0B),
+  Color(0xFF22C55E),
+  Color(0xFFF472B6),
+  Color(0xFF38BDF8),
+];
+
+/// A card for a programme added from the app: its looked-up picture laid in
+/// full-bleed (a photograph carries its own scenery), its three chips, and
+/// its details on hover.
+_ProjectMeta _metaForAdded(ProgrammeProfile p, int i) {
+  final accent = _addedAccents[i % _addedAccents.length];
+  return _ProjectMeta(
+    displayName: p.displayName,
+    vehicle: p.vehicle,
+    vehicleType: p.vehicleType.isEmpty
+        ? (p.powertrain == 'bev' ? 'Battery Electric Vehicle' : 'Passenger vehicle')
+        : p.vehicleType,
+    description: p.summary.isEmpty
+        ? 'Goodyear SightLine validation on the ${p.vehicle}.'
+        : p.summary,
+    imagePath: (p.imageUrl ?? '').isEmpty ? null : p.imageUrl,
+    imageHasBackdrop: true,
+    accentColor: accent,
+    glowColor: accent,
+    specs: p.specs,
+    details: [for (final d in p.details) _CarDetail(d, Icons.info_outline_rounded)],
+  );
+}
+
+/// An asset, or a picture on the web for a programme added from the app.
+Widget _vehicleImage(String path,
+    {BoxFit fit = BoxFit.cover, double? height, Alignment alignment = Alignment.center}) {
+  if (path.startsWith('http')) {
+    return Image.network(path,
+        fit: fit,
+        height: height,
+        alignment: alignment,
+        errorBuilder: (_, __, ___) => const Center(
+            child: Icon(Icons.directions_car_outlined, color: Colors.white24, size: 56)));
+  }
+  return Image.asset(path, fit: fit, height: height, alignment: alignment);
 }
 
 const _knownProjects = {
@@ -568,13 +616,25 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
         svcCostMap[sid] = (svcCostMap[sid] ?? 0) + cost;
       }
 
-      // Pre-populate with the 3 known projects (in display order)
+      // The compiled programmes first, then any added from the app
+      // (public.projects) — each with a card built from its saved details.
+      await ProjectRegistry.instance.load();
       final Map<String, _ProjectCard> cardMap = {};
       for (final entry in _knownProjects.entries) {
         cardMap[entry.key] = _ProjectCard(
           projectKey: entry.value.displayName,
           displayName: entry.value.displayName,
           meta: entry.value,
+        );
+      }
+      var added = 0;
+      for (final p in ProjectRegistry.instance.profiles.values) {
+        if (cardMap.containsKey(p.key)) continue;
+        final meta = _metaForAdded(p, added++);
+        cardMap[p.key] = _ProjectCard(
+          projectKey: p.displayName,
+          displayName: p.displayName,
+          meta: meta,
         );
       }
 
@@ -1295,25 +1355,66 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
   /// rail shows one set at a time. The default view is only what is live;
   /// completed programmes keep their billing history one click away.
   Widget _buildRailTabs() {
-    if (_completed.isEmpty) return const SizedBox.shrink();
     return Row(children: [
-      _railTab(
-        label: 'RUNNING',
-        count: _projects.length,
-        selected: !_showCompleted,
-        color: const Color(0xFF00F3FF),
-        onTap: () => _switchRail(false),
-      ),
-      const SizedBox(width: 10),
-      _railTab(
-        label: 'COMPLETED',
-        count: _completed.length,
-        selected: _showCompleted,
-        color: const Color(0xFF22C55E),
-        onTap: () => _switchRail(true),
-      ),
+      if (_completed.isNotEmpty) ...[
+        _railTab(
+          label: 'RUNNING',
+          count: _projects.length,
+          selected: !_showCompleted,
+          color: const Color(0xFF00F3FF),
+          onTap: () => _switchRail(false),
+        ),
+        const SizedBox(width: 10),
+        _railTab(
+          label: 'COMPLETED',
+          count: _completed.length,
+          selected: _showCompleted,
+          color: const Color(0xFF22C55E),
+          onTap: () => _switchRail(true),
+        ),
+      ],
+      const Spacer(),
+      // A new programme, added here rather than in the code (19 Nov 2026).
+      _newProjectButton(),
     ]);
   }
+
+  Widget _newProjectButton() => MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: () async {
+            final added = await NewProjectDialog.show(context);
+            if (added == true && mounted) {
+              await _loadProjects();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text('Project added. It is in every list in the app now.',
+                      style: GoogleFonts.spaceGrotesk(fontSize: 13)),
+                  behavior: SnackBarBehavior.floating,
+                ));
+              }
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF00F3FF).withOpacity(0.08),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFF00F3FF).withOpacity(0.5)),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.add_rounded, size: 15, color: Color(0xFF00F3FF)),
+              const SizedBox(width: 6),
+              Text('NEW PROJECT',
+                  style: GoogleFonts.spaceGrotesk(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.6,
+                      color: const Color(0xFF00F3FF))),
+            ]),
+          ),
+        ),
+      );
 
   Widget _railTab({
     required String label,
@@ -1631,7 +1732,7 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
                     child: AnimatedScale(
                       duration: const Duration(milliseconds: 300),
                       scale: isHovered ? 1.06 : 1.0,
-                      child: Image.asset(
+                      child: _vehicleImage(
                         meta.imagePath!,
                         fit: BoxFit.cover,
                         alignment: Alignment.center,
@@ -1666,7 +1767,7 @@ class _ProjectSelectionScreenState extends State<ProjectSelectionScreen>
                       stops: [0.0, 0.55, 1.0],
                     ).createShader(bounds),
                     blendMode: BlendMode.dstIn,
-                    child: Image.asset(
+                    child: _vehicleImage(
                       meta.imagePath!,
                       height: 138,
                       fit: BoxFit.contain,
