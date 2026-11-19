@@ -104,9 +104,10 @@ class ExcelBackupDownloader {
   ///
   /// Not revoking leaks the whole workbook in memory for the life of the tab,
   /// which for repeated backups of a large table adds up.
-  static void save(Uint8List bytes, String name) {
-    final blob = html.Blob(<Object>[bytes],
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  static void save(Uint8List bytes, String name,
+      {String mimeType =
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}) {
+    final blob = html.Blob(<Object>[bytes], mimeType);
     final url = html.Url.createObjectUrlFromBlob(blob);
     try {
       html.AnchorElement(href: url)

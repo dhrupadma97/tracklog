@@ -1,7 +1,7 @@
 name: tracklog
 description: A new Flutter project.
 publish_to: none
-version: 1.55.1+69
+version: 1.56.0+70
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
@@ -41,6 +41,7 @@ dependencies:
   local_auth: ^2.3.0
   flutter_secure_storage: ^9.0.0
   crypto: ^3.0.3 # Salted SHA-256 for the PIN verifier (see pin_lock_service.dart)
+  pdf: ^3.12.0
 dev_dependencies:
   flutter_test:    # CRITICAL: Required for Flutter project testing - DO NOT REMOVE
     sdk: flutter   # CRITICAL: Required for Flutter project testing - DO NOT REMOVE

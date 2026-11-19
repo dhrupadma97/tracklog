@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../services/billing_baseline.dart';
 import '../../services/engineer_auth_service.dart';
 import '../../services/excel_backup_downloader.dart';
+import '../../services/recon_pdf_report.dart';
 import '../../services/invoice_service.dart';
 import '../../services/natrax_reconciler.dart';
 import '../../services/natrax_utilisation_sheet.dart';
@@ -657,6 +658,21 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
       ['To pay, before GST', _figures.toPay],
       ['Settled', s.settledAt == null ? 'No' : DateFormat('d MMM yyyy').format(s.settledAt!)],
     ]);
+    final hasInvoice = s.invoice != null;
+    sheet('Line by line', [
+      'Line', "NATRAX's sheet", 'Our record', if (hasInvoice) 'Invoice', if (hasInvoice) 'To pay', 'Why'
+    ], [
+      for (final r in NatraxReconciler.bridge(
+          outcome: o, invoice: s.invoice, tallyItems: _invoiceItems))
+        [
+          r.name,
+          r.sheet,
+          r.ours,
+          if (hasInvoice) r.invoice,
+          if (hasInvoice) r.toPay,
+          _whyOf(r, hasInvoice)?.text ?? '',
+        ],
+    ]);
     sheet('Remarks', ['Line', 'Stage', 'Decision', 'Comment', 'By', 'When'], [
       for (final r in _remarks)
         [
@@ -710,8 +726,8 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
             i.answer?.at == null ? '' : DateFormat('dd-MMM-yyyy HH:mm').format(i.answer!.at!.toLocal()),
           ],
     ]);
-    sheet('Disputes', ['Line', 'Programme', 'NATRAX', 'Agreed', '₹ in question', 'Comment'], [
-      for (final d in o.disputes)
+    sheet('To raise', ['Line', 'Programme', 'NATRAX', 'Agreed', '₹ in question', 'Comment'], [
+      for (final d in _figures.raise)
         [d.title, d.project ?? d.subtitle, d.theirs, d.kind == ReconKind.notOurs ? 0 : d.chosen?.agreed,
           d.kind == ReconKind.notOurs ? d.theirsMoney : d.theirsMoney - d.agreedMoney, d.answer?.comment ?? ''],
     ]);
@@ -867,7 +883,10 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
           ),
           // Icons only on a phone, where the words would squeeze the title.
           if (_outcome != null) ...[
-            _smallButton(Icons.download_rounded, _narrow ? '' : 'Export', _export),
+            _smallButton(Icons.picture_as_pdf_outlined, _narrow ? '' : 'PDF summary', _exportPdf,
+                busy: _busy.contains('pdf')),
+            const SizedBox(width: 8),
+            _smallButton(Icons.grid_on_outlined, _narrow ? '' : 'Excel', _export, colour: _muted),
             const SizedBox(width: 8),
           ],
           _smallButton(Icons.refresh, _narrow ? '' : 'Reload', () => _load()),
@@ -1833,6 +1852,120 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
     );
   }
 
+  /// The one thing worth saying about a line, in plain words — shared by the
+  /// on-screen table and the PDF so the two never word it differently.
+  /// Tone: 0 plain, 1 disputed, 2 needs an answer, 3 in our favour.
+  ({String text, int tone})? _whyOf(ReconBridgeRow r, bool hasInvoice) {
+    if (hasInvoice) {
+      final over = (r.invoice ?? 0) - r.agreed;
+      if (r.disputed) {
+        return (text: 'Disputed: invoice ${_inr.format(over.abs())} above what you agreed', tone: 1);
+      }
+      if (over >= 1 && r.open) {
+        return (text: 'Invoice ${_inr.format(over)} above what you agreed — answer it below', tone: 2);
+      }
+      if (over >= 1) return (text: 'Invoice ${_inr.format(over)} above the sheet — accepted', tone: 0);
+      if (over <= -1) return (text: 'Invoice ${_inr.format(-over)} below — in your favour', tone: 3);
+    }
+    final rec = r.ours - r.sheet;
+    if (rec >= 1) return (text: 'Our record ${_inr.format(rec)} more than NATRAX\'s sheet', tone: 0);
+    if (rec <= -1) return (text: 'Our record ${_inr.format(-rec)} less than NATRAX\'s sheet', tone: 0);
+    return null;
+  }
+
+  /// The month as an appealing PDF: header and status, the three figures,
+  /// line by line, what to raise, remarks, fixes and the full history.
+  Future<void> _exportPdf() async {
+    final o = _outcome;
+    final s = _state;
+    if (o == null || s == null) return;
+    setState(() => _busy.add('pdf'));
+    try {
+      final f = _figures;
+      final hasInvoice = s.invoice != null;
+      final rows = NatraxReconciler.bridge(
+          outcome: o, invoice: s.invoice, tallyItems: _invoiceItems);
+      final when = DateFormat('d MMM yyyy, HH:mm');
+      final data = ReconReportData(
+        monthLabel: _monthLabel(_month),
+        sheetRef: s.sheet?.reference,
+        invoiceNumber: s.invoiceNumber,
+        sheet: f.sheet,
+        ours: f.ours,
+        invoiceExcl: f.invoiceExcl,
+        invoiceGst: f.invoiceGst,
+        invoiceTotal: f.invoiceTotal,
+        toRaise: f.toRaise,
+        toPay: f.toPay,
+        settled: _settled,
+        settledOn: s.settledAt == null ? null : DateFormat('d MMM yyyy').format(s.settledAt!.toLocal()),
+        stillOpen: [for (final x in _nextSteps()) x.text],
+        lines: [
+          for (final r in rows)
+            ReconReportLine(
+              name: r.name,
+              sheet: r.sheet,
+              ours: r.ours,
+              invoice: hasInvoice ? r.invoice : null,
+              toPay: hasInvoice ? r.toPay : null,
+              why: _whyOf(r, hasInvoice)?.text,
+              tone: _whyOf(r, hasInvoice)?.tone ?? 0,
+            ),
+        ],
+        raise: [
+          for (final d in f.raise)
+            ReconReportRaise(
+              d.title,
+              d.theirsMoney,
+              d.kind == ReconKind.notOurs ? 0 : d.agreedMoney,
+              d.answer?.comment ?? '',
+            ),
+        ],
+        remarks: [
+          for (final r in _remarks)
+            ReconReportRemark(
+              r.title,
+              r.kind == ReconKind.invoice ? 'Invoice' : 'Sheet',
+              r.chosen?.label ?? r.answer!.choice,
+              r.answer!.comment,
+              '${(r.answer!.by ?? '').split('@').first}'
+                  '${r.answer!.at == null ? '' : '\n${when.format(r.answer!.at!.toLocal())}'}',
+            ),
+        ],
+        todos: o.todos,
+        history: [
+          for (final h in _history)
+            ReconReportEvent(
+              when.format(h.at.toLocal()),
+              h.action,
+              h.title ?? '',
+              [
+                if ((h.choiceLabel ?? '').isNotEmpty) h.choiceLabel!,
+                if ((h.comment ?? '').isNotEmpty) '"${h.comment}"',
+                if (h.natraxAmount != null || h.agreedAmount != null)
+                  [
+                    if (h.natraxAmount != null) 'NATRAX ${ReconPdfReport.money(h.natraxAmount)}',
+                    if (h.agreedAmount != null) 'agreed ${ReconPdfReport.money(h.agreedAmount)}',
+                  ].join(', '),
+              ].join('\n'),
+              (h.by ?? '').split('@').first,
+            ),
+        ],
+        exportedBy: EngineerAuthService.instance.currentUser?.email,
+        exportedAt: DateTime.now(),
+      );
+      final bytes = await ReconPdfReport.build(data);
+      final name = 'NATRAX_Reconciliation_'
+          '${DateFormat('MMM-yyyy').format(DateFormat('yyyy-MM').parse(_month))}.pdf';
+      ExcelBackupDownloader.save(bytes, name, mimeType: 'application/pdf');
+      _say('Downloaded $name');
+    } catch (e) {
+      _say('Could not make the PDF: $e', error: true);
+    } finally {
+      if (mounted) setState(() => _busy.remove('pdf'));
+    }
+  }
+
   /// Why the figures differ: every line in the four figures, side by side.
   ///
   /// "Why 11 lakhs when the record shows 10 — where is the difference?"
@@ -1849,23 +1982,10 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
         rows.fold<double>(0, (s, r) => s + (f(r) ?? 0));
     String m(double? v) => v == null || v.abs() < 0.5 ? '—' : _inr.format(v);
 
-    /// The one thing worth saying about a line, in plain words.
     (String, Color)? why(ReconBridgeRow r) {
-      if (hasInvoice) {
-        final over = (r.invoice ?? 0) - r.agreed;
-        if (r.disputed) {
-          return ('Disputed: invoice ${_inr.format(over.abs())} above what you agreed', _red);
-        }
-        if (over >= 1 && r.open) {
-          return ('Invoice ${_inr.format(over)} above what you agreed — answer it below', _amber);
-        }
-        if (over >= 1) return ('Invoice ${_inr.format(over)} above the sheet — accepted', _muted);
-        if (over <= -1) return ('Invoice ${_inr.format(-over)} below — in your favour', _teal);
-      }
-      final rec = r.ours - r.sheet;
-      if (rec >= 1) return ('Our record ${_inr.format(rec)} more than NATRAX\'s sheet', _muted);
-      if (rec <= -1) return ('Our record ${_inr.format(-rec)} less than NATRAX\'s sheet', _muted);
-      return null;
+      final w = _whyOf(r, hasInvoice);
+      if (w == null) return null;
+      return (w.text, switch (w.tone) { 1 => _red, 2 => _amber, 3 => _teal, _ => _muted });
     }
 
     Widget c(String s,
@@ -2156,7 +2276,8 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
     return _card(
       title: 'SUMMARY · ${_monthLabel(_month).toUpperCase()}',
       icon: Icons.summarize_outlined,
-      trailing: _smallButton(Icons.download_rounded, 'Export', _export),
+      trailing: _smallButton(Icons.picture_as_pdf_outlined, 'Download PDF', _exportPdf,
+          busy: _busy.contains('pdf')),
       children: [
         Row(children: [
           fig('NATRAX SHEET', f.sheet, _amber),
